@@ -20,7 +20,7 @@ Résultats après correction (comptage sur le VCD, attendu : 8 fronts, 4 impulsi
 |---|---|---|---|---|---|
 | hystérésis, seuils 1,5/3,5 V | 8 | 16 | 4 | 1 | 0 (correct) |
 | hystérésis, seuils 2,4/2,6 V | 8 | 2 | 4 | 1 | 0 (correct) |
-| sans hystérésis, 1,5/3,5 V | 29 | 58 | 15 | 3 | 1 (faux) |
+| sans hystérésis, 1,5/3,5 V | 29 | 58 | 15 | 3 | 5 (faux) |
 | sans hystérésis, 2,4/2,6 V | 25 | 9 | 13 | 3 | 1 (faux) |
 
 Écarté : l'hypothèse « le front X→1 de `adc_bridge` est pris pour une horloge en plus ». Un test isolé (horloge propre 5 V → `adc_bridge` → `d_dff`) montre une seule bascule par front montant, même avec un X avant le 1. Le X ne cause donc pas de comptage double sur des fronts propres.
