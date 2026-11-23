@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/bench/">
+    <Project Path="bench/Silx.Bench/Silx.Bench.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Silx.Core/Silx.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Silx.Core.Tests/Silx.Core.Tests.csproj" />
+  </Folder>
+</Solution>
