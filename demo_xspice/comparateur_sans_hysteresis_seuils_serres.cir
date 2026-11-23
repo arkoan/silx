@@ -10,10 +10,11 @@
 Vin  in_clean 0 SIN(2.5 1 1k 0 0 -90)   ; demarre a 1.5 V, loin du seuil
 Vnz  in in_clean TRNOISE(40m 2u 0 0)
 
-* --- Reference et reseau d'hysteresis (reaction positive)
+* --- Reference et reseau d hysteresis : l entree "in" est sur la borne +, donc le retour doit etre l INVERSE de la sortie (reaction positive)
 Vref ref0 0 {VREF}
 R1   ref0 plus 10k
-R2   plus cmp_out 1e12     ; SANS hysteresis
+R2   plus cmp_inv 1e12     ; SANS hysteresis
+Einv cmp_inv 0 VALUE={5-V(cmp_out)}   ; retour inverse : hysteresis = reaction positive
 
 * --- Ampli-op comportemental : gain 1e4, sortie 0..5 V, pole 1 MHz
 Bop  op_raw 0 V = 2.5 + 2.5*tanh(1e4*(V(in)-V(plus))/2.5)
