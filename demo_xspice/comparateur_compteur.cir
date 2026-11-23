@@ -1,0 +1,58 @@
+* Silx - Demo mixte XSPICE : comparateur analogique -> compteur numerique 3 bits
+* Partie analogique : signal sinusoidal bruite, comparateur a ampli-op
+* comportemental avec hysteresis (trigger de Schmitt) alimente en 0/5 V.
+* Interface A/N : adc_bridge. Logique : compteur 3 bits (bascules D) + detection "7".
+* Interface N/A : dac_bridge vers une charge RC (LED simulee par R+C).
+
+.param VREF=2.5
+
+* --- Source : sinus 1 kHz, 1 V crete autour de 2.5 V, + bruit blanc 40 mV rms
+Vin  in_clean 0 SIN(2.5 1 1k 0 0 -90)   ; demarre a 1.5 V, loin du seuil
+Vnz  in in_clean TRNOISE(40m 2u 0 0)
+
+* --- Reference et reseau d hysteresis : l entree "in" est sur la borne +, donc le retour doit etre l INVERSE de la sortie (reaction positive)
+Vref ref0 0 {VREF}
+R1   ref0 plus 10k
+R2   plus cmp_inv 100k     ; hysteresis ~ +-0.23 V
+Einv cmp_inv 0 VALUE={5-V(cmp_out)}   ; retour inverse : hysteresis = reaction positive
+
+* --- Ampli-op comportemental : gain 1e4, sortie 0..5 V, pole 1 MHz
+Bop  op_raw 0 V = 2.5 + 2.5*tanh(1e4*(V(in)-V(plus))/2.5)
+Rop  op_raw cmp_out 1k
+Cop  cmp_out 0 160p
+
+* --- Interface analogique -> numerique
+Aadc [cmp_out] [d_cmp] adc1
+.model adc1 adc_bridge(in_low=1.5 in_high=3.5 rise_delay=1n fall_delay=1n)
+
+* --- Compteur asynchrone 3 bits (bascules D rebouclees en T)
+Ainv0 d_q0 d_nq0 inv1
+Ainv1 d_q1 d_nq1 inv1
+Ainv2 d_q2 d_nq2 inv1
+Aff0 d_nq0 d_cmp  d_nset d_nrst d_q0 d_q0b dff1
+Aff1 d_nq1 d_nq0  d_nset d_nrst d_q1 d_q1b dff1
+Aff2 d_nq2 d_nq1  d_nset d_nrst d_q2 d_q2b dff1
+Aand [d_q0 d_q1 d_q2] d_full and3
+.model inv1 d_inverter(rise_delay=5n fall_delay=5n)
+.model dff1 d_dff(clk_delay=10n set_delay=10n reset_delay=10n ic=0)
+.model and3 d_and(rise_delay=5n fall_delay=5n)
+
+* Set/reset inactifs (niveau logique 0 constant)
+Azero [lo_a lo_b] [d_nset d_nrst] adc1
+Vlo lo 0 0
+Rlo_a lo lo_a 1
+Rlo_b lo lo_b 1
+
+* --- Interfaces numerique -> analogique (pour visualiser et piloter une charge)
+Adac [d_cmp d_q0 d_q1 d_q2 d_full] [a_cmp a_q0 a_q1 a_q2 a_full] dac1
+.model dac1 dac_bridge(out_low=0 out_high=5 out_undef=2.5 t_rise=20n t_fall=20n)
+Rled a_full led 330
+Cled led 0 100n
+
+.tran 1u 8m
+.control
+run
+wrdata sortie_hyst.txt V(in) V(cmp_out) V(a_cmp) V(a_q0) V(a_q1) V(a_q2) V(a_full) V(led)
+eprvcd d_cmp d_q0 d_q1 d_q2 d_full > sortie_hyst.vcd
+.endc
+.end
