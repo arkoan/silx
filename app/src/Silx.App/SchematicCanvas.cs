@@ -40,6 +40,10 @@ public sealed class SchematicCanvas : Control
     double _zoom = 2.6; Point _pan = new(60, -60);
     GridPoint _cursor; GridPoint? _wireStart; bool _panning; Point _panLast; bool _inside;
     PlacedComponent? _selected; Wire? _selectedWire; PlacedComponent? _dragging; GridPoint _dragOffset; bool _dragMoved;
+    // Sélection multiple : composants et fils ; rectangle de sélection tracé depuis le fond.
+    readonly HashSet<PlacedComponent> _multi = new(); readonly HashSet<Wire> _multiWires = new();
+    Point? _boxStart; bool _boxAjout; List<Wire>? _dragFilsOrigine;
+    List<PlacedComponent>? _dragGroup;
     int _ghostRotation;
 
     static readonly IBrush Ink = new SolidColorBrush(Color.Parse("#1c1f26"));
@@ -173,23 +177,73 @@ public sealed class SchematicCanvas : Control
         Done(); SelectionChanged?.Invoke();
     }
 
-    public PlacedComponent? Selected => _selected;
-    void Select(PlacedComponent? c, Wire? w = null) { _selected = c; _selectedWire = w; SelectionChanged?.Invoke(); InvalidateVisual(); }
+    /// <summary>Composant sélectionné seul (propriétés) ; null si rien ou plusieurs éléments.</summary>
+    public PlacedComponent? Selected => _multi.Count + _multiWires.Count > 1 ? null : _selected;
+    /// <summary>Composants sélectionnés (un ou plusieurs).</summary>
+    public IReadOnlyCollection<PlacedComponent> Selection => _multi.Count > 0 ? _multi : _selected != null ? [_selected] : [];
+    public IReadOnlyCollection<Wire> FilsSelectionnes => _multiWires.Count > 0 ? _multiWires : _selectedWire != null ? [_selectedWire] : [];
+    void Select(PlacedComponent? c, Wire? w = null)
+    {
+        _selected = c; _selectedWire = w; _multi.Clear(); _multiWires.Clear();
+        if (c != null) _multi.Add(c); if (w != null) _multiWires.Add(w);
+        SelectionChanged?.Invoke(); InvalidateVisual();
+    }
+
+    /// <summary>Sélectionne les composants entièrement dans le rectangle (coordonnées écran) et les fils dont les deux bouts y sont.</summary>
+    public void SelectBox(Rect r, bool ajouter = false)
+    {
+        if (!ajouter) { _multi.Clear(); _multiWires.Clear(); }
+        foreach (var c in Schematic.Components.Where(c => c.Pins.All(p => r.Contains(ToScreen(p))))) _multi.Add(c);
+        foreach (var w in Schematic.Wires.Where(w => r.Contains(ToScreen(w.A)) && r.Contains(ToScreen(w.B)))) _multiWires.Add(w);
+        _selected = _multi.Count == 1 && _multiWires.Count == 0 ? _multi.First() : _multi.FirstOrDefault();
+        _selectedWire = _multiWires.Count == 1 && _multi.Count == 0 ? _multiWires.First() : null;
+        SelectionChanged?.Invoke(); InvalidateVisual();
+    }
+
+    void Basculer(PlacedComponent? c, Wire? w)
+    {
+        if (c != null && !_multi.Remove(c)) _multi.Add(c);
+        if (w != null && !_multiWires.Remove(w)) _multiWires.Add(w);
+        _selected = _multi.FirstOrDefault(); _selectedWire = _multi.Count == 0 && _multiWires.Count == 1 ? _multiWires.First() : null;
+        SelectionChanged?.Invoke(); InvalidateVisual();
+    }
+
+    /// <summary>Déplace la sélection (fils élastiques, fils sélectionnés entraînés), une entrée d'annulation.</summary>
+    public bool MoveSelection(GridPoint delta)
+    {
+        Commit();
+        var avant = Schematic.Components.ToDictionary(k => k, k => k.Pins.ToList());
+        DernierDeplacementSur = Elastique.Deplacer(Schematic, Selection.ToList(), delta, FilsSelectionnes.ToList());
+        var moves = new Dictionary<GridPoint, GridPoint>();
+        foreach (var (k, pins) in avant) foreach (var (a, b) in pins.Zip(k.Pins)) if (!a.Equals(b)) moves.TryAdd(a, b);
+        _multiWires.Clear(); SuivreCalques(moves); Done();
+        return DernierDeplacementSur;
+    }
 
     public void RotateSelected()
     {
-        if (_selected == null) { _ghostRotation = (_ghostRotation + 1) % 4; InvalidateVisual(); return; }
+        if (Selection.Count == 0) { _ghostRotation = (_ghostRotation + 1) % 4; InvalidateVisual(); return; }
         Commit();
-        var avant = _selected.Pins.ToList();
-        DernierDeplacementSur = Elastique.Pivoter(Schematic, _selected);
-        var moves = avant.Zip(_selected.Pins).Where(x => !x.First.Equals(x.Second)).ToDictionary(x => x.First, x => x.Second);
+        // HYPOTHÈSE : plusieurs composants pivotent chacun sur lui-même (pas autour du centre du groupe).
+        var moves = new Dictionary<GridPoint, GridPoint>(); bool sur = true;
+        foreach (var c in Selection.ToList())
+        {
+            var avant = c.Pins.ToList();
+            sur &= Elastique.Pivoter(Schematic, c);
+            foreach (var (a, b) in avant.Zip(c.Pins)) if (!a.Equals(b)) moves.TryAdd(a, b);
+        }
+        DernierDeplacementSur = sur;
         SuivreCalques(moves);
         Done();
     }
     public void DeleteSelected()
     {
-        if (_selected != null) { Commit(); Schematic.Components.Remove(_selected); Select(null); Done(); }
-        else if (_selectedWire != null) { Commit(); Schematic.Wires.Remove(_selectedWire); Select(null); Done(); }
+        var comps = Selection.ToList(); var fils = FilsSelectionnes.ToList();
+        if (comps.Count + fils.Count == 0) return;
+        Commit();
+        foreach (var c in comps) Schematic.Components.Remove(c);
+        foreach (var w in fils) Schematic.Wires.Remove(w);
+        Select(null); Done();
     }
     public void EditSelected(string reference, string value)
     {
@@ -231,8 +285,22 @@ public sealed class SchematicCanvas : Control
             case Tool.Select:
                 var hit = Schematic.Components.LastOrDefault(c => HitTest(c, pos));
                 var wire = hit == null ? Schematic.Wires.LastOrDefault(w => HitWire(w, pos)) : null;
-                Select(hit, wire);
-                if (hit != null) { _dragging = hit; _dragMoved = false; _dragOffset = new(g.X - hit.Position.X, g.Y - hit.Position.Y); _dragOrigin = Schematic.Clone(); _dragStart = hit.Position; Commit(); }
+                bool maj = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+                if (hit == null && wire == null)
+                {
+                    // Fond : rectangle de sélection (Maj : ajoute à la sélection).
+                    _boxStart = pos; _boxAjout = maj;
+                    if (!maj) Select(null);
+                    break;
+                }
+                if (maj) { Basculer(hit, wire); break; }
+                bool groupe = hit != null && _multi.Contains(hit) && _multi.Count + _multiWires.Count > 1;
+                if (!groupe) Select(hit, wire);
+                if (hit != null)
+                {
+                    _dragging = hit; _dragMoved = false; _dragOffset = new(g.X - hit.Position.X, g.Y - hit.Position.Y); _dragOrigin = Schematic.Clone(); _dragStart = hit.Position;
+                    _dragGroup = groupe ? _multi.ToList() : null; _dragFilsOrigine = groupe ? _multiWires.ToList() : null; Commit();
+                }
                 break;
             case Tool.Place:
                 Commit();
@@ -268,7 +336,13 @@ public sealed class SchematicCanvas : Control
                 for (int i = 0; i < Schematic.Components.Count && i < _dragOrigin.Components.Count; i++)
                     Schematic.Components[i].Position = _dragOrigin.Components[i].Position;
                 Schematic.Wires.Clear(); Schematic.Wires.AddRange(_dragOrigin.Wires);
-                DernierDeplacementSur = Elastique.Deplacer(Schematic, [_dragging], new GridPoint(np.X - _dragStart.X, np.Y - _dragStart.Y));
+                var delta = new GridPoint(np.X - _dragStart.X, np.Y - _dragStart.Y);
+                if (_dragGroup != null)
+                {
+                    // Groupe : fils sélectionnés repris de l'état d'origine (mêmes valeurs), entraînés avec le groupe.
+                    DernierDeplacementSur = Elastique.Deplacer(Schematic, _dragGroup, delta, _dragFilsOrigine);
+                }
+                else DernierDeplacementSur = Elastique.Deplacer(Schematic, [_dragging], delta);
                 _dragMoved = true;
             }
         }
@@ -278,6 +352,12 @@ public sealed class SchematicCanvas : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         _panning = false;
+        if (_boxStart is { } b0)
+        {
+            var b1 = e.GetPosition(this); _boxStart = null;
+            if (Math.Abs(b1.X - b0.X) > 4 || Math.Abs(b1.Y - b0.Y) > 4) SelectBox(new Rect(b0, b1).Normalize(), _boxAjout);
+            InvalidateVisual(); return;
+        }
         if (_zoomStart is { } z0)
         {
             var z1 = e.GetPosition(this); _zoomStart = null;
@@ -300,7 +380,8 @@ public sealed class SchematicCanvas : Control
                         if (!a.Equals(b)) moves.TryAdd(a, b);
                 SuivreCalques(moves);
             }
-            _dragging = null; _dragOrigin = null; Done();
+            if (_dragGroup != null) _multiWires.Clear();   // les fils entraînés ont changé de place
+            _dragging = null; _dragOrigin = null; _dragGroup = null; _dragFilsOrigine = null; Done();
         }
     }
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e) => ZoomAt(e.GetPosition(this), e.Delta.Y > 0 ? 1.12 : 1 / 1.12);
@@ -385,7 +466,7 @@ public sealed class SchematicCanvas : Control
             }
             foreach (var c in _underlay.Components) DrawComponent(ctx, c, c.Kind == ComponentKind.Label ? LabelBrush : Ink, c.Kind == ComponentKind.Label ? 0.75 : 0.38, labels: true);
         }
-        foreach (var w in Schematic.Wires) ctx.DrawLine(w == _selectedWire ? new Pen(Accent, lw + 1) : wirePen, ToScreen(w.A), ToScreen(w.B));
+        foreach (var w in Schematic.Wires) ctx.DrawLine(w == _selectedWire || _multiWires.Contains(w) ? new Pen(Accent, lw + 1) : wirePen, ToScreen(w.A), ToScreen(w.B));
 
         // Jonctions : point plein là où au moins 3 éléments se rejoignent (circuit et banc confondus).
         var allWires = AllWires.ToList();
@@ -405,7 +486,7 @@ public sealed class SchematicCanvas : Control
             foreach (var p in AllComponents.SelectMany(c => c.Pins).Where(p => conn.NodeOf.TryGetValue(p, out var n) && n == pn))
                 ctx.DrawEllipse(new SolidColorBrush(Color.Parse("#f59e0b"), 0.7), null, ToScreen(p), 6, 6);
         }
-        foreach (var c in Schematic.Components) DrawComponent(ctx, c, c == _selected ? Accent : layer ? BenchBrush : c.Kind == ComponentKind.Label ? LabelBrush : Ink, 1);
+        foreach (var c in Schematic.Components) DrawComponent(ctx, c, c == _selected || _multi.Contains(c) ? Accent : layer ? BenchBrush : c.Kind == ComponentKind.Label ? LabelBrush : Ink, 1);
         if (_tool == Tool.Probe && _inside)
         {
             // Pointe de sonde + nom du nœud visé.
@@ -440,6 +521,11 @@ public sealed class SchematicCanvas : Control
             var a = s; var g = _cursor;
             if (a.X != g.X && a.Y != g.Y) { var m = new GridPoint(g.X, a.Y); ctx.DrawLine(dash, ToScreen(a), ToScreen(m)); ctx.DrawLine(dash, ToScreen(m), ToScreen(g)); }
             else ctx.DrawLine(dash, ToScreen(a), ToScreen(g));
+        }
+        if (_boxStart is { } bs && _inside)
+        {
+            var r = new Rect(bs, _lastPos).Normalize();
+            ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#2563eb"), 0.06), new Pen(Accent, 1, new DashStyle([4, 3], 0)), r);
         }
         if (_zoomStart is { } zs && _inside)
         {

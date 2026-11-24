@@ -987,7 +987,10 @@ public sealed class MainWindow : Window
         var c = _canvas.Selected;
         if (c == null)
         {
-            _props.Children.Add(new TextBlock { Text = "Sélectionnez un composant sur le schéma pour modifier sa référence et sa valeur.", TextWrapping = TextWrapping.Wrap, Foreground = Ui.Muted, FontSize = 12 });
+            int n = _canvas.Selection.Count, nf = _canvas.FilsSelectionnes.Count;
+            _props.Children.Add(new TextBlock { Text = n + nf > 1
+                ? $"{n} composant(s) et {nf} fil(s) sélectionnés : glisser pour déplacer, ⌘R pour pivoter, Suppr pour effacer. Maj+clic ajoute ou retire un élément."
+                : "Sélectionnez un composant sur le schéma pour modifier sa référence et sa valeur. Glissez depuis le fond pour sélectionner plusieurs éléments.", TextWrapping = TextWrapping.Wrap, Foreground = Ui.Muted, FontSize = 12 });
             return;
         }
         var kindName = c.Kind switch

@@ -265,4 +265,35 @@ public class UiTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal(Silx.Etude.AnalyseKind.Ac, w.BancActif!.Type);
     }
+
+    /// <summary>Rectangle de sélection depuis le fond (circuit sous test) : R1 et C1, puis déplacement de groupe et suppression.</summary>
+    [AvaloniaFact]
+    public void Selection_multiple_par_rectangle()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        w.SelectBanc(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var cv = w.Canevas;
+        Point Ecran(int x, int y) => cv.TranslatePoint(cv.ScreenOf(new Silx.Etude.GridPoint(x, y)), w)!.Value;
+        // R1 (4,8)-(8,8), C1 (12,8)-(12,12) ; le rectangle va de (3,5) à (13,13) : masse et étiquettes comprises.
+        var a = Ecran(3, 6); var b = Ecran(14, 14);
+        w.MouseDown(a, Avalonia.Input.MouseButton.Left); w.MouseMove(b); w.MouseUp(b, Avalonia.Input.MouseButton.Left);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Contains(cv.Selection, c => c.Ref == "R1"); Assert.Contains(cv.Selection, c => c.Ref == "C1");
+        Assert.Null(cv.Selected);
+        Assert.True(cv.FilsSelectionnes.Count >= 2);
+        Shot(w, "24-selection-multiple.png");
+        // Glisser le groupe de 2 pas vers la droite : connexions conservées.
+        var conn0 = Silx.Etude.Connectivity.Build(w.EtudeCourante.Schema).AllNodes.Count;
+        var r1 = Ecran(6, 8);
+        w.MouseDown(r1, Avalonia.Input.MouseButton.Left); w.MouseMove(Ecran(8, 8)); w.MouseUp(Ecran(8, 8), Avalonia.Input.MouseButton.Left);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(new Silx.Etude.GridPoint(6, 8), w.EtudeCourante.Schema.Components.Single(c => c.Ref == "R1").Position);
+        Assert.Equal(new Silx.Etude.GridPoint(14, 8), w.EtudeCourante.Schema.Components.Single(c => c.Ref == "C1").Position);
+        Assert.Equal(conn0, Silx.Etude.Connectivity.Build(w.EtudeCourante.Schema).AllNodes.Count);
+        // Suppression de la sélection
+        cv.SelectBox(new Rect(cv.ScreenOf(new Silx.Etude.GridPoint(5, 6)), cv.ScreenOf(new Silx.Etude.GridPoint(15, 14))));   // repère du canevas
+        cv.DeleteSelected();
+        Assert.DoesNotContain(w.EtudeCourante.Schema.Components, c => c.Ref is "R1" or "C1");
+    }
 }

@@ -409,7 +409,7 @@ public sealed class EditeurSymbole : Window
             for (double x = o.X % d; x < Bounds.Width; x += d) for (double y = o.Y % d; y < Bounds.Height; y += d) ctx.FillRectangle(dot, new Rect(x - .75, y - .75, 1.5, 1.5));
             FormattedText T(string s, double size, IBrush b, FontWeight w) => new(s, System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, w), size * d / 24 + 5, b);
             Symboles.DessinerSymbole(ctx, S, Ecran, d, Ui.Ink, new Pen(Ui.Ink, Math.Max(1.3, d / 14)), T);
-            var acc = new Pen(Ui.AccentBrush, Math.Max(2.2, d / 9));
+            var acc = new Pen(Ui.AccentBrush, Math.Max(1.3, d / 14));   // même épaisseur que le dessin : seule la couleur signale la sélection
             if (_e.PrimitiveChoisie is { } ps && ps < S.Traits.Count)
                 Symboles.DessinerSymbole(ctx, new Symbole { Traits = [S.Traits[ps]] }, Ecran, d, Ui.AccentBrush, acc, T);
             if (_p0 is { } a0 && _p1 is { } a1)

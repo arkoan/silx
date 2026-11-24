@@ -85,10 +85,11 @@ public static class GabaritsSymboles
                 else t.Add(Primitive.Trait(3, 0, 3, 1));
                 if (s.DiodeCorps)
                 {
-                    // Diode de corps (petite) : anode côté source pour un canal N (cathode au drain), l'inverse pour un canal P.
-                    const double xd = 4.1, h = 0.2;
-                    t.Add(Primitive.Trait(3, -2, xd, -2)); t.Add(Primitive.Trait(xd, -2, xd, -h));
-                    t.Add(Primitive.Trait(3, 2, xd, 2)); t.Add(Primitive.Trait(xd, 2, xd, h));
+                    // Diode de corps, petite et dans le boîtier : piquée sur le drain et la source à ±1,5 ; anode côté source
+                    // pour un canal N (cathode au drain), l'inverse pour un canal P.
+                    const double xd = 3.9, yb = 1.5, h = 0.17;
+                    t.Add(Primitive.Trait(3, -yb, xd, -yb)); t.Add(Primitive.Trait(xd, -yb, xd, -h));
+                    t.Add(Primitive.Trait(3, yb, xd, yb)); t.Add(Primitive.Trait(xd, yb, xd, h));
                     if (canalN) { t.Add(Primitive.Poly(true, xd - h, h, xd + h, h, xd, -h)); t.Add(Primitive.Trait(xd - h, -h, xd + h, -h)); }
                     else { t.Add(Primitive.Poly(true, xd - h, -h, xd + h, -h, xd, h)); t.Add(Primitive.Trait(xd - h, h, xd + h, h)); }
                 }
@@ -97,7 +98,7 @@ public static class GabaritsSymboles
                 t.Add(Primitive.Trait(1.5, -1, 3, -1)); t.Add(Primitive.Trait(3, -1, 3, -3));
                 t.Add(Primitive.Trait(1.5, 1, 3, 1)); t.Add(Primitive.Trait(3, 1, 3, 3));
                 // MOS discret (3 broches) : cercle du boîtier.
-                if (trois) t.Add(s.DiodeCorps ? Primitive.Cercle(2.65, 0, 2.3) : Primitive.Cercle(2.2, 0, 2.05));
+                if (trois) t.Add(s.DiodeCorps ? Primitive.Cercle(2.45, 0, 2.2) : Primitive.Cercle(2.2, 0, 2.05));
                 t.Add(canalN ? Primitive.Fleche(3, 0, 1.5, 0) : Primitive.Fleche(1.5, 0, 3, 0));
                 break;
             }
