@@ -174,12 +174,19 @@ public sealed class BibliothequeComposants
         return b;
     }
 
-    public void Enregistrer(DefinitionComposant d)
+    /// <param name="ancienNom">Nom précédent si la définition a été renommée : son fichier est retiré.</param>
+    public void Enregistrer(DefinitionComposant d, string? ancienNom = null)
     {
-        var i = Definitions.FindIndex(x => string.Equals(x.Nom, d.Nom, StringComparison.OrdinalIgnoreCase));
+        var i = Definitions.FindIndex(x => ReferenceEquals(x, d));
+        if (i < 0) i = Definitions.FindIndex(x => string.Equals(x.Nom, d.Nom, StringComparison.OrdinalIgnoreCase));
         if (i >= 0) Definitions[i] = d; else Definitions.Add(d);
         if (Dossier == null) return;
         Directory.CreateDirectory(Dossier);
+        if (ancienNom != null && !string.Equals(ancienNom, d.Nom, StringComparison.OrdinalIgnoreCase))
+        {
+            var f = Path.Combine(Dossier, NomFichier(ancienNom) + Extension);
+            if (File.Exists(f)) File.Delete(f);
+        }
         File.WriteAllText(Path.Combine(Dossier, NomFichier(d.Nom) + Extension), d.VersJson());
     }
 

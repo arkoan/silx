@@ -58,6 +58,22 @@ Schéma (barre du haut) et courbes (barre des courbes) : zoom +, zoom −, tout 
 Curseurs : activer l'icône curseurs, choisir le signal, cliquer pour poser A puis B (deux par courbe) ; ils suivent la courbe
 et se glissent. Le tableau en bas à droite donne t/f et la valeur en A et B, et B−A (Δt, ΔV, 1/Δt ; en Bode : gain, phase, rapport de fréquences, Δφ et pente dB/déc).
 
+## Fils élastiques
+
+Glisser un composant (ou le pivoter) garde ses fils attachés : ils restent horizontaux ou verticaux et s'étirent ; un coude est
+ajouté quand il le faut, sans déplacer les jonctions ni les broches fixes. Masses et étiquettes posées sur une broche suivent.
+Les fils des bancs de test attachés au circuit suivent aussi (et ⌘Z les restaure). Si un étirement touche une autre broche,
+un bandeau rouge le signale pendant le glisser. Calcul dans `Silx.Etude/Elastique.cs`.
+
+## Composants SPICE importés et éditeur de symbole
+
+Palette, groupe du bas : l'icône d'import lit un fichier de modèles (`.model` D, NPN, PNP, NMOS, PMOS, NJF, PJF et `.subckt`).
+Chaque modèle devient une tuile avec un symbole par défaut (diode, transistor, ou boîte pour un sous-circuit) et ses broches
+reliées par nom. Clic droit sur la tuile, ou « Modifier le symbole » dans les propriétés : choisir le gabarit, glisser les
+broches, et relier une broche du modèle à une broche du symbole (cliquer l'une puis l'autre). La netlist suit toujours
+l'ordre des broches du modèle. Bibliothèque : un fichier `.silxcomp` (JSON) par composant dans `~/Documents/Silx/Composants`
+(ou `SILX_COMPOSANTS`). Conception : `docs/specs/fils_elastiques_composants_spice.md`.
+
 ## Raccourcis
 
 R résistance · C condensateur · L inductance · V source de tension · I source de courant · D diode · G masse · N étiquette ·
@@ -70,6 +86,8 @@ W fil · + / − / 0 zoom du schéma · ⌘R pivoter · Suppr · Échap · ⌘Z 
 3. Analyse AC : la réponse mesurée est V(nœud) brute, ce qui suppose une source d'entrée « AC 1 ».
    Marges de phase/gain : le nœud doit porter le gain de boucle (pas encore d'aide pour ouvrir la boucle).
 4. Modèles de diodes intégrés génériques et indicatifs (1N4148, 1N4007, BAT54) en attendant la gestion de bibliothèques.
-5. Pas d'enregistrement de fichier ni de transistors dans cette première itération.
+5. Pas encore d'enregistrement d'étude ; les transistors passent par l'import de modèles SPICE.
 6. Gabarits dessinés en temps absolu (pas encore relatifs au front du stimulus) ; en Bode, sur le gain en dB uniquement.
 7. Les éléments d'un banc se connectent au circuit par coïncidence de broches ou par étiquette de même nom ; les alimentations sont dans le banc.
+8. Une définition de composant importé est partagée par toutes ses instances : modifier son symbole les met toutes à jour.
+9. Le socle refuse un nœud relié à une seule broche, même de sous-circuit : une sortie de sous-circuit en l'air bloque la simulation.

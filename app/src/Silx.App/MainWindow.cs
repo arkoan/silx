@@ -45,6 +45,12 @@ public sealed class MainWindow : Window
     readonly TabItem _ercTab = new();
     readonly Button _simulate;
     readonly Dictionary<ComponentKind, Button> _paletteButtons = new();
+    // Composants SPICE importés : bibliothèque de l'utilisateur et tuiles de la palette.
+    readonly BibliothequeComposants _bib = BibliothequeComposants.Charger(BibliothequeComposants.DossierParDefaut());
+    readonly WrapPanel _spiceWrap = new() { ItemWidth = 46, ItemHeight = 40 };
+    readonly Dictionary<DefinitionComposant, Button> _spiceButtons = new();
+    public BibliothequeComposants Bibliotheque => _bib;
+    public SchematicCanvas Schema => _canvas;
     Button _toolSelect = null!, _toolWire = null!;
     // Courbes : mode Simulation (courbes seules) / Test (gabarits visibles et dessinables).
     bool _modeTest = true;
@@ -175,6 +181,7 @@ public sealed class MainWindow : Window
             ? "Circuit sous test — sans stimuli : les sources se branchent dans un banc de test"
             : $"Banc « {b.Nom} » — calque en violet ; le circuit dessous se modifie dans « Circuit sous test »";
         _canvas.Load(b?.Calque ?? _etude.Schema, b == null ? null : _etude.Schema);
+        if (b == null) _canvas.CalquesLies = _etude.Bancs.Select(x => x.Calque).ToList();
         _canvas.FitAll();
         if (b != null && b.Graphiques.Count == 0)
         {
@@ -285,6 +292,7 @@ public sealed class MainWindow : Window
         Ui.SetActive(_toolSelect, _canvas.Tool == Tool.Select);
         Ui.SetActive(_toolWire, _canvas.Tool == Tool.Wire);
         foreach (var (k, b) in _paletteButtons) Ui.SetActive(b, _canvas.Tool == Tool.Place && _canvas.PlaceKind == k);
+        foreach (var (d, b) in _spiceButtons) Ui.SetActive(b, _canvas.Tool == Tool.Place && _canvas.PlaceDefinition == d);
         if (_probeBtn != null) Ui.SetActive(_probeBtn, _canvas.Tool == Tool.Probe);
     }
 
@@ -315,8 +323,83 @@ public sealed class MainWindow : Window
             }
             _palette.Children.Add(wrap);
         }
+        // Groupe « Modèles SPICE » : import, puis une tuile par composant de la bibliothèque.
+        _palette.Children.Add(new Border { Height = 1, Background = Ui.Line, Margin = new Thickness(4, 6) });
+        _palette.Children.Add(_spiceWrap);
+        RebuildSpicePalette();
         _palette.Margin = new Thickness(4, 8);
         return _left = new Border { Width = 102, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 1, 0), Child = new ScrollViewer { Content = _palette } };
+    }
+
+    void RebuildSpicePalette()
+    {
+        _spiceWrap.Children.Clear(); _spiceButtons.Clear();
+        var imp = new Button { Content = Icones.Make(Icones.ImporterSpice, 20, Ui.AccentBrush), Padding = new Thickness(5, 7), Margin = new Thickness(2), Background = Brushes.Transparent, CornerRadius = new CornerRadius(6), HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch };
+        ToolTip.SetTip(imp, "Importer des modèles SPICE (.lib, .mod, .cir…) : .model D, NPN, PNP, NMOS, PMOS, NJF, PJF et .subckt");
+        imp.Click += async (_, _) => await ImporterFichierAsync();
+        _spiceWrap.Children.Add(imp);
+        foreach (var d in _bib.Definitions)
+        {
+            var ico = new Symboles.Icone { Kind = ComponentKind.Spice, Symbole = d.Symbole, Width = 34, Height = 24, Brush = Ui.Ink };
+            var b = new Button { Content = ico, Padding = new Thickness(5, 7), Margin = new Thickness(2), Background = Brushes.Transparent, CornerRadius = new CornerRadius(6), HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch };
+            ToolTip.SetTip(b, $"{d.Nom} — {d.Description}\nBroches du modèle : {string.Join(", ", d.BrochesModele)}\nMaj+clic pour en poser plusieurs · clic droit : modifier le symbole");
+            var def = d; b.Click += (_, _) => _canvas.BeginPlace(def);
+            var edit = new MenuItem { Header = "Modifier le symbole…", Icon = Icones.Make(Icones.EditerSymbole, 14) };
+            edit.Click += async (_, _) => await OuvrirEditeurAsync(def);
+            b.ContextMenu = new ContextMenu { Items = { edit } };
+            _spiceButtons[d] = b; _spiceWrap.Children.Add(b);
+        }
+    }
+
+    async Task ImporterFichierAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+        {
+            Title = "Importer des modèles SPICE", AllowMultiple = false,
+            FileTypeFilter = [new("Modèles SPICE") { Patterns = ["*.lib", "*.mod", "*.cir", "*.sub", "*.txt", "*.spi", "*.sp", "*.model"] }, new("Tous les fichiers") { Patterns = ["*"] }],
+        });
+        if (files.Count == 0) return;
+        await using var st = await files[0].OpenReadAsync();
+        using var rd = new StreamReader(st);
+        var defs = ImporterModeles(await rd.ReadToEndAsync(), files[0].Name);
+        if (defs.Count == 1) await OuvrirEditeurAsync(defs[0]);
+    }
+
+    /// <summary>Analyse un texte de modèles, ajoute chaque modèle reconnu à la bibliothèque (symbole par défaut, broches reliées par nom).</summary>
+    public IReadOnlyList<DefinitionComposant> ImporterModeles(string texte, string source)
+    {
+        var a = ModelesSpice.Analyser(texte);
+        var defs = a.Modeles.GroupBy(m => m.Nom, StringComparer.OrdinalIgnoreCase).Select(g => DefinitionComposant.Depuis(g.First())).ToList();
+        foreach (var d in defs)
+        {
+            // Réimport d'un modèle déjà connu : on garde son symbole si les broches n'ont pas changé.
+            var old = _bib.Definitions.FirstOrDefault(x => string.Equals(x.Modele, d.Modele, StringComparison.OrdinalIgnoreCase));
+            if (old != null && old.BrochesModele.SequenceEqual(d.BrochesModele, StringComparer.OrdinalIgnoreCase)) { old.TexteSpice = d.TexteSpice; old.Parametres = d.Parametres; _bib.Enregistrer(old); continue; }
+            _bib.Enregistrer(d);
+        }
+        RebuildSpicePalette();
+        var msg = defs.Count == 0 ? $"Aucun modèle importable dans {source}." : $"{defs.Count} modèle(s) importé(s) de {source} : {string.Join(", ", defs.Select(d => d.Nom))}. Clic droit sur une tuile pour modifier son symbole.";
+        if (a.Avertissements.Count > 0) { msg += $" {a.Avertissements.Count} remarque(s) dans le journal."; _journal.Text = $"Import de {source}\n" + string.Join("\n", a.Avertissements.Select(w => "• " + w)) + "\n\n" + _journal.Text; }
+        _status.Text = msg;
+        return defs.Select(d => _bib.Definitions.First(x => string.Equals(x.Modele, d.Modele, StringComparison.OrdinalIgnoreCase))).ToList();
+    }
+
+    /// <summary>Ouvre l'éditeur de symbole ; à l'enregistrement, la définition est mise à jour (toutes ses instances) et ses fils suivent.</summary>
+    public async Task OuvrirEditeurAsync(DefinitionComposant d)
+    {
+        var ed = new EditeurSymbole(d);
+        await ed.ShowDialog(this);
+        if (ed.Resultat is { } r) AppliquerSymbole(d, r);
+    }
+
+    public void AppliquerSymbole(DefinitionComposant d, DefinitionComposant r)
+    {
+        var ancien = d.Symbole; var ancienNom = d.Nom;
+        d.Nom = r.Nom.Trim().Length > 0 ? r.Nom.Trim() : d.Nom; d.Symbole = r.Symbole;
+        _bib.Enregistrer(d, ancienNom);
+        _canvas.SymboleModifie(d, ancien);
+        RebuildSpicePalette(); RefreshToolButtons();
+        _status.Text = $"Symbole de {d.Nom} enregistré.";
     }
 
     // ───────────────────────── centre ─────────────────────────
@@ -897,6 +980,7 @@ public sealed class MainWindow : Window
             ComponentKind.VoltageSource => "Source de tension", ComponentKind.CurrentSource => "Source de courant",
             ComponentKind.Diode => "Diode", ComponentKind.Ground => "Masse", _ => "Étiquette de nœud"
         };
+        if (c.Kind == ComponentKind.Spice) { ProprietesSpice(c); return; }
         _props.Children.Add(new TextBlock { Text = kindName, FontWeight = FontWeight.SemiBold });
         if (c.Kind == ComponentKind.Ground) { _props.Children.Add(Ui.Hint("Nœud 0 de référence. Toutes les masses sont reliées.")); return; }
 
@@ -932,6 +1016,32 @@ public sealed class MainWindow : Window
             ComponentKind.Diode => "Modèles génériques intégrés (indicatifs), en attendant les bibliothèques fabricant.",
             _ => "Le nœud prend ce nom dans la netlist, les courbes et les gabarits. Deux étiquettes identiques relient leurs nœuds."
         }));
+    }
+
+    void ProprietesSpice(PlacedComponent c)
+    {
+        var d = c.Definition;
+        _props.Children.Add(new TextBlock { Text = d == null ? "Composant SPICE" : $"{d.Nom} · {d.Description}", FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
+        var refBox = new TextBox { Text = c.Ref };
+        var vb = new TextBox { Text = c.Value, PlaceholderText = d?.Type == TypeModele.SousCircuit ? d.Parametres : "" };
+        void Commit() => _canvas.EditSelected(refBox.Text ?? c.Ref, vb.Text ?? "");
+        foreach (var t in new[] { refBox, vb }) { t.KeyDown += (_, e) => { if (e.Key == Key.Enter) Commit(); }; t.LostFocus += (_, _) => Commit(); }
+        _props.Children.Add(Ui.Label("Référence")); _props.Children.Add(refBox);
+        _props.Children.Add(Ui.Label("Paramètres d'instance (facultatifs)")); _props.Children.Add(vb);
+        if (d == null) return;
+        _props.Children.Add(Ui.Hint($"Ligne SPICE : {c.Ref} {string.Join(" ", d.BrochesModele)} {d.Modele} [paramètres]. "
+            + d.Type switch
+            {
+                TypeModele.Nmos or TypeModele.Pmos => "Ex. W=2u L=180n.",
+                TypeModele.SousCircuit => d.Parametres.Length > 0 ? $"Par défaut : {d.Parametres}." : "",
+                _ => "Ex. area=2."
+            }));
+        var edit = new Button { Padding = new Thickness(8, 4), HorizontalAlignment = HorizontalAlignment.Left };
+        var sp = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        sp.Children.Add(Icones.Make(Icones.EditerSymbole, 15)); sp.Children.Add(new TextBlock { Text = "Modifier le symbole", FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
+        edit.Content = sp; ToolTip.SetTip(edit, "Dessin et correspondance des broches ; s'applique à tous les composants de ce modèle");
+        edit.Click += async (_, _) => await OuvrirEditeurAsync(d);
+        _props.Children.Add(edit);
     }
 
     // ───────────────────────── gabarits ─────────────────────────

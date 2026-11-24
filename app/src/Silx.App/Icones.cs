@@ -35,6 +35,12 @@ static class Icones
     public const string ZoomFenetre = "M3 13V3h10 M3 7v0 M12.5 15a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0 M18.5 17.5l3 3 M3 17v1 M3 21h1 M7 21h1 M17 3h1 M21 3v1 M21 7v1";
     public const string Curseurs = "M8 3v18 M16 3v18 M8 9a1.8 1.8 0 1 0 0.01 0 M16 15a1.8 1.8 0 1 0 0.01 0";
 
+    public const string Symbole = "M7 5h10v14H7z M3 8h4 M3 12h4 M3 16h4 M17 8h4 M17 16h4";
+    public const string Relier = "M10 14a4 4 0 0 0 5.6 0l3-3a4 4 0 0 0-5.6-5.6l-1 1 M14 10a4 4 0 0 0-5.6 0l-3 3a4 4 0 0 0 5.6 5.6l1-1";
+    public const string AjouterBroche = "M5 4h8v16H5z M13 9h4 M19 13v6 M16 16h6";
+    public const string ImporterSpice = "M14 3H6v18h12V7z M14 3v4h4 M12 10v7 M9 14l3 3 3-3";
+    public const string EditerSymbole = "M4 5h9v12H4z M1 8h3 M1 14h3 M13 8h2 M14 20l6-6 2 2-6 6h-2z";
+
     public static Control Make(string data, double size = 18, IBrush? brush = null, bool filled = false) => new Avalonia.Controls.Shapes.Path
     {
         Data = Geometry.Parse(data), Width = size, Height = size, Stretch = Stretch.Uniform,

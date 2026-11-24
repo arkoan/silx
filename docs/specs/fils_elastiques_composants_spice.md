@@ -37,9 +37,11 @@ composant du circuit sous test, les fils des calques des bancs attachés à ses 
 de banc posé directement sur la broche reçoit un fil en L pour rester connecté.
 
 ### Limites connues (v1)
-- Un fil étiré peut venir toucher une autre broche ou passer sur une extrémité de fil : la connectivité change.
-  Le canevas compare la connectivité avant/après et l'indique dans la barre d'état (**HYPOTHÈSE** : avertir plutôt
-  qu'interdire, comme la plupart des éditeurs).
+- Chaque fil décalé peut faire son coude au coin (par défaut) ou du côté de la broche ; on garde la première
+  combinaison (64 essais au plus) qui conserve les connexions. Si aucune ne convient (ex. masse remontée juste sous une
+  broche : tout coude droit passe dessus), le canevas l'indique par un bandeau rouge pendant le glisser
+  (**HYPOTHÈSE** : avertir plutôt qu'interdire, comme la plupart des éditeurs).
+- Un fil dont aucune extrémité n'est tenue par une broche fixe (fil en l'air) est translaté avec le composant.
 - Pas encore de déplacement d'un segment de fil seul (glisser un fil perpendiculairement) ni de routage
   automatique évitant les composants ; prévus ensuite, ils réutiliseront `Elastique`.
 
@@ -76,9 +78,9 @@ via la correspondance, quel que soit l'ordre ou la position des broches sur le s
 
 ### Bibliothèque
 Les définitions de l'utilisateur sont dans un dossier (`~/Documents/Silx/Composants`, ou `SILX_COMPOSANTS`) et
-apparaissent dans la palette, groupe « Modèles SPICE ». **HYPOTHÈSE** : une définition est copiée dans l'étude
-quand on la place, pour qu'une étude reste simulable si la bibliothèque change (l'enregistrement d'étude n'existe
-pas encore ; à brancher quand il arrivera).
+apparaissent en bas de la palette. **HYPOTHÈSE** (v1) : une définition est partagée par toutes ses instances ; modifier
+son symbole les met toutes à jour et leurs fils suivent (broches repérées par leur nom de modèle). Quand l'enregistrement
+d'étude existera, il faudra y copier les définitions utilisées pour qu'une étude reste simulable si la bibliothèque change.
 
 ### Contrôles (ERC)
 Erreur si une broche du modèle n'est reliée à aucune broche du symbole, ou à plusieurs ; si la référence ne
@@ -86,7 +88,8 @@ commence pas par la bonne lettre ; avertissement habituel pour les broches non c
 
 ## 3. Éditeur de symbole
 
-Fenêtre ouverte à l'import (pour chaque modèle importé) et depuis le panneau Propriétés (« Modifier le symbole »).
+Fenêtre ouverte à l'import d'un fichier qui ne contient qu'un modèle, par clic droit sur une tuile de la palette, et
+depuis le panneau Propriétés (« Modifier le symbole »).
 Économe en place, trois zones :
 
 ```
