@@ -8,7 +8,7 @@
 ```bash
 brew install ngspice                      # moteur de simulation
 dotnet run --project src/Silx.App         # .NET 10 requis
-dotnet test                               # 15 tests, dont simulations ngspice réelles
+dotnet test                               # 18 tests, dont simulations ngspice réelles
 ```
 
 ngspice est cherché dans `SILX_NGSPICE`, puis `/opt/homebrew/bin`, `/usr/local/bin`, puis le PATH.
@@ -21,8 +21,8 @@ Captures d'écran hors écran : `SILX_SHOT_DIR=/un/dossier dotnet test`.
 | Barre du haut | Nouveau / exemple, outils (sélection, fil, pivoter, supprimer, annuler), verdict global, **Simuler et vérifier** (F5) |
 | Gauche | Palette de composants avec recherche et raccourcis clavier |
 | Centre | Onglets **Schéma** / **Netlist** (synchronisée en direct) |
-| Bas | **Courbes** (transitoire ou Bode gain + phase), **Vérifications** (ERC), **Journal ngspice** |
-| Droite | **Propriétés** du composant sélectionné, réglages des **analyses** (.tran, .ac), **gabarits** (mesure + nœud + bornes → PASS/FAIL) |
+| Bas | **Courbes** en mode *Simulation* (courbes seules) ou *Test* (gabarits dessinés, zone interdite hachurée, marge affichée), vue temporelle ou Bode ; **Vérifications** (ERC) ; **Journal ngspice** |
+| Droite | **Propriétés** du composant sélectionné, réglages des **analyses** (.tran, .ac), **critères mesurés** (mesure + nœud + bornes → PASS/FAIL) et **gabarits dessinés** (verdict + marge) |
 
 ## Projets
 
@@ -30,6 +30,12 @@ Captures d'écran hors écran : `SILX_SHOT_DIR=/un/dossier dotnet test`.
   orchestration simulation → mesures → verdicts (`Verification`).
 - `src/Silx.App` : interface Avalonia 12 (UI en C#, sans XAML), canevas, ScottPlot.
 - `tests/Silx.App.Tests` : connectivité, ERC, notation ingénieur, RC contre valeurs analytiques (tr = 2,2 ms, fc = 159 Hz), diode, rendu de la fenêtre.
+
+## Gabarits dessinés
+
+En mode Test, choisir le signal, cliquer « Limite haute » ou « Limite basse », poser les points de gauche à droite sur le graphique,
+puis double-clic ou Entrée (Échap annule). Le gabarit est évalué aussitôt sur les résultats déjà simulés : verdict, et marge
+(plus petite distance verticale à la limite) avec le point où elle est atteinte. Calcul dans `mesures/` (`GabaritGraphique`).
 
 ## Raccourcis
 
@@ -44,3 +50,5 @@ W fil · ⌘R pivoter · Suppr · Échap · ⌘Z / ⇧⌘Z · Maj+clic pour pose
    Marges de phase/gain : le nœud doit porter le gain de boucle (pas encore d'aide pour ouvrir la boucle).
 4. Modèles de diodes intégrés génériques et indicatifs (1N4148, 1N4007, BAT54) en attendant la gestion de bibliothèques.
 5. Pas d'enregistrement de fichier ni de transistors dans cette première itération.
+6. Gabarits dessinés en temps absolu (pas encore relatifs au front du stimulus) ; en Bode, sur le gain en dB uniquement.
+7. Pas encore de « banc de test » qui fige stimuli et conditions : proposé, en attente de validation.
