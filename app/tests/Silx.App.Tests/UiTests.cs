@@ -1,3 +1,4 @@
+using Avalonia.LogicalTree;
 using Avalonia;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -508,5 +509,26 @@ public class UiTests
         w.ZoomerZoneActive(2);
         var apres = plot.Plot.Axes.GetLimits();
         Assert.True(apres.Rect.Width < avant.Rect.Width * 0.6);
+    }
+
+    /// <summary>D3 : axes X liés entre graphiques empilés.</summary>
+    [AvaloniaFact]
+    public async Task Axes_x_lies_entre_graphiques()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        w.AjouterGraphique();
+        w.Canevas.Tool = Silx.App.Tool.Select;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var p2 = w.PlotControl;                               // graphique actif : le second
+        var centre = p2.TranslatePoint(new Point(p2.Bounds.Width / 2, p2.Bounds.Height / 2), w)!.Value;
+        w.MouseDown(centre, Avalonia.Input.MouseButton.Left); w.MouseUp(centre, Avalonia.Input.MouseButton.Left);
+        w.ZoomerZoneActive(2);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        var autres = w.GetLogicalDescendants().OfType<ScottPlot.Avalonia.AvaPlot>().Where(p => p != p2).ToList();
+        Assert.NotEmpty(autres);
+        var l2 = p2.Plot.Axes.GetLimits();
+        foreach (var a in autres) { var l = a.Plot.Axes.GetLimits(); Assert.Equal(l2.Left, l.Left, 6); Assert.Equal(l2.Right, l.Right, 6); }
+        Shot(w, "31-axes-lies.png");
     }
 }

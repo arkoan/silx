@@ -775,6 +775,8 @@ public sealed class MainWindow : Window
             Grid.SetRow(frame, i); _panesGrid.Children.Add(frame);
             _panes.Add(pane);
         }
+        // Axes X liés : zoomer ou déplacer un graphique en temps (ou en fréquence) entraîne les autres.
+        foreach (var a in _panes) foreach (var b in _panes) if (a != b) a.Plot.Plot.Axes.Link(b.Plot, x: true, y: false);
         Activate(_panes[Math.Clamp(_active != null ? _panes.FindIndex(p => p.Signaux == _active.Signaux) : 0, 0, _panes.Count - 1)]);
     }
 
@@ -1761,7 +1763,7 @@ public sealed class MainWindow : Window
                 var vl = p.Add.VerticalLine(Math.Log10(rc.Resultat.Valeur!.Value));
                 vl.Color = rc.Resultat.Verdict == Verdict.Pass ? ScottPlot.Color.FromHex("#15803d") : red;
                 vl.LinePattern = ScottPlot.LinePattern.Dotted; vl.LineWidth = 1.5f;
-                vl.LegendText = $"fc −3 dB = {SpiceNumber.Format(rc.Resultat.Valeur!.Value, "Hz")}";
+                vl.LabelText = $"fc {SpiceNumber.Format(rc.Resultat.Valeur!.Value, "Hz")}"; vl.LabelFontSize = 11; vl.LabelBackgroundColor = vl.Color; vl.LabelFontColor = ScottPlot.Colors.White;
             }
         }
         // Curseurs : ligne verticale, point sur la courbe, lettre.
@@ -1782,13 +1784,9 @@ public sealed class MainWindow : Window
             lt.LabelAlignment = haut ? ScottPlot.Alignment.UpperRight : ScottPlot.Alignment.LowerRight; lt.LabelOffsetX = -6; lt.LabelOffsetY = haut ? 6 : -6; lt.LabelPadding = 3;
         }
         if (isActive) RefreshReadout(ColorOf);
-        p.Title(""); p.ShowLegend(_cursors.Count > 0 || ac ? ScottPlot.Alignment.LowerLeft : ScottPlot.Alignment.LowerRight);
-        if (_panes.Count > 1)
-        {
-            // Pile de graphiques : les pastilles servent de légende, seul le dernier garde le titre de l'axe X.
-            p.HideLegend();
-            if (pane != _panes[^1]) p.Axes.Bottom.Label.Text = "";
-        }
+        // Les pastilles au-dessus du graphique servent de légende : plus de cadre de légende sur les courbes.
+        p.Title(""); p.HideLegend();
+        if (_panes.Count > 1 && pane != _panes[^1]) p.Axes.Bottom.Label.Text = "";   // titre de l'axe X sur le dernier graphique seulement
         if (keepLimits && limits.Rect.Width > 0 && limits.Left != -1) p.Axes.SetLimits(limits);
         else
         {
