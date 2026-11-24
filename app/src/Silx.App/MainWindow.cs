@@ -374,7 +374,11 @@ public sealed class MainWindow : Window
         {
             // Réimport d'un modèle déjà connu : on garde son symbole si les broches n'ont pas changé.
             var old = _bib.Definitions.FirstOrDefault(x => string.Equals(x.Modele, d.Modele, StringComparison.OrdinalIgnoreCase));
-            if (old != null && old.BrochesModele.SequenceEqual(d.BrochesModele, StringComparer.OrdinalIgnoreCase)) { old.TexteSpice = d.TexteSpice; old.Parametres = d.Parametres; _bib.Enregistrer(old); continue; }
+            // On garde aussi le symbole s'il est complet ; les informations lues dans le fichier sont toujours rafraîchies.
+            if (old != null && old.BrochesModele.SequenceEqual(d.BrochesModele, StringComparer.OrdinalIgnoreCase) && !old.Verifier().Any(p => p.Severity == Severity.Error)
+                && !(old.Symbole.Gabarit == GabaritSymbole.Boite && d.Symbole.Gabarit != GabaritSymbole.Boite))   // boîte par défaut remplacée par le symbole reconnu
+            { old.TexteSpice = d.TexteSpice; old.Parametres = d.Parametres; old.Libelles = d.Libelles; old.Notes = d.Notes; _bib.Enregistrer(old); continue; }
+            if (old != null) { d.Nom = old.Nom; _bib.Definitions.Remove(old); }
             _bib.Enregistrer(d);
         }
         RebuildSpicePalette();

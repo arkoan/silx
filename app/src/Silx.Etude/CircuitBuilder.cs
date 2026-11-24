@@ -16,7 +16,10 @@ public static class CircuitBuilder
     {
         var circuit = new Circuit(title) { Analysis = analysis };
         foreach (var k in s.Components.Where(k => k.IsElectrical).OrderBy(k => k.Ref, StringComparer.Ordinal))
+        {
             circuit.Add(Ligne(k, c));
+            foreach (var a in Auxiliaires(k)) circuit.Add(a);
+        }
         foreach (var d in Directives(s)) circuit.Directive(d);
         return circuit;
     }
@@ -26,7 +29,10 @@ public static class CircuitBuilder
     {
         var sb = new StringBuilder("* Silx — netlist générée depuis le schéma\n");
         foreach (var k in s.Components.Where(k => k.IsElectrical).OrderBy(k => k.Ref, StringComparer.Ordinal))
+        {
             sb.AppendLine(Ligne(k, c, apercu: true).ToSpiceLine());
+            foreach (var a in Auxiliaires(k)) sb.AppendLine(a.ToSpiceLine());
+        }
         foreach (var d in Directives(s)) sb.AppendLine(d);
         if (analysis == null) { sb.AppendLine("* (circuit sous test seul : pas de stimulus ni d'analyse ; voir les bancs de test)"); sb.AppendLine(".end"); return sb.ToString(); }
         sb.AppendLine(analysis switch
@@ -49,8 +55,21 @@ public static class CircuitBuilder
         if (k.Kind != ComponentKind.Spice || k.Definition is not { } d)
             return new Component(k.Ref, k.Pins.Select(N).ToList(), k.Value.Trim());
         var pins = k.Pins;
-        var noeuds = d.OrdreSpice().Select(i => i >= 0 && i < pins.Count ? N(pins[i]) : apercu ? "?" : throw new InvalidOperationException($"{k.Ref} : broche du modèle non reliée")).ToList();
+        var ordre = d.OrdreSpice();
+        var noeuds = d.BrochesModele.Select((n, j) => d.BrochesCachees.TryGetValue(n, out var cx) ? NoeudCache(k, n, cx)
+            : ordre[j] >= 0 && ordre[j] < pins.Count ? N(pins[ordre[j]]) : apercu ? "?" : throw new InvalidOperationException($"{k.Ref} : broche du modèle non reliée")).ToList();
         return new Component(k.Ref, noeuds, d.Modele, string.IsNullOrWhiteSpace(k.Value) ? null : k.Value.Trim());
+    }
+
+    static string Propre(string s) => string.Concat(s.Select(ch => char.IsAsciiLetterOrDigit(ch) ? ch : '_'));
+    static string NoeudCache(PlacedComponent k, string broche, string cx) => cx.Trim() == "0" ? "0" : $"{Propre(k.Ref)}_{Propre(broche)}";
+
+    /// <summary>Sources des broches cachées en tension fixe : « V&lt;réf&gt;_&lt;broche&gt; nœud 0 DC v ».</summary>
+    public static IEnumerable<Component> Auxiliaires(PlacedComponent k)
+    {
+        if (k.Kind != ComponentKind.Spice || k.Definition is not { } d) yield break;
+        foreach (var (b, cx) in d.BrochesCachees.Where(x => x.Value.Trim() != "0"))
+            yield return new Component($"V{Propre(k.Ref)}_{Propre(b)}", [NoeudCache(k, b, cx), "0"], cx.Trim());
     }
 
     /// <summary>Modèles de diodes intégrés utilisés, puis texte SPICE de chaque définition importée (une fois par modèle).</summary>

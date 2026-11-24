@@ -29,18 +29,30 @@ public sealed class EditeurSymbole : Window
     public EditeurSymbole(DefinitionComposant d)
     {
         Definition = d.Clone();
-        Title = $"Symbole — {d.Nom}"; Width = 760; Height = 500; MinWidth = 600; MinHeight = 380; Background = Ui.Window;
+        Title = $"Symbole — {d.Nom}"; Width = 860; Height = 560; MinWidth = 600; MinHeight = 380; Background = Ui.Window;
         _vue = new Vue(this);
 
         var nom = new TextBox { Text = Definition.Nom, FontSize = 12 };
         nom.TextChanged += (_, _) => Definition.Nom = nom.Text ?? "";
         var gauche = new StackPanel { Spacing = 6, Margin = new Thickness(10) };
         gauche.Children.Add(Ui.Labeled("Nom dans la palette", nom));
-        gauche.Children.Add(Ui.Hint($"{ModelesSpice.Libelle(Definition.Type)} « {Definition.Modele} », lettre SPICE {Definition.Lettre}"));
+        gauche.Children.Add(Ui.Hint($"{Definition.Description} « {Definition.Modele} », lettre SPICE {Definition.Lettre}"));
+        if (Definition.Notes.Length > 0 || Definition.Parametres.Length > 0)
+        {
+            // Ce que dit le fichier, pour s'y retrouver sans l'ouvrir.
+            var infos = new StackPanel { Spacing = 3 };
+            infos.Children.Add(Ui.Section("D'après le fichier"));
+            if (Definition.Notes.Length > 0) infos.Children.Add(new TextBlock { Text = Definition.Notes, FontSize = 11.5, TextWrapping = TextWrapping.Wrap });
+            if (Definition.Parametres.Length > 0) infos.Children.Add(new TextBlock { Text = "Paramètres : " + Definition.Parametres, FontSize = 11.5, TextWrapping = TextWrapping.Wrap, Foreground = Ui.Muted });
+            var voir = new Button { Content = "Voir le texte SPICE", FontSize = 11.5, Padding = new Thickness(6, 2), Background = Brushes.Transparent, Foreground = Ui.AccentBrush };
+            voir.Click += (_, _) => new Window { Title = $"Modèle {Definition.Modele}", Width = 640, Height = 520, Content = new TextBox { Text = Definition.TexteSpice, IsReadOnly = true, AcceptsReturn = true, FontFamily = new FontFamily("Menlo, Consolas, monospace"), FontSize = 12 } }.Show(this);
+            infos.Children.Add(voir);
+            gauche.Children.Add(new Border { Child = infos, Background = Brushes.White, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 6) });
+        }
         gauche.Children.Add(Ui.Section("Broches du modèle"));
         gauche.Children.Add(_liste);
         gauche.Children.Add(Ui.Hint("Cliquez une broche du modèle, puis la broche du symbole qui la représente. Recliquer une broche reliée la délie."));
-        var left = new Border { Width = 200, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 1, 0), Child = new ScrollViewer { Content = gauche } };
+        var left = new Border { Width = 270, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 1, 0), Child = new ScrollViewer { Content = gauche } };
 
         _gabarit = new ComboBox { ItemsSource = Enum.GetValues<GabaritSymbole>().Select(GabaritsSymboles.Libelle).ToList(), SelectedIndex = (int)Definition.Symbole.Gabarit, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
         ToolTip.SetTip(_gabarit, "Gabarit de dessin : remplace le symbole et relie les broches par leur nom");
@@ -104,7 +116,20 @@ public sealed class EditeurSymbole : Window
         if (BrocheModeleChoisie is not { } n || BrocheSymboleChoisie is not { } i || i >= Definition.Symbole.Broches.Count) return;
         foreach (var b in Definition.Symbole.Broches.Where(b => string.Equals(b.BrocheModele, n, StringComparison.OrdinalIgnoreCase))) b.BrocheModele = null;
         Definition.Symbole.Broches[i].BrocheModele = n;
+        Definition.BrochesCachees.Remove(n);
         BrocheModeleChoisie = null; BrocheSymboleChoisie = null;
+    }
+
+    /// <summary>Raccordement d'une broche du modèle absente du symbole : 0 = sur le symbole (à relier), 1 = masse, 2 = tension fixe.</summary>
+    public void RaccorderCachee(string broche, int mode, string valeur)
+    {
+        if (mode == 0) Definition.BrochesCachees.Remove(broche);
+        else
+        {
+            foreach (var b in Definition.Symbole.Broches.Where(b => string.Equals(b.BrocheModele, broche, StringComparison.OrdinalIgnoreCase))) b.BrocheModele = null;
+            Definition.BrochesCachees[broche] = mode == 1 ? "0" : "DC " + (SpiceNumber.TryParse(valeur, out var v) ? v.ToString(System.Globalization.CultureInfo.InvariantCulture) : "0");
+        }
+        Rafraichir();
     }
 
     public void DeplacerBroche(int i, int x, int y)
@@ -136,13 +161,31 @@ public sealed class EditeurSymbole : Window
             var row = new Grid { ColumnDefinitions = new("18,*,Auto") };
             var ok = count == 1;
             var mark = new TextBlock { Text = ok ? "✓" : "!", Foreground = ok ? Ui.PassBrush : Ui.FailBrush, FontWeight = FontWeight.Bold, VerticalAlignment = VerticalAlignment.Center };
-            var name = new TextBlock { Text = n, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-            var where = new TextBlock { Text = idx >= 0 ? $"broche {idx + 1}" : "à relier", Foreground = ok ? Ui.Muted : Ui.FailBrush, FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center };
+            bool cachee = Definition.BrochesCachees.TryGetValue(n, out var cx);
+            if (cachee && count == 0) ok = true;
+            mark.Text = ok ? "✓" : "!"; mark.Foreground = ok ? Ui.PassBrush : Ui.FailBrush;
+            var name = new TextBlock { Text = Definition.NomAffiche(n), FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis };
+            var where = new TextBlock { Text = idx >= 0 ? $"broche {idx + 1}" : cachee ? (cx!.Trim() == "0" ? "masse" : cx.Trim()) : "à relier", Foreground = ok ? Ui.Muted : Ui.FailBrush, FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center };
             row.Children.Add(mark); row.Children.Add(name); Grid.SetColumn(name, 1); row.Children.Add(where); Grid.SetColumn(where, 2);
             var b = new Button { Content = row, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(6, 3), CornerRadius = new CornerRadius(5), Background = BrocheModeleChoisie == n ? Ui.ActiveBg : idx >= 0 && idx == BrocheSymboleChoisie ? new SolidColorBrush(Color.Parse("#fef3c7")) : Brushes.Transparent };
             ToolTip.SetTip(b, $"Broche « {n} » du modèle (position {Definition.BrochesModele.IndexOf(n) + 1} sur la ligne SPICE)");
             var nn = n; b.Click += (_, _) => ChoisirBrocheModele(nn);
             _liste.Children.Add(b);
+            if (idx < 0)
+            {
+                // Broche absente du symbole : à relier sur le symbole, ou raccordée d'office (masse, tension fixe).
+                var mode = new ComboBox { ItemsSource = new[] { "sur le symbole", "à la masse", "tension fixe" }, FontSize = 11.5, MinHeight = 24, Padding = new Thickness(6, 1),
+                    SelectedIndex = !cachee ? 0 : cx!.Trim() == "0" ? 1 : 2 };
+                var val = new TextBox { Text = cachee && cx!.Trim() != "0" ? cx.Trim()[3..].Trim() : "0", Width = 54, FontSize = 11.5, MinHeight = 24, Padding = new Thickness(4, 1), IsVisible = mode.SelectedIndex == 2 };
+                ToolTip.SetTip(val, "Tension continue en V (ex. 25 pour une broche de température en °C)");
+                mode.SelectionChanged += (_, _) => RaccorderCachee(nn, mode.SelectedIndex, val.Text ?? "0");
+                val.LostFocus += (_, _) => RaccorderCachee(nn, 2, val.Text ?? "0");
+                val.KeyDown += (_, e) => { if (e.Key == Key.Enter) RaccorderCachee(nn, 2, val.Text ?? "0"); };
+                var r2 = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(24, 0, 0, 4) };
+                r2.Children.Add(mode); r2.Children.Add(val);
+                if (val.IsVisible) r2.Children.Add(new TextBlock { Text = "V", FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center });
+                _liste.Children.Add(r2);
+            }
         }
         var pb = Definition.Verifier();
         var err = pb.FirstOrDefault(p => p.Severity == Severity.Error);
@@ -220,7 +263,7 @@ public sealed class EditeurSymbole : Window
                 var col = sel ? Ui.AccentBrush : lie ? new SolidColorBrush(Color.Parse("#1f6f43")) : Ui.FailBrush;
                 var r = d * (sel || hov ? .32 : .24);
                 ctx.DrawEllipse(sel ? new SolidColorBrush(Color.Parse("#dbe6fe")) : Brushes.White, new Pen(col, 2), p, r, r);
-                var t = new FormattedText($"{i + 1}" + (lie ? " · " + b.BrocheModele : " · ?"), System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 11.5, col);
+                var t = new FormattedText($"{i + 1}" + (lie ? " · " + _e.Definition.NomAffiche(b.BrocheModele!) : " · ?"), System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 11.5, col);
                 // Étiquette du côté extérieur du symbole.
                 var (x0, y0, x1, y1) = S.Encombrement(); double cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
                 double dx = b.X - cx, dy = b.Y - cy;

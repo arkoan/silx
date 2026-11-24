@@ -5,8 +5,23 @@ namespace Silx.Etude;
 /// <summary>Nature d'un modèle importé : fixe la lettre SPICE de l'instance et l'ordre des broches.</summary>
 public enum TypeModele { Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf, SousCircuit }
 
+/// <summary>
+/// Ce qu'on peut lire d'un modèle sans l'ouvrir : description (commentaires qui le précèdent), rôle de chaque broche
+/// (commentaires « 20=DRAIN 10=GATE… »), composition interne et nature probable (ex. sous-circuit qui contient un NMOS
+/// et des broches DRAIN/GATE/SOURCE → MOSFET canal N).
+/// </summary>
+public sealed record InfosModele(
+    string Description,
+    IReadOnlyDictionary<string, string> Libelles,
+    string Composition,
+    TypeModele? NatureProbable,
+    IReadOnlyDictionary<string, string> Roles)
+{
+    public static InfosModele Vide { get; } = new("", new Dictionary<string, string>(), "", null, new Dictionary<string, string>());
+}
+
 /// <summary>Un .model ou un .subckt trouvé dans un fichier, avec son texte d'origine (recopié tel quel dans la netlist).</summary>
-public sealed record ModeleImporte(string Nom, TypeModele Type, IReadOnlyList<string> Broches, string Texte, string Parametres = "")
+public sealed record ModeleImporte(string Nom, TypeModele Type, IReadOnlyList<string> Broches, string Texte, string Parametres = "", InfosModele? Infos = null)
 {
     public string Lettre => ModelesSpice.Lettre(Type);
 }
@@ -102,7 +117,8 @@ public static class ModelesSpice
                     else if (lj.StartsWith(".ends", StringComparison.OrdinalIgnoreCase) && --prof == 0) break;
                 }
                 if (prof != 0) { avert.Add($"Sous-circuit « {nom} » sans .ends : ignoré."); continue; }
-                modeles.Add(new(nom, TypeModele.SousCircuit, broches, string.Join('\n', corps), param.ToString().Trim()));
+                modeles.Add(new(nom, TypeModele.SousCircuit, broches, string.Join('\n', corps), param.ToString().Trim(),
+                    InfosSousCircuit(logiques.Select(x => x.Brut).ToList(), i, j, broches)));
                 i = j;
             }
         }
@@ -110,6 +126,71 @@ public static class ModelesSpice
             avert.Add($"« {g.Key} » est défini {g.Count()} fois : seule la première définition sera utilisée par ngspice.");
         if (modeles.Count == 0 && avert.Count == 0) avert.Add("Aucun .model ni .subckt trouvé.");
         return new(modeles, avert);
+    }
+
+    /// <summary>Rôle standard d'une broche d'après son libellé ou son nom : D, G, S, B (MOS), C, B, E (bipolaire), A, K (diode).</summary>
+    public static string? Role(string libelle) => libelle.Trim().ToUpperInvariant() switch
+    {
+        "DRAIN" or "D" => "D", "GATE" or "G" or "GRILLE" => "G", "SOURCE" or "S" => "S",
+        "BULK" or "BODY" or "SUB" or "SUBSTRATE" or "SUBSTRAT" => "B",
+        "COLLECTOR" or "COLLECTEUR" or "C" => "C", "BASE" => "B", "EMITTER" or "EMETTEUR" or "ÉMETTEUR" or "E" => "E",
+        "ANODE" or "A" => "A", "CATHODE" or "K" => "K",
+        _ => null
+    };
+
+    static InfosModele InfosSousCircuit(List<List<string>> lignes, int debut, int fin, List<string> broches)
+    {
+        static string Nettoie(string l) => l.TrimStart('*', ';', ' ', '\t').Trim().Trim('-', '=', '*').Trim();
+        // Description : commentaires juste avant .subckt (en remontant jusqu'à une ligne non commentaire, 6 au plus).
+        var desc = new List<string>();
+        for (int k = debut - 1; k >= 0 && desc.Count < 6; k--)
+        {
+            var l = string.Join(" ", lignes[k]).Trim();
+            if (l.Length == 0) { if (desc.Count > 0) break; continue; }
+            if (!l.StartsWith('*') && !l.StartsWith(';')) break;
+            var n = Nettoie(l); if (n.Length > 0) desc.Insert(0, n);
+        }
+        // Libellés des broches : « 20=DRAIN », « 20 : DRAIN » dans les commentaires autour de la ligne .subckt.
+        var lib = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var autour = Enumerable.Range(Math.Max(0, debut - 6), Math.Min(lignes.Count, debut + 6) - Math.Max(0, debut - 6))
+            .SelectMany(k => lignes[k]).Where(l => l.TrimStart().StartsWith('*') || l.TrimStart().StartsWith(';'));
+        foreach (var l in autour)
+            foreach (Match m in Regex.Matches(l, @"(?<![\w.])([A-Za-z0-9_+\-]+)\s*[=:]\s*([A-Za-z][A-Za-z0-9_+\-/]*)"))
+            {
+                var p = m.Groups[1].Value;
+                if (broches.Contains(p, StringComparer.OrdinalIgnoreCase) && !lib.ContainsKey(p)) lib[p] = m.Groups[2].Value;
+            }
+        // Composition interne.
+        var corps = lignes.Skip(debut + 1).Take(fin - debut - 1).Select(b => string.Join(" ", b).Trim()).Where(l => l.Length > 0 && !l.StartsWith('*')).ToList();
+        var types = corps.Where(l => l.StartsWith(".model", StringComparison.OrdinalIgnoreCase))
+            .Select(l => Regex.Match(l, @"^\.model\s+\S+\s+([A-Za-z]+)", RegexOptions.IgnoreCase).Groups[1].Value.ToUpperInvariant()).Where(t => t.Length > 0).ToList();
+        var lettres = corps.Where(l => !l.StartsWith('.') && !l.StartsWith('+')).Select(l => char.ToUpperInvariant(l[0])).GroupBy(c => c).OrderByDescending(g => g.Count()).ToList();
+        string NomElt(char c) => c switch { 'M' => "MOS", 'D' => "diode", 'Q' => "bipolaire", 'R' => "R", 'C' => "C", 'L' => "L", 'E' or 'F' or 'G' or 'H' or 'B' => "source commandée", 'V' => "source V", 'I' => "source I", 'X' => "sous-circuit", 'J' => "JFET", _ => c.ToString() };
+        var compo = string.Join(", ", lettres.GroupBy(g => NomElt(g.Key)).Select(g => $"{g.Sum(x => x.Count())} {g.Key}"));
+        if (types.Count > 0) compo += " · modèles internes : " + string.Join(", ", types.GroupBy(t => t).Select(g => g.Count() > 1 ? $"{g.Key}×{g.Count()}" : g.Key));
+        // Rôles et nature probable.
+        var roles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var b in broches) if (Role(lib.GetValueOrDefault(b, b)) is { } r && !roles.ContainsValue(r)) roles[b] = r;
+        var rs = roles.Values.ToHashSet();
+        TypeModele? nature = null;
+        if (rs.IsSupersetOf(["D", "G", "S"]))
+            nature = types.Contains("PMOS") && !types.Contains("NMOS") ? TypeModele.Pmos : types.Contains("NMOS") || desc.Any(d => Regex.IsMatch(d, @"N[- ]?CH", RegexOptions.IgnoreCase)) ? TypeModele.Nmos
+                   : desc.Any(d => Regex.IsMatch(d, @"P[- ]?CH", RegexOptions.IgnoreCase)) ? TypeModele.Pmos : null;
+        else if (rs.IsSupersetOf(["C", "B", "E"])) nature = types.Contains("PNP") ? TypeModele.Pnp : TypeModele.Npn;
+        else if (rs.IsSupersetOf(["A", "K"]) && broches.Count == 2) nature = TypeModele.Diode;
+        if (nature == null) roles.Clear();
+        // Sans libellés : MOSFET discret décrit comme tel (N-Ch, P-Ch, MOSFET…) et contenant un NMOS/PMOS, 3 ou 4 broches
+        // → ordre usuel des fabricants D, G, S (, B). HYPOTHÈSE affichée à l'utilisateur, à vérifier sur la documentation.
+        string txt = string.Join(" ", desc);
+        if (nature == null && lib.Count == 0 && broches.Count is 3 or 4 && (types.Contains("NMOS") || types.Contains("PMOS"))
+            && Regex.IsMatch(txt, @"MOSFET|DMOS|[NP][- ]?CH", RegexOptions.IgnoreCase))
+        {
+            nature = Regex.IsMatch(txt, @"P[- ]?CH", RegexOptions.IgnoreCase) || (types.Contains("PMOS") && !types.Contains("NMOS")) ? TypeModele.Pmos : TypeModele.Nmos;
+            string[] ordre = ["D", "G", "S", "B"];
+            for (int k = 0; k < broches.Count; k++) roles[broches[k]] = ordre[k];
+            compo += " · broches supposées dans l'ordre usuel D, G, S" + (broches.Count == 4 ? ", B" : "") + " (aucun libellé dans le fichier) : à vérifier";
+        }
+        return new InfosModele(txt, lib, compo, nature, roles);
     }
 
     static string SansCommentaire(string s)

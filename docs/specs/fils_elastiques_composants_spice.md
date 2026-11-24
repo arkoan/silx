@@ -127,3 +127,22 @@ depuis le panneau Propriétés (« Modifier le symbole »).
   (fc = 159 Hz).
 - Interface hors écran : déplacement d'un composant à la souris avec fils attachés, ouverture de l'éditeur de
   symbole et capture.
+
+
+## 5. Lire le modèle pour s'y retrouver (ajout)
+
+Retour sur un modèle de MOSFET fabricant (BSS138) : broches numérotées `20 10 30 50`, rôles seulement en commentaire
+(`*20=DRAIN 10=GATE 30=SOURCE 50=VTEMP`), quatrième broche thermique, deux sous-circuits dans le même fichier.
+
+- **Infos lues** (`InfosModele`) : commentaires d'en-tête (description), libellés des broches (`n=NOM` ou `n: NOM` dans
+  les commentaires autour de `.subckt`), composition interne (nombre de MOS, diodes, R, C, sources commandées ; modèles internes).
+- **Nature probable** : libellés DRAIN/GATE/SOURCE (ou COLLECTOR/BASE/EMITTER, ANODE/CATHODE) + modèle interne NMOS/PMOS/NPN/PNP
+  → symbole du composant au lieu d'une boîte, broches reliées par rôle ; sans broche de substrat, symbole MOS 3 pattes.
+  **HYPOTHÈSE** : sans aucun libellé, un sous-circuit décrit comme MOSFET (N-Ch, P-Ch, DMOS…) à 3 ou 4 broches suit l'ordre
+  usuel D, G, S (, B) ; c'est écrit « à vérifier » dans l'éditeur.
+- **Broches raccordées d'office** (`BrochesCachees`) : une broche du modèle peut rester hors du symbole, reliée à la masse ou à
+  une tension fixe (source générée par instance). **HYPOTHÈSE** : une broche dont le libellé contient TEMP reçoit 25 V
+  (température en °C ; vérifié sur le BSS138 : V(50) − 25 est l'écart à 25 °C).
+- **Compatibilité PSpice** : dès qu'un composant importé est présent, ngspice tourne avec `ngbehavior=psa` (TEMP, accolades
+  imbriquées des modèles PSpice) ; les circuits sans modèle importé ne changent pas.
+- L'éditeur affiche ces infos, le nom des broches « 20 (DRAIN) », et un bouton « Voir le texte SPICE ».

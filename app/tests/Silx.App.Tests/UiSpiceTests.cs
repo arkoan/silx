@@ -116,4 +116,18 @@ public class UiSpiceTests
         Assert.Equal(4, em.Definition.Symbole.Broches.Count);
         Assert.Empty(em.Definition.Verifier());
     }
+
+    /// <summary>Éditeur sur un MOSFET « fabricant » : infos lues dans le fichier, libellés des broches, broche thermique raccordée.</summary>
+    [AvaloniaFact]
+    public void Editeur_affiche_les_infos_du_modele_fabricant()
+    {
+        var d = DefinitionComposant.Depuis(ModelesSpice.Analyser(ModelesFabricantTests.Fichier).Modeles.First());
+        var ed = new EditeurSymbole(d); ed.Show();
+        Assert.True(ed.Definition.Verifier().All(p => p.Severity != Severity.Error));
+        Shot(ed, "21-editeur-mosfet-fabricant.png");
+        ed.RaccorderCachee("50", 0, "");          // remettre la broche thermique « à relier »
+        Assert.Contains(ed.Definition.Verifier(), p => p.Severity == Severity.Error && p.Message.Contains("50 (VTEMP)"));
+        ed.RaccorderCachee("50", 2, "25");
+        Assert.Equal("DC 25", ed.Definition.BrochesCachees["50"]);
+    }
 }

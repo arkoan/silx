@@ -55,7 +55,8 @@ public static class Verification
 
         // Un banc = un type d'analyse (temporel ou fréquentiel).
         var kinds = new List<AnalyseKind> { etude.Type };
-        var runner = new NgspiceRunner { Executable = NgspiceExecutable() };
+        // Modèles importés (souvent écrits pour PSpice) : compatibilité PSpice de ngspice (« psa » : tout le fichier, modèles inclus en ligne) ; circuits de base inchangés.
+        var runner = new NgspiceRunner { Executable = NgspiceExecutable(), Compatibilite = schema.Components.Any(k => k.Kind == ComponentKind.Spice) ? "psa" : null };
         var raws = new Dictionary<AnalyseKind, RawFile>();
         var journal = new System.Text.StringBuilder();
         try

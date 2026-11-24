@@ -17,6 +17,11 @@ public sealed class NgspiceRunner
 {
     public string Executable { get; init; } = "ngspice";
     public string? WorkRoot { get; init; }
+    /// <summary>
+    /// Mode de compatibilité ngspice (« psa » pour les modèles fabricant écrits pour PSpice : TEMP, accolades imbriquées…).
+    /// Écrit « set ngbehavior=… » dans un .spiceinit du dossier de run. null = comportement par défaut.
+    /// </summary>
+    public string? Compatibilite { get; init; }
 
     public async Task<SimulationResult> RunAsync(Circuit circuit, CancellationToken ct = default)
     {
@@ -27,6 +32,8 @@ public sealed class NgspiceRunner
         {
             string cir = Path.Combine(dir, "run.cir"), raw = Path.Combine(dir, "run.raw"), log = Path.Combine(dir, "run.log");
             await File.WriteAllTextAsync(cir, NetlistWriter.Write(circuit), ct);
+            if (Compatibilite is { Length: > 0 } compat)
+                await File.WriteAllTextAsync(Path.Combine(dir, ".spiceinit"), $"set ngbehavior={compat}\n", ct);
 
             var psi = new ProcessStartInfo(Executable)
             {

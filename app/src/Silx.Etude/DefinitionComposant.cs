@@ -87,14 +87,27 @@ public sealed class DefinitionComposant
     /// <summary>Paramètres par défaut d'un sous-circuit (« params: » du fichier), pour information.</summary>
     public string Parametres { get; set; } = "";
     public string Description { get; set; } = "";
+    /// <summary>Libellé lu dans le fichier pour chaque broche du modèle (ex. « 20 » → « DRAIN »).</summary>
+    public Dictionary<string, string> Libelles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Résumé lu dans le fichier : commentaires d'en-tête, composition interne.</summary>
+    public string Notes { get; set; } = "";
+    /// <summary>
+    /// Broches du modèle absentes du symbole, raccordées d'office : « 0 » (masse) ou « DC v » (tension fixe, ex. broche
+    /// de température VTEMP = 25 pour 25 °C). Chaque instance reçoit sa propre source.
+    /// </summary>
+    public Dictionary<string, string> BrochesCachees { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Symbole Symbole { get; set; } = new();
+
+    /// <summary>Nom affiché d'une broche du modèle : « 20 (DRAIN) » si un libellé est connu.</summary>
+    public string NomAffiche(string broche) => Libelles.TryGetValue(broche, out var l) && !string.Equals(l, broche, StringComparison.OrdinalIgnoreCase) ? $"{broche} ({l})" : broche;
 
     [JsonIgnore] public string Lettre => ModelesSpice.Lettre(Type);
 
     public DefinitionComposant Clone() => new()
     {
         Nom = Nom, Type = Type, Modele = Modele, TexteSpice = TexteSpice, BrochesModele = BrochesModele.ToList(),
-        Parametres = Parametres, Description = Description, Symbole = Symbole.Clone()
+        Parametres = Parametres, Description = Description, Symbole = Symbole.Clone(),
+        Libelles = new(Libelles, StringComparer.OrdinalIgnoreCase), Notes = Notes, BrochesCachees = new(BrochesCachees, StringComparer.OrdinalIgnoreCase)
     };
 
     /// <summary>Crée une définition depuis un modèle importé, avec le symbole par défaut de son type et la correspondance automatique.</summary>
@@ -105,6 +118,24 @@ public sealed class DefinitionComposant
             Nom = m.Nom, Type = m.Type, Modele = m.Nom, TexteSpice = m.Texte, BrochesModele = m.Broches.ToList(), Parametres = m.Parametres,
             Description = ModelesSpice.Libelle(m.Type),
         };
+        var infos = m.Infos ?? InfosModele.Vide;
+        foreach (var (k, v) in infos.Libelles) d.Libelles[k] = v;
+        d.Notes = string.Join(" — ", new[] { infos.Description, infos.Composition }.Where(x => x.Length > 0));
+        if (m.Type == TypeModele.SousCircuit && infos.NatureProbable is { } nat)
+        {
+            // Sous-circuit reconnu (ex. MOSFET fabricant) : symbole du composant, broches reliées par rôle.
+            d.Description = ModelesSpice.Libelle(nat) + " (sous-circuit)";
+            var s = GabaritsSymboles.PourType(nat, ModelesSpice.BrochesStandard(nat));   // broches nommées par rôle (D, G, S…)
+            foreach (var b in s.Broches)
+                b.BrocheModele = infos.Roles.FirstOrDefault(r => r.Value == b.BrocheModele).Key;
+            if (s.Broches.RemoveAll(b => b.BrocheModele == null) > 0 && nat is TypeModele.Nmos or TypeModele.Pmos)
+                s.Traits.Add(Primitive.Trait(3, 0, 3, 1));          // sans broche de substrat : substrat relié à la source (symbole 3 pattes)
+            d.Symbole = s;
+            foreach (var b in d.BrochesModele.Where(b => !infos.Roles.ContainsKey(b)))
+                if (d.Libelles.TryGetValue(b, out var l) && l.Contains("TEMP", StringComparison.OrdinalIgnoreCase))
+                    d.BrochesCachees[b] = "DC 25";   // HYPOTHÈSE : broche thermique = température en °C (25 = ambiante)
+            return d;
+        }
         d.Symbole = GabaritsSymboles.PourType(m.Type, d.BrochesModele);
         d.RelierAutomatiquement();
         return d;
@@ -113,7 +144,7 @@ public sealed class DefinitionComposant
     /// <summary>Relie par nom les broches du symbole encore libres (casse ignorée), puis dans l'ordre pour celles qui restent.</summary>
     public void RelierAutomatiquement()
     {
-        var libres = BrochesModele.Where(n => !Symbole.Broches.Any(b => Egal(b.BrocheModele, n))).ToList();
+        var libres = BrochesModele.Where(n => !BrochesCachees.ContainsKey(n) && !Symbole.Broches.Any(b => Egal(b.BrocheModele, n))).ToList();
         foreach (var b in Symbole.Broches.Where(b => b.BrocheModele == null || !BrochesModele.Any(n => Egal(n, b.BrocheModele))))
             b.BrocheModele = null;
         foreach (var b in Symbole.Broches.Where(b => b.BrocheModele == null).ToList())
@@ -134,8 +165,11 @@ public sealed class DefinitionComposant
         foreach (var n in BrochesModele)
         {
             int k = Symbole.Broches.Count(b => Egal(b.BrocheModele, n));
-            if (k == 0) l.Add(new(Severity.Error, $"La broche « {n} » du modèle n'est reliée à aucune broche du symbole"));
-            else if (k > 1) l.Add(new(Severity.Error, $"La broche « {n} » du modèle est reliée à {k} broches du symbole"));
+            bool cachee = BrochesCachees.TryGetValue(n, out var cx);
+            if (cachee && k > 0) l.Add(new(Severity.Error, $"La broche « {NomAffiche(n)} » est à la fois sur le symbole et raccordée d'office"));
+            else if (cachee && !ConnexionValide(cx!)) l.Add(new(Severity.Error, $"Raccordement de « {NomAffiche(n)} » illisible : « {cx} » (attendu 0 ou DC valeur)"));
+            else if (k == 0 && !cachee) l.Add(new(Severity.Error, $"La broche « {NomAffiche(n)} » du modèle n'est reliée à aucune broche du symbole"));
+            else if (k > 1) l.Add(new(Severity.Error, $"La broche « {NomAffiche(n)} » du modèle est reliée à {k} broches du symbole"));
         }
         foreach (var b in Symbole.Broches.Where(b => b.BrocheModele == null))
             l.Add(new(Severity.Warning, $"Broche du symbole en ({b.X}, {b.Y}) reliée à aucune broche du modèle : elle sera ignorée"));
@@ -143,6 +177,8 @@ public sealed class DefinitionComposant
             l.Add(new(Severity.Error, $"Deux broches du symbole au même point ({g.Key.X}, {g.Key.Y})"));
         return l;
     }
+
+    public static bool ConnexionValide(string c) => c.Trim() == "0" || (c.Trim().StartsWith("DC ", StringComparison.OrdinalIgnoreCase) && SpiceNumber.TryParse(c.Trim()[3..], out _));
 
     /// <summary>Indice (dans <see cref="Symbole"/>.Broches) de la broche du symbole reliée à chaque broche du modèle, dans l'ordre SPICE.</summary>
     public IReadOnlyList<int> OrdreSpice()
