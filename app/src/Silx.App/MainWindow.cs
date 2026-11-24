@@ -1071,7 +1071,9 @@ public sealed class MainWindow : Window
         {
             if (CurveAt(c.Noeud, c.X) is not { } yc) continue;
             var col = ColorOf(c.Noeud); bool hot = c == _hoverCursor || c == _dragCursor;
-            var vl = p.Add.VerticalLine(X(c.X)); vl.Color = col.WithAlpha(hot ? 1 : 0.8); vl.LineWidth = hot ? 2 : 1.2f; vl.LinePattern = ScottPlot.LinePattern.Dashed;
+            // Réticule : pointillés fins vertical et horizontal passant par le point de la courbe.
+            var vl = p.Add.VerticalLine(X(c.X)); vl.Color = col.WithAlpha(hot ? 0.95 : 0.75); vl.LineWidth = hot ? 1.5f : 1; vl.LinePattern = ScottPlot.LinePattern.Dotted;
+            var hl = p.Add.HorizontalLine(yc); hl.Color = col.WithAlpha(hot ? 0.95 : 0.75); hl.LineWidth = hot ? 1.5f : 1; hl.LinePattern = ScottPlot.LinePattern.Dotted;
             var mk = p.Add.Marker(X(c.X), yc); mk.Color = col; mk.Size = hot ? 12 : 9; mk.Shape = ScottPlot.MarkerShape.FilledCircle;
             var mk2 = p.Add.Marker(X(c.X), yc); mk2.Color = ScottPlot.Colors.White; mk2.Size = hot ? 5 : 4; mk2.Shape = ScottPlot.MarkerShape.FilledCircle;
             var lt = p.Add.Text(c.Nom.ToString(), X(c.X), yc); lt.LabelFontColor = ScottPlot.Colors.White; lt.LabelBackgroundColor = col; lt.LabelBold = true; lt.LabelFontSize = 11;
