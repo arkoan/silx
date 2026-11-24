@@ -385,4 +385,31 @@ public class UiTests
         Assert.Equal("2.2k", w.EtudeCourante.Schema.Components.Single(c => c.Ref == "R1").Value);
         Assert.True(w.BulleOuverte);    // la bulle reste ouverte et suit le composant
     }
+
+    /// <summary>A2 : copier-coller, dupliquer (références renumérotées, fils internes suivis), miroir avec fils élastiques.</summary>
+    [AvaloniaFact]
+    public void Copier_coller_dupliquer_miroir()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        w.SelectBanc(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var cv = w.Canevas; var s = w.EtudeCourante.Schema;
+        Rect Zone(int x0, int y0, int x1, int y1) => new Rect(cv.ScreenOf(new Silx.Etude.GridPoint(x0, y0)), cv.ScreenOf(new Silx.Etude.GridPoint(x1, y1)));
+        cv.SelectBox(Zone(3, 7, 9, 9));                     // R1 seul (et l'étiquette IN)
+        Assert.Contains(cv.Selection, c => c.Ref == "R1");
+        cv.CopySelection();
+        cv.Paste(new Silx.Etude.GridPoint(4, 20));
+        Assert.Contains(s.Components, c => c.Ref == "R2" && c.Position == new Silx.Etude.GridPoint(4, 20) && c.Value == "1k");
+        cv.DuplicateSelection();                             // la sélection est maintenant la copie
+        Assert.Contains(s.Components, c => c.Ref == "R3");
+        // Miroir de C1 (vertical) : ses deux broches échangent leur place horizontale → aucun changement ; sur R2 horizontal : broches inversées.
+        var r2 = s.Components.Single(c => c.Ref == "R2");
+        var avant = r2.Pins.ToList();
+        cv.SelectBox(Zone(3, 19, 9, 21));
+        cv.MirrorSelected();
+        Assert.True(r2.Miroir);
+        Assert.Equal(avant.AsEnumerable().Reverse(), r2.Pins);   // retourné sur place : broches échangées
+        // Miroir enregistré dans le projet
+        Assert.True(Silx.Etude.Projet.DepuisJson(Silx.Etude.Projet.VersJson(w.EtudeCourante)).Schema.Components.Single(c => c.Ref == "R2").Miroir);
+    }
 }

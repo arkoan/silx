@@ -98,8 +98,9 @@ public static class Symboles
     }
 
     /// <summary>Repère d'un symbole importé : pas de grille (réels, repère du symbole) → écran, rotation comprise.</summary>
-    public static Func<double, double, Point> Repere(Point origine, int rotation, double d) => (x, y) =>
+    public static Func<double, double, Point> Repere(Point origine, int rotation, double d, bool miroir = false) => (x, y) =>
     {
+        if (miroir) x = -x;
         for (int i = 0; i < ((rotation % 4) + 4) % 4; i++) (x, y) = (-y, x);
         return new Point(origine.X + x * d, origine.Y + y * d);
     };

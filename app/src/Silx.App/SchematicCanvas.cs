@@ -238,6 +238,63 @@ public sealed class SchematicCanvas : Control
         SelectionChanged?.Invoke(); InvalidateVisual();
     }
 
+    // ---- presse-papiers (interne à l'application : copier d'un projet ou d'un banc à l'autre) ----
+    static (List<PlacedComponent> Comps, List<Wire> Fils)? _pressePapiers;
+    public static bool PressePapiersPlein => _pressePapiers != null;
+
+    public void CopySelection()
+    {
+        var comps = Selection.ToList();
+        var pins = comps.SelectMany(c => c.Pins).ToHashSet();
+        // Fils sélectionnés, plus ceux qui relient deux broches copiées.
+        var fils = FilsSelectionnes.Concat(Schematic.Wires.Where(w => pins.Contains(w.A) && pins.Contains(w.B))).Distinct().ToList();
+        if (comps.Count + fils.Count == 0) return;
+        _pressePapiers = (comps.Select(c => c.Clone()).ToList(), fils);
+    }
+
+    public void CutSelection() { CopySelection(); DeleteSelected(); }
+
+    /// <summary>Colle le presse-papiers : coin haut-gauche sous le pointeur (ou décalé de 2 pas), références renumérotées.</summary>
+    public void Paste(GridPoint? ou = null)
+    {
+        if (_pressePapiers is not { } pp) return;
+        var pts = pp.Comps.SelectMany(c => c.Pins).Concat(pp.Fils.SelectMany(w => new[] { w.A, w.B })).ToList();
+        if (pts.Count == 0) return;
+        int x0 = pts.Min(p => p.X), y0 = pts.Min(p => p.Y);
+        var cible = ou ?? new GridPoint(x0 + 2, y0 + 2);
+        int dx = cible.X - x0, dy = cible.Y - y0;
+        Commit();
+        _multi.Clear(); _multiWires.Clear();
+        foreach (var c in pp.Comps)
+        {
+            var n = c.Clone();
+            n.Position = new GridPoint(c.Position.X + dx, c.Position.Y + dy);
+            if (n.IsElectrical) n.Ref = n.Kind == ComponentKind.Spice && n.Definition != null ? new Schematic { Components = AllComponents.ToList() }.NextRef(n.Definition.Lettre) : NextRef(n.Kind);
+            else if (n.Kind == ComponentKind.Ground) n.Ref = NextRef(n.Kind);
+            else n.Ref = NextRef(ComponentKind.Label);   // une étiquette garde son nom de nœud (même équipotentiel)
+            Schematic.Components.Add(n); _multi.Add(n);
+        }
+        foreach (var w in pp.Fils)
+        {
+            var n = new Wire(new GridPoint(w.A.X + dx, w.A.Y + dy), new GridPoint(w.B.X + dx, w.B.Y + dy));
+            Schematic.Wires.Add(n); _multiWires.Add(n);
+        }
+        _selected = _multi.FirstOrDefault(); _selectedWire = null;
+        Done(); SelectionChanged?.Invoke();
+    }
+
+    public void DuplicateSelection() { var sauve = _pressePapiers; CopySelection(); Paste(); _pressePapiers = sauve ?? _pressePapiers; }
+
+    /// <summary>Miroir gauche-droite de chaque composant sélectionné ; les fils suivent.</summary>
+    public void MirrorSelected()
+    {
+        if (Selection.Count == 0) return;
+        Commit();
+        bool sur = true;
+        foreach (var c in Selection.ToList()) sur &= Elastique.Retourner(Schematic, c);
+        DernierDeplacementSur = sur; Done();
+    }
+
     /// <summary>Déplace la sélection (fils élastiques, fils sélectionnés entraînés), une entrée d'annulation.</summary>
     public bool MoveSelection(GridPoint delta)
     {
@@ -424,6 +481,11 @@ public sealed class SchematicCanvas : Control
         if (cmd && e.Key == Key.Z) { if (e.KeyModifiers.HasFlag(KeyModifiers.Shift)) Redo(); else Undo(); }
         else if (cmd && e.Key == Key.Y) Redo();
         else if (cmd && e.Key == Key.R) RotateSelected();
+        else if (cmd && e.Key == Key.C) CopySelection();
+        else if (cmd && e.Key == Key.X) CutSelection();
+        else if (cmd && e.Key == Key.V) Paste(_inside ? _cursor : null);
+        else if (cmd && e.Key == Key.D) DuplicateSelection();
+        else if (!cmd && e.Key == Key.X && Selection.Count > 0) MirrorSelected();
         else if (cmd) return;
         else if (e.Key is Key.Delete or Key.Back) DeleteSelected();
         else if (e.Key == Key.Escape) { if (_wireStart != null) _wireStart = null; else Tool = Tool.Select; }
@@ -463,7 +525,7 @@ public sealed class SchematicCanvas : Control
     {
         if (c.Definition == null) return new Rect(ToScreen(c.Position), new Size(1, 1)).Inflate(Grid * _zoom);
         var (x0, y0, x1, y1) = c.Definition.Symbole.Encombrement();
-        var map = Symboles.Repere(ToScreen(c.Position), c.Rotation, Grid * _zoom);
+        var map = Symboles.Repere(ToScreen(c.Position), c.Rotation, Grid * _zoom, c.Miroir);
         return new Rect(map(x0, y0), map(x1, y1)).Normalize().Inflate(Grid * _zoom * 0.3);
     }
 
@@ -594,7 +656,7 @@ public sealed class SchematicCanvas : Control
         if (c.Kind == ComponentKind.Spice)
         {
             if (c.Definition is { } def)
-                Symboles.DessinerSymbole(ctx, def.Symbole, Symboles.Repere(ToScreen(c.Position), c.Rotation, _zoom * Grid), _zoom * Grid, brush, pen, Text);
+                Symboles.DessinerSymbole(ctx, def.Symbole, Symboles.Repere(ToScreen(c.Position), c.Rotation, _zoom * Grid, c.Miroir), _zoom * Grid, brush, pen, Text);
             if (opacity < 1 && !labels) return;
             var r = SpiceBounds(c);
             var rt = Text(c.Ref, 11, brush, FontWeight.SemiBold);

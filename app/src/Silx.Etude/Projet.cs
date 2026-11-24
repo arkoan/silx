@@ -26,7 +26,7 @@ public static class Projet
     public sealed class ComposantF
     {
         public string Ref { get; set; } = ""; public ComponentKind Type { get; set; } public int X { get; set; } public int Y { get; set; }
-        public int Rotation { get; set; } public string Valeur { get; set; } = ""; public string? Composant { get; set; }
+        public int Rotation { get; set; } public bool Miroir { get; set; } public string Valeur { get; set; } = ""; public string? Composant { get; set; }
     }
     public sealed class BancF
     {
@@ -63,7 +63,7 @@ public static class Projet
         {
             Composants = s.Components.Select(k => new ComposantF
             {
-                Ref = k.Ref, Type = k.Kind, X = k.Position.X, Y = k.Position.Y, Rotation = k.Rotation, Valeur = k.Value,
+                Ref = k.Ref, Type = k.Kind, X = k.Position.X, Y = k.Position.Y, Rotation = k.Rotation, Miroir = k.Miroir, Valeur = k.Value,
                 Composant = k.Definition != null ? noms[k.Definition] : null
             }).ToList(),
             Fils = s.Wires.Select(w => new[] { w.A.X, w.A.Y, w.B.X, w.B.Y }).ToList(),
@@ -98,7 +98,7 @@ public static class Projet
                 DefinitionComposant? d = null;
                 if (c.Composant != null && !defs.TryGetValue(c.Composant, out d))
                     throw new InvalidDataException($"{c.Ref} : composant « {c.Composant} » absent du projet.");
-                r.Components.Add(new PlacedComponent { Ref = c.Ref, Kind = c.Type, Position = new(c.X, c.Y), Rotation = c.Rotation, Value = c.Valeur, Definition = d });
+                r.Components.Add(new PlacedComponent { Ref = c.Ref, Kind = c.Type, Position = new(c.X, c.Y), Rotation = c.Rotation, Miroir = c.Miroir, Value = c.Valeur, Definition = d });
             }
             foreach (var w in s.Fils.Where(w => w.Length == 4)) r.Wires.Add(new(new(w[0], w[1]), new(w[2], w[3])));
             return r;

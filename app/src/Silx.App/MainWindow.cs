@@ -465,6 +465,8 @@ public sealed class MainWindow : Window
         _toolWire = Icones.Button(Icones.Fil, "Tracer un fil (W) : double-clic ou arrivée sur une broche pour finir", () => _canvas.Tool = Tool.Wire);
         bar.Children.Add(_toolSelect); bar.Children.Add(_toolWire);
         bar.Children.Add(Icones.Button(Icones.Pivoter, "Pivoter la sélection ou le composant à placer (⌘R)", () => _canvas.RotateSelected()));
+        bar.Children.Add(Icones.Button(Icones.Miroir, "Miroir gauche-droite (X)", () => _canvas.MirrorSelected()));
+        bar.Children.Add(Icones.Button(Icones.Dupliquer, "Dupliquer la sélection (⌘D) ; ⌘C / ⌘V copier-coller, ⌘X couper", () => _canvas.DuplicateSelection()));
         bar.Children.Add(Icones.Button(Icones.Supprimer, "Supprimer la sélection (Suppr)", () => _canvas.DeleteSelected()));
         bar.Children.Add(Ui.Separator());
         bar.Children.Add(Icones.Button(Icones.Annuler, "Annuler (⌘Z)", () => _canvas.Undo()));

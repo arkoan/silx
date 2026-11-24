@@ -31,7 +31,7 @@ public sealed class PlacedComponent
                 : IsElectrical
                 ? new[] { new GridPoint(0, 0), new GridPoint(4, 0) }
                 : new[] { new GridPoint(0, 0) };
-            return local.Select(p => Rotate(p, Rotation)).Select(p => new GridPoint(p.X + Position.X, p.Y + Position.Y)).ToArray();
+            return local.Select(p => Miroir ? new GridPoint(-p.X, p.Y) : p).Select(p => Rotate(p, Rotation)).Select(p => new GridPoint(p.X + Position.X, p.Y + Position.Y)).ToArray();
         }
     }
 
@@ -41,7 +41,9 @@ public sealed class PlacedComponent
         return p;
     }
 
-    public PlacedComponent Clone() => new() { Ref = Ref, Kind = Kind, Position = Position, Rotation = Rotation, Value = Value, Definition = Definition };
+    /// <summary>Symétrie gauche-droite du symbole (appliquée avant la rotation).</summary>
+    public bool Miroir { get; set; }
+    public PlacedComponent Clone() => new() { Ref = Ref, Kind = Kind, Position = Position, Rotation = Rotation, Miroir = Miroir, Value = Value, Definition = Definition };
 
     /// <summary>Lettre SPICE attendue en tête de référence.</summary>
     public string Prefix => Kind == ComponentKind.Spice ? Definition?.Lettre ?? "X" : Schematic.Prefix(Kind);

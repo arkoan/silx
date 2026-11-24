@@ -176,6 +176,22 @@ public static class Elastique
         return Appliquer(s, avant, moves, fixes);
     }
 
+    /// <summary>Retourne un composant (miroir gauche-droite) ; ses fils suivent. Renvoie faux si les connexions ont changé.</summary>
+    public static bool Retourner(Schematic s, PlacedComponent c)
+    {
+        var avant = s.Clone();
+        var pins0 = c.Pins.ToList();
+        c.Miroir = !c.Miroir;
+        // Retourné sur place : l'encombrement des broches ne bouge pas.
+        var tmp = c.Pins;
+        c.Position = new GridPoint(c.Position.X + pins0.Min(p => p.X) - tmp.Min(p => p.X), c.Position.Y + pins0.Min(p => p.Y) - tmp.Min(p => p.Y));
+        var apres = c.Pins;
+        var moves = new Dictionary<GridPoint, GridPoint>();
+        for (int i = 0; i < pins0.Count; i++) if (!pins0[i].Equals(apres[i])) moves[pins0[i]] = apres[i];
+        var fixes = s.Components.Where(k => k != c).SelectMany(k => k.Pins).ToHashSet();
+        return Appliquer(s, avant, moves, fixes);
+    }
+
     /// <summary>Pivote un composant d'un quart de tour ; ses fils suivent. Renvoie faux si les connexions ont changé.</summary>
     public static bool Pivoter(Schematic s, PlacedComponent c)
     {
