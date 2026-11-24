@@ -9,6 +9,9 @@ namespace Silx.App;
 /// <summary>Petits constructeurs de contrôles et palette de couleurs de l'application.</summary>
 static class Ui
 {
+    // Échelle de texte unique : titres 14, onglets 13, texte courant 12.5, aides 11.5.
+    public const double Titre = 14, Onglet = 13, Texte = 12.5, Aide = 11.5;
+    // Couleurs : un seul bleu d'accent (sélection, actions, mode) ; violet réservé aux bancs ; orange pour les noms de nœuds.
     public static readonly IBrush Window = new SolidColorBrush(Color.Parse("#eef0f3"));
     public static readonly IBrush Panel = new SolidColorBrush(Color.Parse("#f7f8fa"));
     public static readonly IBrush Line = new SolidColorBrush(Color.Parse("#dfe2e8"));
@@ -31,11 +34,11 @@ static class Ui
     public static void SetActive(Button b, bool on) { b.Background = on ? ActiveBg : Brushes.Transparent; b.Foreground = on ? AccentBrush : Ink; }
     public static Control Separator() => new Border { Width = 1, Height = 22, Background = Line, Margin = new Thickness(6, 0), VerticalAlignment = VerticalAlignment.Center };
     public static Control Rule() => new Border { Height = 1, Background = Line, Margin = new Thickness(0, 10) };
-    public static TextBlock Title(string t) => new() { Text = t, FontSize = 14, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 6), VerticalAlignment = VerticalAlignment.Center };
+    public static TextBlock Title(string t) => new() { Text = t, FontSize = Titre, FontWeight = FontWeight.SemiBold, Margin = new Thickness(0, 0, 0, 6), VerticalAlignment = VerticalAlignment.Center };
     public static TextBlock SubTitle(string t) => new() { Text = t, FontSize = 12, FontWeight = FontWeight.SemiBold, Foreground = Muted, Margin = new Thickness(0, 4, 0, 0) };
     public static TextBlock Section(string t) => new() { Text = t.ToUpperInvariant(), FontSize = 10.5, FontWeight = FontWeight.SemiBold, Foreground = Muted, LetterSpacing = 0.6 };
-    public static TextBlock Label(string t) => new() { Text = t, FontSize = 11.5, Foreground = Muted };
-    public static TextBlock Hint(string t) => new() { Text = t, FontSize = 11.5, Foreground = Muted, TextWrapping = TextWrapping.Wrap };
+    public static TextBlock Label(string t) => new() { Text = t, FontSize = Aide, Foreground = Muted };
+    public static TextBlock Hint(string t) => new() { Text = t, FontSize = Aide, Foreground = Muted, TextWrapping = TextWrapping.Wrap };
 
     public static Control Labeled(string label, Control c)
     {

@@ -257,7 +257,7 @@ public sealed class MainWindow : Window
         {
             bool actif = p == _projet, modif = p.Modifie;
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-            row.Children.Add(new TextBlock { Text = p.Nom, FontSize = 12.5, FontWeight = actif ? FontWeight.SemiBold : FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = p.Nom, FontSize = Ui.Texte, FontWeight = actif ? FontWeight.SemiBold : FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
             if (modif) row.Children.Add(new Border { Width = 7, Height = 7, CornerRadius = new CornerRadius(4), Background = Ui.WarnBrush, VerticalAlignment = VerticalAlignment.Center });
             var x = new Button { Content = Icones.Make(Icones.Croix, 9, Ui.Muted), Padding = new Thickness(3), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
             ToolTip.SetTip(x, "Fermer ce projet (⌘W)");
@@ -428,7 +428,7 @@ public sealed class MainWindow : Window
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
             if (v != null) row.Children.Add(new Border { Width = 8, Height = 8, CornerRadius = new CornerRadius(4), VerticalAlignment = VerticalAlignment.Center, Background = v == Verdict.Pass ? Ui.PassBrush : v == Verdict.Fail ? Ui.FailBrush : Ui.WarnBrush });
-            row.Children.Add(new TextBlock { Text = text, FontSize = 12.5, FontWeight = active ? FontWeight.SemiBold : FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = text, FontSize = Ui.Texte, FontWeight = active ? FontWeight.SemiBold : FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
             if (removable != null)
             {
                 // Roue dentée : réglages du banc (nom, analyse) dans une bulle.
@@ -635,13 +635,13 @@ public sealed class MainWindow : Window
         var barBorder = new Border { Child = new ScrollViewer { Content = _benchBar, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled }, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 1) };
         DockPanel.SetDock(barBorder, Dock.Top); schemaDock.Children.Add(barBorder); _cadreSchema.Child = _canvas; schemaDock.Children.Add(_cadreSchema);
         _canvas.AddHandler(PointerPressedEvent, (_, _) => ActiverZone(Zone.Schema), Avalonia.Interactivity.RoutingStrategies.Tunnel);
-        tabs.Items.Add(new TabItem { FontSize = 13, MinHeight = 30, Header = "Schéma", Content = schemaDock });
-        tabs.Items.Add(new TabItem { FontSize = 13, MinHeight = 30, Header = "Netlist", Content = _netlist });
+        tabs.Items.Add(new TabItem { FontSize = Ui.Onglet, MinHeight = 30, Header = "Schéma", Content = schemaDock });
+        tabs.Items.Add(new TabItem { FontSize = Ui.Onglet, MinHeight = 30, Header = "Netlist", Content = _netlist });
 
-        _ercTab.Header = "Vérifications"; _ercTab.FontSize = 13; _ercTab.MinHeight = 30;
-        _bottomTabs.Items.Add(new TabItem { FontSize = 13, MinHeight = 30, Header = "Courbes", Content = BuildPlotArea() });
+        _ercTab.Header = "Vérifications"; _ercTab.FontSize = Ui.Onglet; _ercTab.MinHeight = 30;
+        _bottomTabs.Items.Add(new TabItem { FontSize = Ui.Onglet, MinHeight = 30, Header = "Courbes", Content = BuildPlotArea() });
         _bottomTabs.Items.Add(_ercTab); _ercTab.Content = new ScrollViewer { Content = _ercList };
-        _bottomTabs.Items.Add(new TabItem { FontSize = 13, MinHeight = 30, Header = "Journal ngspice", Content = _journal });
+        _bottomTabs.Items.Add(new TabItem { FontSize = Ui.Onglet, MinHeight = 30, Header = "Journal ngspice", Content = _journal });
 
         var g = _centre;
         g.RowDefinitions = new("3*,5,2*");
@@ -670,7 +670,7 @@ public sealed class MainWindow : Window
 
     void Zoomer(double f)
     {
-        if (_zoneActive == Zone.Courbes && _zoneBas.IsVisible) { _plot.Plot.Axes.Zoom(f, f); _plot.Refresh(); }
+        if (_zoneActive == Zone.Courbes && _zoneBas.IsVisible) { _plot.Plot.Axes.Zoom(f, 1); _plot.Refresh(); }   // courbes : zoom en temps ou en fréquence, comme un oscilloscope
         else _canvas.ZoomBy(f);
     }
     void ToutVoir() { if (_zoneActive == Zone.Courbes && _zoneBas.IsVisible) RefreshPlot(); else _canvas.FitAll(); }
@@ -1247,7 +1247,7 @@ public sealed class MainWindow : Window
         foreach (var (k, icon, label) in new[] { (AnalyseKind.Transitoire, Icones.Temporel, "Temporel"), (AnalyseKind.Ac, Icones.Bode, "Fréquentiel") })
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-            row.Children.Add(Icones.Make(icon, 15, Banc.Type == k ? Ui.AccentBrush : Ui.Muted)); row.Children.Add(new TextBlock { Text = label, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(Icones.Make(icon, 15, Banc.Type == k ? Ui.AccentBrush : Ui.Muted)); row.Children.Add(new TextBlock { Text = label, FontSize = Ui.Texte, VerticalAlignment = VerticalAlignment.Center });
             var b = new Button { Content = row, Padding = new Thickness(10, 4), CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), BorderBrush = Banc.Type == k ? Ui.AccentBrush : Ui.Line, Background = Banc.Type == k ? Ui.ActiveBg : Brushes.White };
             ToolTip.SetTip(b, k == AnalyseKind.Ac ? "Banc fréquentiel : analyse .ac, courbes en Bode" : "Banc temporel : analyse .tran, courbes en fonction du temps");
             var kk = k; b.Click += (_, _) => ShowAnalysis(kk);
@@ -1259,7 +1259,7 @@ public sealed class MainWindow : Window
             var st = Stimulus.Lire(src.Value);
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
             row.Children.Add(Icones.Make(Banc.Type == AnalyseKind.Ac ? Icones.Bode : Icones.Temporel, 15, Ui.AccentBrush));
-            row.Children.Add(new TextBlock { Text = Banc.Type == AnalyseKind.Ac ? "Fréquentiel" : "Temporel", FontWeight = FontWeight.SemiBold, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = Banc.Type == AnalyseKind.Ac ? "Fréquentiel" : "Temporel", FontWeight = FontWeight.SemiBold, FontSize = Ui.Texte, VerticalAlignment = VerticalAlignment.Center });
             row.Children.Add(new TextBlock { Text = $"· fixé par {src.Ref} ({Stimulus.Libelle(st.Forme).ToLowerInvariant()})", FontSize = 12, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center });
             ToolTip.SetTip(row, "Le premier stimulus posé dans le banc décide : petit signal (AC) → fréquentiel ; continu, impulsion, sinus → temporel.");
             s.Children.Add(row);
@@ -1649,7 +1649,7 @@ public sealed class MainWindow : Window
         _verdict.IsVisible = v != null;
         if (v == null) return;
         _verdict.Background = v == Verdict.Pass ? Ui.PassBrush : v == Verdict.Fail ? Ui.FailBrush : Ui.WarnBrush;
-        _verdict.Child = new TextBlock { Text = v == Verdict.Pass ? "GABARITS OK" : v == Verdict.Fail ? "GABARITS NON RESPECTÉS" : "NON ÉVALUABLE", Foreground = Brushes.White, FontWeight = FontWeight.Bold, FontSize = 12 };
+        _verdict.Child = new TextBlock { Text = v == Verdict.Pass ? "✓ Conforme" : v == Verdict.Fail ? "✕ Non conforme" : "Non évaluable", Foreground = Brushes.White, FontWeight = FontWeight.SemiBold, FontSize = Ui.Texte };
     }
 
     void RefreshPlot(bool keepLimits = false)
