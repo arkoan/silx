@@ -1,3 +1,4 @@
+using Avalonia.VisualTree;
 using Avalonia.LogicalTree;
 using Avalonia.Platform.Storage;
 using Avalonia;
@@ -164,6 +165,7 @@ public sealed class MainWindow : Window
             if (_drawing != null && e.Key is Key.Enter or Key.Escape) { e.Handled = true; EndDrawing(e.Key == Key.Enter); return; }
             if (e.Key == Key.F5 || (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Meta))) { e.Handled = true; await SimulateAsync(); }
             bool cmd = e.KeyModifiers.HasFlag(KeyModifiers.Meta) || e.KeyModifiers.HasFlag(KeyModifiers.Control);
+            if (e.Key is Key.F1 or Key.F2 or Key.F3) { e.Handled = true; Disposer(e.Key == Key.F1 ? Disposition.Schema : e.Key == Key.F2 ? Disposition.Mixte : Disposition.Courbes); return; }
             if (!cmd && e.Key is Key.A or Key.B && _plotSurvol && _plot.IsPointerOver && FocusManager?.GetFocusedElement() is not TextBox)
             { e.Handled = true; PoserCurseur(e.Key == Key.A ? 'A' : 'B', _posPlot); return; }
             if (cmd && e.Key == Key.N) { e.Handled = true; NouveauProjet(); }
@@ -183,6 +185,7 @@ public sealed class MainWindow : Window
         };
 
         OuvrirDansOnglet(EtudeModel.Demo(), "Exemple RC", null);
+        Disposer(Disposition.Mixte);
         _status.Text = "Clic : placer / sélectionner · glisser : déplacer · clic droit ou molette : vue · ⌘R : pivoter · W : fil · Suppr · ⌘Z / ⇧⌘Z";
     }
 
@@ -477,6 +480,11 @@ public sealed class MainWindow : Window
         bar.Children.Add(Icones.Button(Icones.ToutVoir, "Schéma : tout voir (0)", () => _canvas.FitAll()));
         bar.Children.Add(Icones.Button(Icones.ZoomFenetre, "Schéma : zoom sur une fenêtre (tracer un rectangle)", () => _canvas.Tool = Tool.ZoomWindow));
         bar.Children.Add(Ui.Separator());
+        foreach (var (d, ic, tip) in new[] { (Disposition.Schema, Icones.VueSchema, "Schéma seul (F1)"), (Disposition.Mixte, Icones.VueMixte, "Schéma et courbes (F2)"), (Disposition.Courbes, Icones.VueCourbes, "Courbes seules (F3)") })
+        {
+            var dd = d; var b = Icones.Button(ic, tip, () => Disposer(dd)); _boutonsDisposition[d] = b; bar.Children.Add(b);
+        }
+        bar.Children.Add(Ui.Separator());
         bar.Children.Add(Icones.Button(Icones.PanneauGauche, "Afficher / masquer la palette de composants", () => { _left.IsVisible = !_left.IsVisible; }));
         bar.Children.Add(Icones.Button(Icones.PanneauDroit, "Afficher / masquer le panneau de propriétés et de gabarits", () => { _right.IsVisible = !_right.IsVisible; }));
 
@@ -621,11 +629,35 @@ public sealed class MainWindow : Window
         _bottomTabs.Items.Add(_ercTab); _ercTab.Content = new ScrollViewer { Content = _ercList };
         _bottomTabs.Items.Add(new TabItem { FontSize = 13, MinHeight = 30, Header = "Journal ngspice", Content = _journal });
 
-        var g = new Grid { RowDefinitions = new("3*,5,2*") };
-        g.Children.Add(tabs);
-        var split = new GridSplitter { Background = Ui.Line, ResizeDirection = GridResizeDirection.Rows }; Grid.SetRow(split, 1); g.Children.Add(split);
-        var bottom = new Border { Background = Ui.Panel, Child = _bottomTabs }; Grid.SetRow(bottom, 2); g.Children.Add(bottom);
+        var g = _centre;
+        g.RowDefinitions = new("3*,5,2*");
+        g.Children.Add(tabs); _zoneHaut = tabs;
+        var split = new GridSplitter { Background = Ui.Line, ResizeDirection = GridResizeDirection.Rows }; Grid.SetRow(split, 1); g.Children.Add(split); _separateur = split;
+        var bottom = new Border { Background = Ui.Panel, Child = _bottomTabs }; Grid.SetRow(bottom, 2); g.Children.Add(bottom); _zoneBas = bottom;
+        // Double-clic sur un titre de zone : l'agrandir, puis revenir.
+        tabs.DoubleTapped += (_, e) => { if (e.Source is Visual v && v.FindAncestorOfType<TabItem>() != null) Disposer(_disposition == Disposition.Schema ? Disposition.Mixte : Disposition.Schema); };
+        _bottomTabs.DoubleTapped += (_, e) => { if (e.Source is Visual v && v.FindAncestorOfType<TabItem>() != null && v.FindAncestorOfType<AvaPlot>() == null) Disposer(_disposition == Disposition.Courbes ? Disposition.Mixte : Disposition.Courbes); };
         return g;
+    }
+
+    // ───────────────────────── dispositions d'écran ─────────────────────────
+    public enum Disposition { Schema, Mixte, Courbes }
+    Disposition _disposition = Disposition.Mixte;
+    readonly Grid _centre = new();
+    Control _zoneHaut = null!, _zoneBas = null!, _separateur = null!;
+    readonly Dictionary<Disposition, Button> _boutonsDisposition = new();
+    public Disposition DispositionActive => _disposition;
+
+    /// <summary>Schéma seul, mixte (schéma au-dessus des courbes) ou courbes seules.</summary>
+    public void Disposer(Disposition d)
+    {
+        _disposition = d;
+        _zoneHaut.IsVisible = d != Disposition.Courbes; _zoneBas.IsVisible = d != Disposition.Schema; _separateur.IsVisible = d == Disposition.Mixte;
+        _centre.RowDefinitions[0].Height = d == Disposition.Courbes ? new GridLength(0) : new GridLength(3, GridUnitType.Star);
+        _centre.RowDefinitions[1].Height = d == Disposition.Mixte ? new GridLength(5) : new GridLength(0);
+        _centre.RowDefinitions[2].Height = d == Disposition.Schema ? new GridLength(0) : new GridLength(d == Disposition.Courbes ? 1 : 2, GridUnitType.Star);
+        foreach (var (k, b) in _boutonsDisposition) Ui.SetActive(b, k == d);
+        if (d == Disposition.Courbes) _bottomTabs.SelectedIndex = 0;
     }
 
     // ───────────────────────── zone des courbes ─────────────────────────

@@ -412,4 +412,25 @@ public class UiTests
         // Miroir enregistré dans le projet
         Assert.True(Silx.Etude.Projet.DepuisJson(Silx.Etude.Projet.VersJson(w.EtudeCourante)).Schema.Components.Single(c => c.Ref == "R2").Miroir);
     }
+
+    /// <summary>B2 : dispositions Schéma / Mixte / Courbes.</summary>
+    [AvaloniaFact]
+    public async Task Dispositions_d_ecran()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        double hMixte = w.PlotControl.Bounds.Height;
+        w.Disposer(MainWindow.Disposition.Courbes);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Assert.False(w.Canevas.IsEffectivelyVisible);
+        Assert.True(w.PlotControl.Bounds.Height > 1.8 * hMixte);
+        Shot(w, "29-disposition-courbes.png");
+        w.Disposer(MainWindow.Disposition.Schema);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(w.Canevas.IsEffectivelyVisible); Assert.False(w.PlotControl.IsEffectivelyVisible);
+        w.Disposer(MainWindow.Disposition.Mixte);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(w.Canevas.IsEffectivelyVisible && w.PlotControl.IsEffectivelyVisible);
+    }
 }

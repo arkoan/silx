@@ -27,6 +27,9 @@ static class Icones
     public const string LimiteBasse = "M3 11h6l4 4h8 M6 11l-3 3 M10 12l-3 3 M14 15l-3 3 M19 15l-3 3";
     public const string Croix = "M7 7l10 10 M17 7L7 17";
     public const string Plus = "M12 5v14 M5 12h14";
+    public const string VueSchema = "M3 4h18v16H3z M7 12h3l2-3 2 6 2-3h1";
+    public const string VueMixte = "M3 4h18v16H3z M3 11h18 M7 8h4 M6 17c2-4 4 2 6-2s3 1 5 0";
+    public const string VueCourbes = "M3 4h18v16H3z M5 16c3-8 5 4 8-2s4-3 6-2";
     public const string Miroir = "M12 3v18 M9 7L4 12l5 5z M15 7l5 5-5 5z";
     public const string Dupliquer = "M8 8h12v12H8z M4 16V4h12";
     public const string Ouvrir = "M3 6h6l2 2h10v11H3z M3 10h18";
