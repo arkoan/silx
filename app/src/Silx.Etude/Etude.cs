@@ -33,7 +33,7 @@ public sealed class CritereGabarit
     public string Noeud { get; set; } = "OUT";
     public double? Min { get; set; }
     public double? Max { get; set; }
-    public TypesMesure.Info Info => TypesMesure.Get(Mesure);
+    [System.Text.Json.Serialization.JsonIgnore] public TypesMesure.Info Info => TypesMesure.Get(Mesure);
 }
 
 /// <summary>Gabarit dessiné sur une courbe : x en secondes (transitoire) ou en Hz (AC) ; y en V ou en dB.</summary>
@@ -64,6 +64,8 @@ public sealed class Banc
         set => _type = value;
     }
     AnalyseKind _type = AnalyseKind.Transitoire;
+    /// <summary>Type retenu quand le banc n'a encore aucun stimulus (enregistré dans le projet).</summary>
+    public AnalyseKind TypeParDefaut { get => _type; set => _type = value; }
     /// <summary>Source qui fixe le type du banc (null s'il n'y en a pas).</summary>
     public PlacedComponent? PremierStimulus => Calque.Components.FirstOrDefault(k => k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource);
     public IEnumerable<CritereGabarit> CriteresActifs => Gabarits.Where(g => g.Info.Analyse == Type);
