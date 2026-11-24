@@ -452,4 +452,24 @@ public class UiTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.True(w.ProprietesVisibles); Assert.False(w.PlanDeTestVisible);
     }
+
+    /// <summary>A3 : glisser depuis une broche trace un fil en L sans changer d'outil.</summary>
+    [AvaloniaFact]
+    public void Fil_depuis_une_broche()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        w.SelectBanc(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var cv = w.Canevas; var s = w.EtudeCourante.Schema;
+        Point E(int x, int y) => cv.TranslatePoint(cv.ScreenOf(new Silx.Etude.GridPoint(x, y)), w)!.Value;
+        int avant = s.Wires.Count;
+        w.MouseDown(E(12, 8), Avalonia.Input.MouseButton.Left);      // broche haute de C1
+        w.MouseMove(E(18, 4)); w.MouseUp(E(18, 4), Avalonia.Input.MouseButton.Left);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(Silx.App.Tool.Select, cv.Tool);
+        Assert.Equal(avant + 2, s.Wires.Count);
+        Assert.Contains(s.Wires, x => x == new Silx.Etude.Wire(new(12, 8), new(18, 8)));
+        Assert.Contains(s.Wires, x => x == new Silx.Etude.Wire(new(18, 8), new(18, 4)));
+        Assert.Equal(new Silx.Etude.GridPoint(12, 8), s.Components.Single(c => c.Ref == "C1").Position);   // le composant n'a pas bougé
+    }
 }

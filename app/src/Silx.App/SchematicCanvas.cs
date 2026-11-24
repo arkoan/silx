@@ -62,6 +62,30 @@ public sealed class SchematicCanvas : Control
     Tool _tool = Tool.Select;
     readonly Stack<(Schematic S, List<List<Wire>> Calques)> _undo = new(), _redo = new();
     double _zoom = 2.6; Point _pan = new(60, -60);
+    GridPoint? _filDepuisBroche, _brocheSurvol;
+    /// <summary>Broche (point de grille) sous le pointeur, à 0,35 pas près.</summary>
+    GridPoint? BrocheSous(Point pos)
+    {
+        double tol = Grid * _zoom * 0.35;
+        foreach (var c in AllComponents.Where(c => c.IsElectrical))
+            foreach (var p in c.Pins)
+            {
+                var sp = ToScreen(p);
+                if (Math.Abs(sp.X - pos.X) <= tol && Math.Abs(sp.Y - pos.Y) <= tol) return p;
+            }
+        return null;
+    }
+
+    /// <summary>Trace un fil en L (horizontal puis vertical) de a à b dans le schéma édité ; renvoie les segments ajoutés.</summary>
+    public List<Wire> TracerFil(GridPoint a, GridPoint b)
+    {
+        var segs = new List<Wire>();
+        if (a.X != b.X && a.Y != b.Y) { var m = new GridPoint(b.X, a.Y); segs.Add(new(a, m)); segs.Add(new(m, b)); }
+        else if (!a.Equals(b)) segs.Add(new(a, b));
+        if (segs.Count > 0) { Commit(); Schematic.Wires.AddRange(segs); Done(); }
+        return segs;
+    }
+
     GridPoint _cursor; GridPoint? _wireStart; bool _panning; Point _panLast; bool _inside;
     PlacedComponent? _selected; Wire? _selectedWire; PlacedComponent? _dragging; GridPoint _dragOffset; bool _dragMoved;
     // Sélection multiple : composants et fils ; rectangle de sélection tracé depuis le fond.
@@ -370,6 +394,12 @@ public sealed class SchematicCanvas : Control
                 }
                 break;
             case Tool.Select:
+                // Glisser depuis une broche (du schéma édité ou du circuit dessous) : tracé d'un fil, sans changer d'outil.
+                if (!e.KeyModifiers.HasFlag(KeyModifiers.Shift) && e.ClickCount == 1 && BrocheSous(pos) is { } broche)
+                {
+                    _filDepuisBroche = broche; _wireStart = broche;
+                    break;
+                }
                 // Un composant électrique l'emporte sur une étiquette ou une masse qui le chevauche.
                 var touches = Schematic.Components.Where(c => HitTest(c, pos)).ToList();
                 var hit = touches.LastOrDefault(c => c.IsElectrical) ?? touches.LastOrDefault();
@@ -417,6 +447,12 @@ public sealed class SchematicCanvas : Control
         if (_panning) { _pan += pos - _panLast; _panLast = pos; }
         _cursor = Snap(pos);
         if (_tool == Tool.Probe) _probeNode = NodeAt(pos);
+        if (_tool == Tool.Select && _dragging == null && _boxStart == null)
+        {
+            // Broche survolée : on peut en tirer un fil (anneau et pointeur en croix).
+            var b = BrocheSous(pos);
+            if (!Nullable.Equals(b, _brocheSurvol)) { _brocheSurvol = b; Cursor = b != null ? new Cursor(StandardCursorType.Cross) : Cursor.Default; }
+        }
         if (_dragging != null && _dragOrigin != null)
         {
             var np = new GridPoint(_cursor.X - _dragOffset.X, _cursor.Y - _dragOffset.Y);
@@ -442,6 +478,19 @@ public sealed class SchematicCanvas : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         _panning = false;
+        if (_filDepuisBroche is { } fa)
+        {
+            var fb = Snap(e.GetPosition(this));
+            _filDepuisBroche = null; _wireStart = null;
+            if (!fb.Equals(fa)) TracerFil(fa, fb);
+            else
+            {
+                // Simple clic sur une broche : sélection du composant comme avant.
+                var touches = Schematic.Components.Where(c => c.Pins.Contains(fa)).ToList();
+                Select(touches.LastOrDefault(c => c.IsElectrical) ?? touches.LastOrDefault());
+            }
+            InvalidateVisual(); return;
+        }
         if (_boxStart is { } b0)
         {
             var b1 = e.GetPosition(this); _boxStart = null;
@@ -622,6 +671,8 @@ public sealed class SchematicCanvas : Control
 
         if (_inside && _tool == Tool.Place)
             DrawComponent(ctx, new PlacedComponent { Ref = Schematic.Prefix(PlaceKind) + "?", Kind = PlaceKind, Position = _cursor, Rotation = _ghostRotation, Value = "", Definition = PlaceDefinition }, Accent, 0.45);
+        if (_brocheSurvol is { } bs0 && _inside && _tool == Tool.Select && _filDepuisBroche == null)
+            ctx.DrawEllipse(null, new Pen(Accent, 1.5), ToScreen(bs0), 6, 6);
         if (_wireStart is { } s)
         {
             var dash = new Pen(WireBrush, lw, new DashStyle([4, 3], 0));
