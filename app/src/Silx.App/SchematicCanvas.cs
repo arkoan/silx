@@ -5,7 +5,7 @@ using Avalonia.Media;
 using Silx.Etude;
 namespace Silx.App;
 
-public enum Tool { Select, Wire, Place, ZoomWindow }
+public enum Tool { Select, Wire, Place, ZoomWindow, Probe }
 
 /// <summary>Canevas de schéma : grille, snap, zoom/pan, placement avec aperçu, fils, rotation, suppression, undo/redo.</summary>
 public sealed class SchematicCanvas : Control
@@ -23,6 +23,9 @@ public sealed class SchematicCanvas : Control
     public event Action? Changed;
     public event Action? SelectionChanged;
     public event Action? ToolChanged;
+    /// <summary>Sonde posée : nom du nœud (équipotentiel) cliqué.</summary>
+    public event Action<string>? Probed;
+    string? _probeNode;
 
     Tool _tool = Tool.Select;
     readonly Stack<Schematic> _undo = new(), _redo = new();
@@ -47,6 +50,25 @@ public sealed class SchematicCanvas : Control
         Schematic = s; _underlay = underlay; _undo.Clear(); _redo.Clear(); _wireStart = null; Select(null); Changed?.Invoke(); InvalidateVisual();
     }
     public bool IsLayer => _underlay != null;
+
+    public Point ScreenOf(GridPoint p) => ToScreen(p);
+    Schematic Merged() => new() { Components = AllComponents.ToList(), Wires = AllWires.ToList() };
+
+    /// <summary>Nœud sous le pointeur : broche (à 0,6 pas près) ou fil.</summary>
+    public string? NodeAt(Point pos)
+    {
+        var m = Merged(); var conn = Connectivity.Build(m);
+        var d = Grid * _zoom * 0.6;
+        foreach (var c in m.Components.Where(c => c.IsElectrical || c.Kind == ComponentKind.Label))
+            foreach (var p in c.Pins)
+            {
+                var sp = ToScreen(p);
+                if (Math.Abs(sp.X - pos.X) < d && Math.Abs(sp.Y - pos.Y) < d && conn.NodeOf.TryGetValue(p, out var n)) return n;
+            }
+        foreach (var w in m.Wires)
+            if (HitWire(w, pos) && conn.NodeOf.TryGetValue(w.A, out var n)) return n;
+        return null;
+    }
 
     // ---- loupes ----
     public void ZoomBy(double f) => ZoomAt(new Point(Bounds.Width / 2, Bounds.Height / 2), f);
@@ -128,6 +150,9 @@ public sealed class SchematicCanvas : Control
         }
         switch (_tool)
         {
+            case Tool.Probe:
+                if (NodeAt(pos) is { } node && node != "0") Probed?.Invoke(node);
+                break;
             case Tool.ZoomWindow:
                 _zoomStart = pos; break;
             case Tool.Wire:
@@ -174,6 +199,7 @@ public sealed class SchematicCanvas : Control
         var pos = e.GetPosition(this); _inside = true; _lastPos = pos;
         if (_panning) { _pan += pos - _panLast; _panLast = pos; }
         _cursor = Snap(pos);
+        if (_tool == Tool.Probe) _probeNode = NodeAt(pos);
         if (_dragging != null)
         {
             var np = new GridPoint(_cursor.X - _dragOffset.X, _cursor.Y - _dragOffset.Y);
@@ -213,6 +239,7 @@ public sealed class SchematicCanvas : Control
         else if (e.Key is Key.Delete or Key.Back) DeleteSelected();
         else if (e.Key == Key.Escape) { if (_wireStart != null) _wireStart = null; else Tool = Tool.Select; }
         else if (e.Key == Key.W) Tool = Tool.Wire;
+        else if (e.Key == Key.P) Tool = Tool.Probe;
         else if (e.Key is Key.OemPlus or Key.Add) ZoomBy(1.25);
         else if (e.Key is Key.OemMinus or Key.Subtract) ZoomBy(1 / 1.25);
         else if (e.Key is Key.D0 or Key.NumPad0 or Key.F) FitAll();
@@ -284,7 +311,28 @@ public sealed class SchematicCanvas : Control
             if (n >= 3) ctx.DrawEllipse(layer ? BenchBrush : WireBrush, null, ToScreen(p), 3.2 * _zoom / 2 + 1, 3.2 * _zoom / 2 + 1);
         }
 
+        if (_tool == Tool.Probe && _probeNode is { } pn && pn != "0" && _inside)
+        {
+            // Équipotentiel survolé : fils et broches surlignés.
+            var conn = Connectivity.Build(Merged());
+            var hi = new Pen(new SolidColorBrush(Color.Parse("#f59e0b"), 0.55), lw + 6) { LineCap = PenLineCap.Round };
+            foreach (var w in AllWires.Where(w => conn.NodeOf.TryGetValue(w.A, out var n) && n == pn)) ctx.DrawLine(hi, ToScreen(w.A), ToScreen(w.B));
+            foreach (var p in AllComponents.SelectMany(c => c.Pins).Where(p => conn.NodeOf.TryGetValue(p, out var n) && n == pn))
+                ctx.DrawEllipse(new SolidColorBrush(Color.Parse("#f59e0b"), 0.7), null, ToScreen(p), 6, 6);
+        }
         foreach (var c in Schematic.Components) DrawComponent(ctx, c, c == _selected ? Accent : layer ? BenchBrush : c.Kind == ComponentKind.Label ? LabelBrush : Ink, 1);
+        if (_tool == Tool.Probe && _inside)
+        {
+            // Pointe de sonde + nom du nœud visé.
+            var c0 = _lastPos; var tip = new Pen(new SolidColorBrush(Color.Parse("#b45309")), 2);
+            ctx.DrawLine(tip, c0, new Point(c0.X + 10, c0.Y - 10)); ctx.DrawLine(new Pen(new SolidColorBrush(Color.Parse("#b45309")), 5), new Point(c0.X + 10, c0.Y - 10), new Point(c0.X + 20, c0.Y - 20));
+            if (_probeNode is { } pn2)
+            {
+                var t = new FormattedText(pn2 == "0" ? "masse" : $"V({pn2})", System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, Brushes.White);
+                var r = new Rect(c0.X + 22, c0.Y - 34, t.Width + 10, t.Height + 4);
+                ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#b45309")), null, r, 3, 3); ctx.DrawText(t, new Point(r.X + 5, r.Y + 2));
+            }
+        }
         if (Caption.Length > 0)
         {
             var t = new FormattedText(Caption, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default), 12, layer ? BenchBrush : Muted);
@@ -307,7 +355,7 @@ public sealed class SchematicCanvas : Control
             var r = new Rect(zs, _lastPos).Normalize();
             ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#2563eb"), 0.08), new Pen(Accent, 1, new DashStyle([4, 3], 0)), r);
         }
-        if (_inside && _tool != Tool.Select && _tool != Tool.ZoomWindow)
+        if (_inside && _tool is Tool.Wire or Tool.Place)
         {
             var c = ToScreen(_cursor); var pen = new Pen(Accent, 1);
             ctx.DrawLine(pen, new(c.X - 6, c.Y), new(c.X + 6, c.Y)); ctx.DrawLine(pen, new(c.X, c.Y - 6), new(c.X, c.Y + 6));

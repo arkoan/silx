@@ -165,4 +165,32 @@ public class UiTests
         Assert.Equal(1, lim.Left, 0.1); Assert.Equal(4, lim.Right, 0.1);
         Shot(w, "11-zoom-fenetre.png");
     }
+
+    /// <summary>Sonde : un second graphique, puis clic sur le nœud IN du schéma → V(IN) y est tracée.</summary>
+    [AvaloniaFact]
+    public async Task Sonde_ajoute_un_equipotentiel_dans_un_nouveau_graphique()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        w.SignauxGraphiques[0].ToList().ForEach(_ => { });
+        Assert.Single(w.SignauxGraphiques);
+        await w.SimulateAsync();
+        w.AjouterGraphique();
+        Assert.Equal(Silx.App.Tool.Probe, w.Canevas.Tool);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        // Milieu du fil R1–C1 (nœud OUT) puis broche gauche de R1 (nœud IN).
+        foreach (var g in new[] { new Silx.Etude.GridPoint(4, 8) })
+        {
+            var pt = w.Canevas.TranslatePoint(w.Canevas.ScreenOf(g), w)!.Value;
+            w.MouseMove(pt); Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Shot(w, "12-sonde-survol.png");
+            w.MouseDown(pt, Avalonia.Input.MouseButton.Left); w.MouseUp(pt, Avalonia.Input.MouseButton.Left);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+        Assert.Equal(2, w.SignauxGraphiques.Count);
+        Assert.Equal(["IN"], w.SignauxGraphiques[1]);
+        w.Canevas.Tool = Silx.App.Tool.Select;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Shot(w, "13-deux-graphiques.png");
+    }
 }

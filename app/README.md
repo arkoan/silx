@@ -8,7 +8,7 @@
 ```bash
 brew install ngspice                      # moteur de simulation
 dotnet run --project src/Silx.App         # .NET 10 requis
-dotnet test                               # 23 tests, dont simulations ngspice réelles
+dotnet test                               # 24 tests, dont simulations ngspice réelles
 ```
 
 ngspice est cherché dans `SILX_NGSPICE`, puis `/opt/homebrew/bin`, `/usr/local/bin`, puis le PATH.
@@ -44,6 +44,13 @@ sélectionné ; le circuit reste visible dessous, atténué et verrouillé. Une 
 En mode Test, choisir le signal, cliquer « Limite haute » ou « Limite basse », poser les points de gauche à droite sur le graphique,
 puis double-clic ou Entrée (Échap annule). Pour modifier un gabarit, survoler un point (il grossit) et le glisser : la marge est recalculée en direct. Le gabarit est évalué aussitôt sur les résultats déjà simulés : verdict, et marge
 (plus petite distance verticale à la limite) avec le point où elle est atteinte. Calcul dans `mesures/` (`GabaritGraphique`).
+
+## Sondes et graphiques empilés
+
+Chaque banc a une pile de graphiques ; chacun affiche les tensions sondées (pastilles colorées, retirables).
+Outil sonde (P) : survoler le schéma surligne l'équipotentiel et affiche son nom ; un clic ajoute sa tension au graphique
+actif (bordure bleue). L'icône « ajouter un graphique » crée un graphique vide et active la sonde. Gabarits et curseurs
+s'affichent sur les graphiques qui contiennent leur signal.
 
 ## Loupes et curseurs
 

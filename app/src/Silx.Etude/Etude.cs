@@ -64,6 +64,8 @@ public sealed class Banc
     public ReglagesAc Ac { get; } = new();
     public List<CritereGabarit> Gabarits { get; } = new();
     public List<GabaritTrace> GabaritsTraces { get; } = new();
+    /// <summary>Graphiques empilés : pour chacun, les nœuds sondés (tension par rapport à la masse).</summary>
+    public List<List<string>> Graphiques { get; } = new();
 
     /// <summary>Schéma simulé : circuit sous test + éléments du banc.</summary>
     public Schematic Fusion(Schematic circuit) => new()
