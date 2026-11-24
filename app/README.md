@@ -8,7 +8,7 @@
 ```bash
 brew install ngspice                      # moteur de simulation
 dotnet run --project src/Silx.App         # .NET 10 requis
-dotnet test                               # 24 tests, dont simulations ngspice réelles
+dotnet test                               # 25 tests, dont simulations ngspice réelles
 ```
 
 ngspice est cherché dans `SILX_NGSPICE`, puis `/opt/homebrew/bin`, `/usr/local/bin`, puis le PATH.
@@ -56,7 +56,7 @@ s'affichent sur les graphiques qui contiennent leur signal.
 
 Schéma (barre du haut) et courbes (barre des courbes) : zoom +, zoom −, tout voir, zoom sur une fenêtre (tracer un rectangle).
 Curseurs : activer l'icône curseurs, choisir le signal, cliquer pour poser A puis B (deux par courbe) ; ils suivent la courbe
-et se glissent. Le tableau en bas à droite donne t/f et la valeur en A et B, et B−A (Δt, ΔV, 1/Δt ; en Bode rapport de fréquences et pente dB/déc).
+et se glissent. Le tableau en bas à droite donne t/f et la valeur en A et B, et B−A (Δt, ΔV, 1/Δt ; en Bode : gain, phase, rapport de fréquences, Δφ et pente dB/déc).
 
 ## Raccourcis
 

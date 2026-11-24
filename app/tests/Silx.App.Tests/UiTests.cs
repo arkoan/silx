@@ -193,4 +193,33 @@ public class UiTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Shot(w, "13-deux-graphiques.png");
     }
+
+    /// <summary>Bode : un curseur à fc lit la phase −45° (RC passe-bas), le tableau affiche la phase.</summary>
+    [AvaloniaFact]
+    public async Task Curseur_bode_donne_la_phase()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        w.SelectBanc(w.EtudeCourante.Bancs[1]);
+        await w.SimulateAsync();
+        w.SetModeTest(false);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var plot = w.PlotControl;
+        Point Ecran(double f, double db)
+        {
+            var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(Math.Log10(f), db));
+            return plot.TranslatePoint(new Point(px.X / plot.DisplayScale, px.Y / plot.DisplayScale), w)!.Value;
+        }
+        w.SetCursorMode(true);
+        foreach (var f in new[] { 161.0, 16100.0 })
+        {
+            w.MouseDown(Ecran(f, -20), Avalonia.Input.MouseButton.Left); w.MouseUp(Ecran(f, -20), Avalonia.Input.MouseButton.Left);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+        var a = w.Curseurs.Single(c => c.Nom == 'A');
+        // RC passe-bas chargé (1 kΩ ∥ 100 kΩ, 1 µF) : φ = −atan(f / fc), fc ≈ 160,8 Hz.
+        foreach (var c in w.Curseurs)
+            Assert.Equal(-Math.Atan(c.X / 160.8) * 180 / Math.PI, w.PhaseCurseur(c)!.Value, 1.0);
+        Assert.InRange(w.PhaseCurseur(w.Curseurs.Single(c => c.Nom == 'B'))!.Value, -91, -85);
+        Shot(w, "14-curseurs-bode-phase.png");
+    }
 }

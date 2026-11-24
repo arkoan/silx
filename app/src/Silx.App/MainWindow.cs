@@ -67,6 +67,7 @@ public sealed class MainWindow : Window
     public void SetCursorMode(bool on) { _cursorMode = on; _zoomMode = false; RefreshPlotToolbar(); }
     public void SetZoomWindowMode(bool on) { _zoomMode = on; _cursorMode = false; RefreshPlotToolbar(); }
     public Control Readout => _readout;
+    public double? PhaseCurseur(Curseur c) => PhaseAt(c.Noeud, c.X);
     readonly TextBlock _drawHint = new() { FontSize = 12, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center };
     GabaritTrace? _drawing;
     (double X, double Y)? _hover;
@@ -693,6 +694,20 @@ public sealed class MainWindow : Window
         return ys[i - 1] + t * (ys[i] - ys[i - 1]);
     }
 
+    /// <summary>Phase (degrés, déroulée depuis la plus basse fréquence) de V(nœud) en f, interpolée en log f.</summary>
+    double? PhaseAt(string noeud, double f)
+    {
+        if (_last == null || Shown != AnalyseKind.Ac || !_last.Resultats.TryGetValue(AnalyseKind.Ac, out var raw)) return null;
+        if (!raw.Variables.Any(v => string.Equals(v.Name, $"v({noeud})", StringComparison.OrdinalIgnoreCase))) return null;
+        var r = Verification.Frequentielle(raw, $"v({noeud})");
+        var fs = r.Frequences.ToArray(); var ph = Unwrap(r.Valeurs.ToArray().Select(z => z.Phase * 180 / Math.PI).ToArray());
+        if (f <= fs[0]) return ph[0];
+        if (f >= fs[^1]) return ph[^1];
+        int i = Array.BinarySearch(fs, f); if (i >= 0) return ph[i];
+        i = ~i; double t = Math.Log(f / fs[i - 1]) / Math.Log(fs[i] / fs[i - 1]);
+        return ph[i - 1] + t * (ph[i] - ph[i - 1]);
+    }
+
     /// <summary>Curseur dont la ligne verticale passe sous le pointeur (à 6 px près).</summary>
     Curseur? CursorAt(Point pos)
     {
@@ -713,7 +728,7 @@ public sealed class MainWindow : Window
         if (!_readout.IsVisible) return;
         bool ac = Shown == AnalyseKind.Ac;
         string ux = ac ? "Hz" : "s", uy = ac ? "dB" : "V";
-        var g = new Grid { ColumnDefinitions = new("Auto,14,Auto,14,Auto,14,Auto") };
+        var g = new Grid { ColumnDefinitions = new("Auto,14,Auto,14,Auto,14,Auto,14,Auto") };
         int row = 0;
         void Cell(string t, int col, IBrush? b = null, bool bold = false, bool right = true)
         {
@@ -721,7 +736,7 @@ public sealed class MainWindow : Window
             Grid.SetRow(tb, row); Grid.SetColumn(tb, col); g.Children.Add(tb);
         }
         void NewRow() { g.RowDefinitions.Add(new RowDefinition(GridLength.Auto)); }
-        NewRow(); Cell("", 0); Cell(ac ? "f" : "t", 2, Ui.Muted); Cell(ac ? "gain" : "tension", 4, Ui.Muted); Cell(ac ? "" : "1/Δt", 6, Ui.Muted); row++;
+        NewRow(); Cell("", 0); Cell(ac ? "f" : "t", 2, Ui.Muted); Cell(ac ? "gain" : "tension", 4, Ui.Muted); Cell(ac ? "phase" : "1/Δt", 6, Ui.Muted); if (ac) Cell("pente", 8, Ui.Muted); row++;
         foreach (var grp in bySignal)
         {
             var col = colorOf(grp.Key); var brush = new SolidColorBrush(Color.FromArgb(255, col.R, col.G, col.B));
@@ -729,7 +744,9 @@ public sealed class MainWindow : Window
             foreach (var c in grp.OrderBy(c => c.Nom))
             {
                 NewRow(); Cell($"  {c.Nom}", 0, brush, right: false); Cell(SpiceNumber.Format(c.X, ux), 2);
-                Cell(CurveAt(c.Noeud, c.X) is { } y ? SpiceNumber.Format(y, uy) : "—", 4); row++;
+                Cell(CurveAt(c.Noeud, c.X) is { } y ? SpiceNumber.Format(y, uy) : "—", 4);
+                if (ac) Cell(PhaseAt(c.Noeud, c.X) is { } ph ? $"{ph:0.0}°".Replace('.', ',') : "—", 6);
+                row++;
             }
             var ab = grp.OrderBy(c => c.Nom).ToList();
             if (ab.Count == 2 && CurveAt(ab[0].Noeud, ab[0].X) is { } ya && CurveAt(ab[1].Noeud, ab[1].X) is { } yb)
@@ -738,7 +755,12 @@ public sealed class MainWindow : Window
                 NewRow(); Cell("  Δ B−A", 0, Ui.AccentBrush, bold: true, right: false);
                 Cell(ac ? $"×{ab[1].X / ab[0].X:0.###}" : SpiceNumber.Format(dx, ux), 2, Ui.AccentBrush, bold: true);
                 Cell(SpiceNumber.Format(dy, uy), 4, Ui.AccentBrush, bold: true);
-                Cell(ac ? (Math.Abs(Math.Log10(ab[1].X / ab[0].X)) > 1e-9 ? $"{dy / Math.Log10(ab[1].X / ab[0].X):0.#} dB/déc" : "") : Math.Abs(dx) > 0 ? SpiceNumber.Format(1 / Math.Abs(dx), "Hz") : "—", 6, Ui.AccentBrush, bold: true);
+                if (ac)
+                {
+                    if (PhaseAt(ab[0].Noeud, ab[0].X) is { } pa && PhaseAt(ab[1].Noeud, ab[1].X) is { } pb) Cell($"{pb - pa:+0.0;-0.0;0}°".Replace('.', ','), 6, Ui.AccentBrush, bold: true);
+                    Cell(Math.Abs(Math.Log10(ab[1].X / ab[0].X)) > 1e-9 ? $"{dy / Math.Log10(ab[1].X / ab[0].X):0.#} dB/déc".Replace('.', ',') : "", 8, Ui.AccentBrush, bold: true);
+                }
+                else Cell(Math.Abs(dx) > 0 ? SpiceNumber.Format(1 / Math.Abs(dx), "Hz") : "—", 6, Ui.AccentBrush, bold: true);
                 row++;
             }
         }
