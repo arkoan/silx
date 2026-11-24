@@ -1,0 +1,559 @@
+{
+  "machine": {
+    "os": "Ubuntu 24.04.5 LTS",
+    "arch": "X64",
+    "coeurs_logiques": 4,
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "memoire_go": 10.8,
+    "dotnet": ".NET 10.0.15",
+    "ngspice": "ngspice-42",
+    "date": "2026-11-24 20:33",
+    "mode": "complet"
+  },
+  "taille": [
+    {
+      "famille": "rc",
+      "taille": 1,
+      "points": 526,
+      "run_ms": 9.5782,
+      "analyse_ms": 2,
+      "fixe_ms": 7.578200000000001,
+      "memoire_mo": null
+    },
+    {
+      "famille": "echelle_rc",
+      "taille": 10,
+      "points": 2044,
+      "run_ms": 16.1949,
+      "analyse_ms": 7,
+      "fixe_ms": 9.1949,
+      "memoire_mo": 12.705792
+    },
+    {
+      "famille": "echelle_rc",
+      "taille": 100,
+      "points": 2050,
+      "run_ms": 33.5536,
+      "analyse_ms": 25,
+      "fixe_ms": 8.553600000000003,
+      "memoire_mo": 12.873728
+    },
+    {
+      "famille": "echelle_rc",
+      "taille": 1000,
+      "points": 2050,
+      "run_ms": 238.2587,
+      "analyse_ms": 216,
+      "fixe_ms": 22.258700000000005,
+      "memoire_mo": 14.708736
+    },
+    {
+      "famille": "echelle_rc",
+      "taille": 5000,
+      "points": 2050,
+      "run_ms": 2165.3697,
+      "analyse_ms": 2089,
+      "fixe_ms": 76.3697000000002,
+      "memoire_mo": 22.900736
+    },
+    {
+      "famille": "echelle_rc",
+      "taille": 20000,
+      "points": 2050,
+      "run_ms": 12443.6319,
+      "analyse_ms": 12261,
+      "fixe_ms": 182.63190000000031,
+      "memoire_mo": 53.239808
+    },
+    {
+      "famille": "bjt",
+      "taille": 1,
+      "points": 1008,
+      "run_ms": 9.2138,
+      "analyse_ms": 3,
+      "fixe_ms": 6.213800000000001,
+      "memoire_mo": null
+    },
+    {
+      "famille": "bjt",
+      "taille": 10,
+      "points": 1008,
+      "run_ms": 15.662,
+      "analyse_ms": 9,
+      "fixe_ms": 6.662000000000001,
+      "memoire_mo": 12.992512
+    },
+    {
+      "famille": "bjt",
+      "taille": 50,
+      "points": 1008,
+      "run_ms": 55.0821,
+      "analyse_ms": 46,
+      "fixe_ms": 9.082099999999997,
+      "memoire_mo": 13.238272
+    },
+    {
+      "famille": "bjt",
+      "taille": 200,
+      "points": 1008,
+      "run_ms": 204.8712,
+      "analyse_ms": 192,
+      "fixe_ms": 12.871199999999988,
+      "memoire_mo": 14.82752
+    },
+    {
+      "famille": "cmos",
+      "taille": 10,
+      "points": 2125,
+      "run_ms": 115.2805,
+      "analyse_ms": 105,
+      "fixe_ms": 10.280500000000004,
+      "memoire_mo": 13.156352
+    },
+    {
+      "famille": "cmos",
+      "taille": 50,
+      "points": 2125,
+      "run_ms": 611.399,
+      "analyse_ms": 603,
+      "fixe_ms": 8.399000000000001,
+      "memoire_mo": 13.7216
+    },
+    {
+      "famille": "cmos",
+      "taille": 200,
+      "points": 2125,
+      "run_ms": 2241.5408,
+      "analyse_ms": 2227,
+      "fixe_ms": 14.540800000000218,
+      "memoire_mo": 15.691776
+    },
+    {
+      "famille": "cmos",
+      "taille": 500,
+      "points": 2125,
+      "run_ms": 6234.1258,
+      "analyse_ms": 6203,
+      "fixe_ms": 31.1257999999998,
+      "memoire_mo": 19.587072
+    },
+    {
+      "famille": "xspice",
+      "taille": 4,
+      "points": 26237,
+      "run_ms": 83.9512,
+      "analyse_ms": 75,
+      "fixe_ms": 8.9512,
+      "memoire_mo": 12.939264
+    },
+    {
+      "famille": "xspice",
+      "taille": 16,
+      "points": 26454,
+      "run_ms": 190.2117,
+      "analyse_ms": 179,
+      "fixe_ms": 11.211700000000008,
+      "memoire_mo": 13.2096
+    },
+    {
+      "famille": "xspice",
+      "taille": 64,
+      "points": 26454,
+      "run_ms": 591.7672,
+      "analyse_ms": 580,
+      "fixe_ms": 11.767200000000003,
+      "memoire_mo": 13.570048
+    },
+    {
+      "famille": "xspice",
+      "taille": 256,
+      "points": 26454,
+      "run_ms": 2136.159,
+      "analyse_ms": 2108,
+      "fixe_ms": 28.159000000000106,
+      "memoire_mo": 15.507456
+    }
+  ],
+  "threads": [
+    {
+      "famille": "rc",
+      "taille": 1,
+      "lot": 1074,
+      "parallelisme": 1,
+      "duree_s": 7.9399824,
+      "debit": 135.26478345846206,
+      "acceleration": 1,
+      "cpu_coeurs": 0.7885619494572195,
+      "p50_ms": 5.9436,
+      "p95_ms": 8.4553,
+      "echecs": 0
+    },
+    {
+      "famille": "rc",
+      "taille": 1,
+      "lot": 1074,
+      "parallelisme": 2,
+      "duree_s": 4.0348968,
+      "debit": 266.17781153659246,
+      "acceleration": 1.9678278760438186,
+      "cpu_coeurs": 1.5911983176372657,
+      "p50_ms": 5.9349,
+      "p95_ms": 8.5225,
+      "echecs": 0
+    },
+    {
+      "famille": "rc",
+      "taille": 1,
+      "lot": 1074,
+      "parallelisme": 4,
+      "duree_s": 2.2917146,
+      "debit": 468.64474311068227,
+      "acceleration": 3.4646471249081365,
+      "cpu_coeurs": 2.5954854936997864,
+      "p50_ms": 6.5341,
+      "p95_ms": 11.4391,
+      "echecs": 0
+    },
+    {
+      "famille": "rc",
+      "taille": 1,
+      "lot": 1074,
+      "parallelisme": 8,
+      "duree_s": 2.0400763,
+      "debit": 526.4508979394545,
+      "acceleration": 3.892002666763003,
+      "cpu_coeurs": 3.098175788817304,
+      "p50_ms": 12.7905,
+      "p95_ms": 20.6092,
+      "echecs": 0
+    },
+    {
+      "famille": "echelle_rc",
+      "taille": 1000,
+      "lot": 36,
+      "parallelisme": 1,
+      "duree_s": 8.1372856,
+      "debit": 4.4240796955682615,
+      "acceleration": 1,
+      "cpu_coeurs": 0.9670044025491763,
+      "p50_ms": 218.2143,
+      "p95_ms": 246.6932,
+      "echecs": 0
+    },
+    {
+      "famille": "echelle_rc",
+      "taille": 1000,
+      "lot": 36,
+      "parallelisme": 2,
+      "duree_s": 4.0717375,
+      "debit": 8.84143439993369,
+      "acceleration": 1.9984799118312515,
+      "cpu_coeurs": 1.944985402423417,
+      "p50_ms": 219.5907,
+      "p95_ms": 260.641,
+      "echecs": 0
+    },
+    {
+      "famille": "echelle_rc",
+      "taille": 1000,
+      "lot": 36,
+      "parallelisme": 4,
+      "duree_s": 2.0822233,
+      "debit": 17.28921196876435,
+      "acceleration": 3.907979321910383,
+      "cpu_coeurs": 3.7972608413324225,
+      "p50_ms": 217.3648,
+      "p95_ms": 265.4545,
+      "echecs": 0
+    },
+    {
+      "famille": "echelle_rc",
+      "taille": 1000,
+      "lot": 36,
+      "parallelisme": 8,
+      "duree_s": 2.1062801,
+      "debit": 17.091743875850128,
+      "acceleration": 3.863344481106762,
+      "cpu_coeurs": 3.7512617623838467,
+      "p50_ms": 446.9679,
+      "p95_ms": 693.8642,
+      "echecs": 0
+    },
+    {
+      "famille": "bjt",
+      "taille": 10,
+      "lot": 338,
+      "parallelisme": 1,
+      "duree_s": 5.7389249,
+      "debit": 58.8960486309901,
+      "acceleration": 1,
+      "cpu_coeurs": 0.8996054295814186,
+      "p50_ms": 15.0811,
+      "p95_ms": 22.5707,
+      "echecs": 0
+    },
+    {
+      "famille": "bjt",
+      "taille": 10,
+      "lot": 338,
+      "parallelisme": 2,
+      "duree_s": 3.0251166,
+      "debit": 111.73123045901768,
+      "acceleration": 1.8970921319198077,
+      "cpu_coeurs": 1.7772091826146434,
+      "p50_ms": 15.493,
+      "p95_ms": 22.1943,
+      "echecs": 0
+    },
+    {
+      "famille": "bjt",
+      "taille": 10,
+      "lot": 338,
+      "parallelisme": 4,
+      "duree_s": 1.7821562,
+      "debit": 189.65789867352817,
+      "acceleration": 3.220214311181029,
+      "cpu_coeurs": 3.0590573373983716,
+      "p50_ms": 18.8443,
+      "p95_ms": 29.2364,
+      "echecs": 0
+    },
+    {
+      "famille": "bjt",
+      "taille": 10,
+      "lot": 338,
+      "parallelisme": 8,
+      "duree_s": 1.5650384,
+      "debit": 215.9691417156282,
+      "acceleration": 3.6669546894184837,
+      "cpu_coeurs": 3.4147289932311042,
+      "p50_ms": 33.3674,
+      "p95_ms": 54.5438,
+      "echecs": 0
+    },
+    {
+      "famille": "cmos",
+      "taille": 50,
+      "lot": 16,
+      "parallelisme": 1,
+      "duree_s": 9.0462628,
+      "debit": 1.7686861805518188,
+      "acceleration": 1,
+      "cpu_coeurs": 0.9879243172108578,
+      "p50_ms": 539.661,
+      "p95_ms": 704.6,
+      "echecs": 0
+    },
+    {
+      "famille": "cmos",
+      "taille": 50,
+      "lot": 16,
+      "parallelisme": 2,
+      "duree_s": 4.4974551,
+      "debit": 3.5575674785502587,
+      "acceleration": 2.0114181462311875,
+      "cpu_coeurs": 1.949906514908845,
+      "p50_ms": 538.5562,
+      "p95_ms": 621.1712,
+      "echecs": 0
+    },
+    {
+      "famille": "cmos",
+      "taille": 50,
+      "lot": 16,
+      "parallelisme": 4,
+      "duree_s": 2.2664748,
+      "debit": 7.059421088643915,
+      "acceleration": 3.991336148983434,
+      "cpu_coeurs": 3.88710256121092,
+      "p50_ms": 547.9533,
+      "p95_ms": 630.0644,
+      "echecs": 0
+    },
+    {
+      "famille": "cmos",
+      "taille": 50,
+      "lot": 16,
+      "parallelisme": 8,
+      "duree_s": 2.2377322,
+      "debit": 7.150095976632056,
+      "acceleration": 4.0426029531147645,
+      "cpu_coeurs": 3.869065744328113,
+      "p50_ms": 1055.7166,
+      "p95_ms": 1184.6805,
+      "echecs": 0
+    },
+    {
+      "famille": "xspice",
+      "taille": 16,
+      "lot": 45,
+      "parallelisme": 1,
+      "duree_s": 8.3368541,
+      "debit": 5.397719506690179,
+      "acceleration": 1,
+      "cpu_coeurs": 0.976775880004908,
+      "p50_ms": 180.3237,
+      "p95_ms": 208.4638,
+      "echecs": 0
+    },
+    {
+      "famille": "xspice",
+      "taille": 16,
+      "lot": 45,
+      "parallelisme": 2,
+      "duree_s": 4.3542577,
+      "debit": 10.334712160008353,
+      "acceleration": 1.9146441654107889,
+      "cpu_coeurs": 1.9188772405455026,
+      "p50_ms": 180.3471,
+      "p95_ms": 234.6384,
+      "echecs": 0
+    },
+    {
+      "famille": "xspice",
+      "taille": 16,
+      "lot": 45,
+      "parallelisme": 4,
+      "duree_s": 2.1872314,
+      "debit": 20.573954817949303,
+      "acceleration": 3.811601323938565,
+      "cpu_coeurs": 3.7010633625687537,
+      "p50_ms": 180.5889,
+      "p95_ms": 211.6302,
+      "echecs": 0
+    },
+    {
+      "famille": "xspice",
+      "taille": 16,
+      "lot": 45,
+      "parallelisme": 8,
+      "duree_s": 2.0439479,
+      "debit": 22.016216753861485,
+      "acceleration": 4.07879970913153,
+      "cpu_coeurs": 3.8810681035461156,
+      "p50_ms": 351.5068,
+      "p95_ms": 500.79,
+      "echecs": 0
+    }
+  ],
+  "openmp": [
+    {
+      "taille": 200,
+      "threads_openmp": 4,
+      "auto": true,
+      "parallelisme": 1,
+      "lot": 3,
+      "duree_s": 3.2630507,
+      "debit": 0.9193850405082581,
+      "p50_ms": 1085.8434,
+      "cpu_coeurs": 3.9445167064060573
+    },
+    {
+      "taille": 200,
+      "threads_openmp": 1,
+      "auto": false,
+      "parallelisme": 1,
+      "lot": 3,
+      "duree_s": 6.5242151,
+      "debit": 0.45982542788940234,
+      "p50_ms": 2144.0556,
+      "cpu_coeurs": 0.9908416416252157
+    },
+    {
+      "taille": 200,
+      "threads_openmp": 2,
+      "auto": false,
+      "parallelisme": 1,
+      "lot": 3,
+      "duree_s": 5.0797951,
+      "debit": 0.5905750017357984,
+      "p50_ms": 1679.2017,
+      "cpu_coeurs": 1.978973325124852
+    },
+    {
+      "taille": 200,
+      "threads_openmp": 4,
+      "auto": false,
+      "parallelisme": 1,
+      "lot": 3,
+      "duree_s": 3.3829085,
+      "debit": 0.8868108611273405,
+      "p50_ms": 1135.107,
+      "cpu_coeurs": 3.919915067167796
+    },
+    {
+      "taille": 200,
+      "threads_openmp": 1,
+      "auto": true,
+      "parallelisme": 4,
+      "lot": 8,
+      "duree_s": 4.5289376,
+      "debit": 1.7664186850355368,
+      "p50_ms": 2128.5703,
+      "cpu_coeurs": 3.792996838817134
+    },
+    {
+      "taille": 200,
+      "threads_openmp": 1,
+      "auto": false,
+      "parallelisme": 4,
+      "lot": 8,
+      "duree_s": 4.4055782,
+      "debit": 1.8158796954279464,
+      "p50_ms": 2163.7909,
+      "cpu_coeurs": 3.9502637814940895
+    },
+    {
+      "taille": 200,
+      "threads_openmp": 2,
+      "auto": false,
+      "parallelisme": 4,
+      "lot": 8,
+      "duree_s": 4.6332383,
+      "debit": 1.726654120078391,
+      "p50_ms": 2236.6069,
+      "cpu_coeurs": 3.8696026060218065
+    },
+    {
+      "taille": 200,
+      "threads_openmp": 4,
+      "auto": false,
+      "parallelisme": 4,
+      "lot": 8,
+      "duree_s": 4.7796777,
+      "debit": 1.673753023137941,
+      "p50_ms": 2302.8531,
+      "cpu_coeurs": 3.8395714422334306
+    }
+  ],
+  "campagne": [
+    {
+      "cas": "RC court, 1 vecteur, 500 pts",
+      "runs": 2000,
+      "parallelisme": 4,
+      "duree_s": 3.9377856,
+      "debit": 507.8996682805686,
+      "surcout": 0.12516480074486785,
+      "memoire_mo": 20.933896,
+      "echecs": 0
+    },
+    {
+      "cas": "\u00C9chelle RC 100, tous les vecteurs, 2000 pts",
+      "runs": 200,
+      "parallelisme": 4,
+      "duree_s": 2.0465128,
+      "debit": 97.7272167562304,
+      "surcout": 0.12958470135148928,
+      "memoire_mo": 320.163512,
+      "echecs": 0
+    }
+  ],
+  "annulation": {
+    "runs": 16,
+    "parallelisme": 4,
+    "retour_ms": 20.8604,
+    "orphelins": 0,
+    "orphelins_500ms": 0,
+    "dossiers_restants": 0
+  }
+}
