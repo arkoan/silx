@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Silx.Etude/Silx.Etude.csproj" />
+    <Project Path="src/Silx.App/Silx.App.csproj" />
+  </Folder>
+  <Folder Name="/socle/">
+    <Project Path="../socle-ngspice/src/Silx.Core/Silx.Core.csproj" />
+    <Project Path="../mesures/src/Silx.Mesures/Silx.Mesures.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Silx.App.Tests/Silx.App.Tests.csproj" />
+  </Folder>
+</Solution>
