@@ -296,4 +296,42 @@ public class UiTests
         cv.DeleteSelected();
         Assert.DoesNotContain(w.EtudeCourante.Schema.Components, c => c.Ref is "R1" or "C1");
     }
+
+    /// <summary>Plusieurs projets en onglets : chacun garde son état ; enregistrer puis rouvrir redonne le même projet.</summary>
+    [AvaloniaFact]
+    public async Task Projets_en_onglets_enregistrer_et_rouvrir()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var demo = w.ProjetActif;
+        Assert.False(demo.Modifie);
+        await w.SimulateAsync();
+        var vide = w.NouveauProjet();
+        Assert.Equal(2, w.Projets.Count);
+        Assert.Empty(w.EtudeCourante.Schema.Components);
+        // Modifier le projet vide, revenir à la démo : chacun garde son contenu et ses résultats.
+        w.EtudeCourante.Bancs.Add(new Silx.Etude.Banc { Nom = "Banc A" });
+        Assert.True(vide.Modifie);
+        w.ActiverProjet(demo);
+        Assert.Equal(2, w.EtudeCourante.Bancs.Count);
+        Assert.NotNull(w.Resultats);                              // résultats de la démo conservés
+        Shot(w, "26-projets-onglets.png");
+        // Enregistrer la démo, la fermer, la rouvrir.
+        var dir = Directory.CreateTempSubdirectory("silx-ui-projet").FullName;
+        try
+        {
+            var chemin = Path.Combine(dir, "filtre-rc" + Silx.Etude.Projet.Extension);
+            Assert.True(w.EnregistrerSous(demo, chemin));
+            Assert.Equal("filtre-rc", demo.Nom); Assert.False(demo.Modifie);
+            w.FermerSansDemander(demo);
+            Assert.Single(w.Projets);
+            var r = w.OuvrirFichier(chemin)!;
+            Assert.Equal(2, w.Projets.Count);
+            Assert.Same(r, w.ProjetActif);
+            Assert.False(r.Modifie);
+            Assert.Equal(Silx.Etude.Projet.VersJson(demo.Etude), Silx.Etude.Projet.VersJson(r.Etude));
+            Assert.Same(r, w.OuvrirFichier(chemin));              // déjà ouvert : on revient à son onglet
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

@@ -1,3 +1,4 @@
+using Avalonia.Platform.Storage;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -79,7 +80,13 @@ public sealed class MainWindow : Window
     CancellationTokenSource? _cts;
     // Bancs de test : null = circuit sous test seul.
     Banc? _banc;
-    readonly Dictionary<Banc, ResultatEtude> _results = new();
+    Dictionary<Banc, ResultatEtude> _results = new();
+    // Projets ouverts, un onglet chacun.
+    readonly List<ProjetOuvert> _projets = new();
+    ProjetOuvert? _projet;
+    readonly StackPanel _ongletsProjets = new() { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 3, 6, 0) };
+    readonly Avalonia.Threading.DispatcherTimer _veille = new() { Interval = TimeSpan.FromSeconds(1.5) };
+    bool _fermetureConfirmee, _chargement;
     readonly StackPanel _benchBar = new() { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8, 6) };
     readonly StackPanel _benchPanel = new() { Spacing = 6 };
     readonly StackPanel _circuitPanel = new() { Spacing = 8 };
@@ -117,6 +124,8 @@ public sealed class MainWindow : Window
 
         var root = new DockPanel();
         var top = BuildToolbar(); DockPanel.SetDock(top, Dock.Top); root.Children.Add(top);
+        var onglets = new Border { Background = Ui.Window, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 0, 1), Child = new ScrollViewer { Content = _ongletsProjets, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled } };
+        DockPanel.SetDock(onglets, Dock.Top); root.Children.Add(onglets);
         _undoDelete.Click += (_, _) =>
         {
             if (_deleted is { } d) { _etude.Bancs.Insert(Math.Min(d.Index, _etude.Bancs.Count), d.B); _deleted = null; SelectBanc(d.B); _status.Text = $"Banc « {d.B.Nom} » rétabli."; }
@@ -139,9 +148,24 @@ public sealed class MainWindow : Window
         {
             if (_drawing != null && e.Key is Key.Enter or Key.Escape) { e.Handled = true; EndDrawing(e.Key == Key.Enter); return; }
             if (e.Key == Key.F5 || (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Meta))) { e.Handled = true; await SimulateAsync(); }
+            bool cmd = e.KeyModifiers.HasFlag(KeyModifiers.Meta) || e.KeyModifiers.HasFlag(KeyModifiers.Control);
+            if (cmd && e.Key == Key.N) { e.Handled = true; NouveauProjet(); }
+            else if (cmd && e.Key == Key.O) { e.Handled = true; await OuvrirProjetAsync(); }
+            else if (cmd && e.Key == Key.S) { e.Handled = true; await EnregistrerAsync(_projet!, e.KeyModifiers.HasFlag(KeyModifiers.Shift)); }
+            else if (cmd && e.Key == Key.W) { e.Handled = true; await FermerProjetAsync(_projet!); }
+        };
+        _veille.Tick += (_, _) => RafraichirOnglets();
+        _veille.Start();
+        Closing += async (_, e) =>
+        {
+            if (_fermetureConfirmee || !_projets.Any(p => p.Modifie)) return;
+            e.Cancel = true;
+            var choix = await Demander($"{_projets.Count(p => p.Modifie)} projet(s) ont des modifications non enregistrées.", "Tout enregistrer et quitter", "Quitter sans enregistrer");
+            if (choix == 0) { foreach (var p in _projets.Where(p => p.Modifie).ToList()) if (!await EnregistrerAsync(p, false)) return; }
+            if (choix is 0 or 1) { _fermetureConfirmee = true; Close(); }
         };
 
-        LoadEtude(EtudeModel.Demo());
+        OuvrirDansOnglet(EtudeModel.Demo(), "Exemple RC", null);
         _status.Text = "Clic : placer / sélectionner · glisser : déplacer · clic droit ou molette : vue · ⌘R : pivoter · W : fil · Suppr · ⌘Z / ⇧⌘Z";
     }
 
@@ -167,9 +191,164 @@ public sealed class MainWindow : Window
         RefreshSide(); RefreshBenchBar(); RefreshPlotToolbar(); RefreshPlot(); OnSchemaChanged();
     }
 
-    void LoadEtude(EtudeModel e)
+    // ───────────────────────── projets (onglets) ─────────────────────────
+    public IReadOnlyList<ProjetOuvert> Projets => _projets;
+    public ProjetOuvert ProjetActif => _projet!;
+
+    /// <summary>Ouvre une étude dans un nouvel onglet et l'affiche.</summary>
+    public ProjetOuvert OuvrirDansOnglet(EtudeModel e, string nom, string? chemin)
     {
-        _etude = e; _results.Clear(); SelectBanc(e.Bancs.FirstOrDefault());
+        var p = new ProjetOuvert { Etude = e, Nom = nom, Chemin = chemin };
+        // Composants SPICE du projet absents de la bibliothèque : proposés dans la palette (sans les enregistrer).
+        foreach (var d in e.Schema.Components.Concat(e.Bancs.SelectMany(b => b.Calque.Components)).Select(k => k.Definition).OfType<DefinitionComposant>().Distinct())
+            if (!_bib.Definitions.Any(x => string.Equals(x.Modele, d.Modele, StringComparison.OrdinalIgnoreCase) && x.TexteSpice == d.TexteSpice)) _bib.Definitions.Add(d);
+        RebuildSpicePalette();
+        _projets.Add(p); ActiverProjet(p);
+        p.MarquerEnregistre();   // après l'affichage, qui complète des réglages par défaut (graphiques)
+        RafraichirOnglets();
+        return p;
+    }
+
+    public void ActiverProjet(ProjetOuvert p)
+    {
+        if (_projet != null) _projet.BancActif = _banc;
+        EndDrawing(false);
+        _projet = p; _etude = p.Etude; _results = p.Resultats; _cursors.Clear();
+        _banc = null;   // force le rechargement du canevas
+        SelectBanc(p.BancActif != null && p.Etude.Bancs.Contains(p.BancActif) ? p.BancActif : p.Etude.Bancs.FirstOrDefault());
+        RafraichirOnglets();
+    }
+
+    int _numeroSansTitre = 1;
+    public ProjetOuvert NouveauProjet() => OuvrirDansOnglet(new EtudeModel(), $"Sans titre {_numeroSansTitre++}", null);
+
+    void RafraichirOnglets()
+    {
+        if (_projet == null) return;
+        Title = $"Silx — {_projet.Nom}{(_projet.Modifie ? " •" : "")}";
+        _ongletsProjets.Children.Clear();
+        foreach (var p in _projets)
+        {
+            bool actif = p == _projet, modif = p.Modifie;
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            row.Children.Add(new TextBlock { Text = p.Nom, FontSize = 12.5, FontWeight = actif ? FontWeight.SemiBold : FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
+            if (modif) row.Children.Add(new Border { Width = 7, Height = 7, CornerRadius = new CornerRadius(4), Background = Ui.WarnBrush, VerticalAlignment = VerticalAlignment.Center });
+            var x = new Button { Content = Icones.Make(Icones.Croix, 9, Ui.Muted), Padding = new Thickness(3), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
+            ToolTip.SetTip(x, "Fermer ce projet (⌘W)");
+            var pp = p; x.Click += async (_, ev) => { ev.Handled = true; await FermerProjetAsync(pp); };
+            row.Children.Add(x);
+            var b = new Button
+            {
+                Content = row, Padding = new Thickness(12, 3, 4, 3), CornerRadius = new CornerRadius(6, 6, 0, 0),
+                Background = actif ? Ui.Panel : Brushes.Transparent, BorderBrush = actif ? Ui.Line : Brushes.Transparent, BorderThickness = new Thickness(1, 1, 1, 0)
+            };
+            ToolTip.SetTip(b, (p.Chemin ?? "Pas encore enregistré") + (modif ? " — modifications non enregistrées" : ""));
+            b.Click += (_, _) => { if (pp != _projet) ActiverProjet(pp); };
+            _ongletsProjets.Children.Add(b);
+        }
+        var plus = new Button { Content = Icones.Make(Icones.Plus, 13, Ui.Muted), Padding = new Thickness(7, 4), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
+        ToolTip.SetTip(plus, "Nouveau projet (⌘N)");
+        plus.Click += (_, _) => NouveauProjet();
+        _ongletsProjets.Children.Add(plus);
+    }
+
+    async Task OuvrirProjetAsync()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+        {
+            Title = "Ouvrir un projet Silx", AllowMultiple = true,
+            FileTypeFilter = [new Avalonia.Platform.Storage.FilePickerFileType("Projet Silx") { Patterns = ["*" + Projet.Extension] }]
+        });
+        foreach (var f in files) if (f.TryGetLocalPath() is { } chemin) OuvrirFichier(chemin);
+    }
+
+    /// <summary>Ouvre un fichier .silx dans un onglet (ou active l'onglet s'il est déjà ouvert).</summary>
+    public ProjetOuvert? OuvrirFichier(string chemin)
+    {
+        if (_projets.FirstOrDefault(p => p.Chemin != null && Path.GetFullPath(p.Chemin) == Path.GetFullPath(chemin)) is { } deja) { ActiverProjet(deja); return deja; }
+        try
+        {
+            var p = OuvrirDansOnglet(Projet.Ouvrir(chemin), Path.GetFileNameWithoutExtension(chemin), chemin);
+            _status.Text = $"Projet ouvert : {chemin}";
+            return p;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or System.Text.Json.JsonException or UnauthorizedAccessException)
+        {
+            _status.Text = $"⛔ Impossible d'ouvrir {Path.GetFileName(chemin)} : {ex.Message}";
+            return null;
+        }
+    }
+
+    /// <summary>Enregistre un projet ; demande un fichier s'il n'en a pas encore (ou pour « Enregistrer sous »).</summary>
+    public async Task<bool> EnregistrerAsync(ProjetOuvert p, bool sous)
+    {
+        var chemin = p.Chemin;
+        if (chemin == null || sous)
+        {
+            var f = await StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+            {
+                Title = $"Enregistrer « {p.Nom} »", SuggestedFileName = p.Nom + Projet.Extension, DefaultExtension = Projet.Extension.TrimStart('.'),
+                FileTypeChoices = [new Avalonia.Platform.Storage.FilePickerFileType("Projet Silx") { Patterns = ["*" + Projet.Extension] }]
+            });
+            chemin = f?.TryGetLocalPath();
+            if (chemin == null) return false;
+        }
+        return EnregistrerSous(p, chemin);
+    }
+
+    public bool EnregistrerSous(ProjetOuvert p, string chemin)
+    {
+        try
+        {
+            Projet.Enregistrer(p.Etude, chemin);
+            p.Chemin = chemin; p.Nom = Path.GetFileNameWithoutExtension(chemin); p.MarquerEnregistre();
+            _status.Text = $"Projet enregistré : {chemin}";
+            RafraichirOnglets();
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _status.Text = $"⛔ Enregistrement impossible : {ex.Message}";
+            return false;
+        }
+    }
+
+    public async Task FermerProjetAsync(ProjetOuvert p)
+    {
+        if (p.Modifie)
+        {
+            var choix = await Demander($"Enregistrer les modifications de « {p.Nom} » avant de le fermer ?", "Enregistrer", "Ne pas enregistrer");
+            if (choix == 2 || (choix == 0 && !await EnregistrerAsync(p, false))) return;
+        }
+        FermerSansDemander(p);
+    }
+
+    public void FermerSansDemander(ProjetOuvert p)
+    {
+        int i = _projets.IndexOf(p); if (i < 0) return;
+        _projets.RemoveAt(i);
+        if (_projets.Count == 0) { NouveauProjet(); return; }
+        if (p == _projet) { _projet = null; ActiverProjet(_projets[Math.Min(i, _projets.Count - 1)]); }
+        else RafraichirOnglets();
+    }
+
+    /// <summary>Petite boîte de dialogue : renvoie 0 (premier bouton), 1 (second) ou 2 (Annuler).</summary>
+    async Task<int> Demander(string question, string oui, string non)
+    {
+        int r = 2;
+        var w = new Window { Title = "Silx", Width = 460, SizeToContent = SizeToContent.Height, CanResize = false, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = Ui.Panel };
+        var bA = new Button { Content = "Annuler", Padding = new Thickness(12, 4) };
+        var bN = new Button { Content = non, Padding = new Thickness(12, 4) };
+        var bO = new Button { Content = oui, Padding = new Thickness(12, 4), Background = Ui.AccentBrush, Foreground = Brushes.White };
+        bO.Click += (_, _) => { r = 0; w.Close(); }; bN.Click += (_, _) => { r = 1; w.Close(); }; bA.Click += (_, _) => { r = 2; w.Close(); };
+        var btns = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right };
+        btns.Children.Add(bA); btns.Children.Add(bN); btns.Children.Add(bO);
+        var sp = new StackPanel { Spacing = 16, Margin = new Thickness(18) };
+        sp.Children.Add(new TextBlock { Text = question, TextWrapping = TextWrapping.Wrap, FontSize = 13 });
+        sp.Children.Add(btns);
+        w.Content = sp;
+        await w.ShowDialog(this);
+        return r;
     }
 
     public void SelectBanc(Banc? b)
@@ -180,7 +359,8 @@ public sealed class MainWindow : Window
         _canvas.Caption = b == null
             ? "Circuit sous test — sans stimuli : les sources se branchent dans un banc de test"
             : $"Banc « {b.Nom} » — calque en violet ; le circuit dessous se modifie dans « Circuit sous test »";
-        _canvas.Load(b?.Calque ?? _etude.Schema, b == null ? null : _etude.Schema);
+        _chargement = true;   // recharger le canevas n'est pas une modification : les résultats restent valables
+        try { _canvas.Load(b?.Calque ?? _etude.Schema, b == null ? null : _etude.Schema); } finally { _chargement = false; }
         if (b == null) _canvas.CalquesLies = _etude.Bancs.Select(x => x.Calque).ToList();
         _canvas.FitAll();
         if (b != null && b.Graphiques.Count == 0)
@@ -260,8 +440,10 @@ public sealed class MainWindow : Window
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 3) };
         var logo = new TextBlock { Text = "Silx", FontSize = 17, FontWeight = FontWeight.Bold, Foreground = Ui.AccentBrush, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 12, 0) };
         bar.Children.Add(logo);
-        bar.Children.Add(Icones.Button(Icones.Nouveau, "Nouvelle étude (schéma vide)", () => LoadEtude(new EtudeModel())));
-        bar.Children.Add(Icones.Button(Icones.Exemple, "Ouvrir l'exemple : filtre RC et ses deux bancs de test", () => LoadEtude(EtudeModel.Demo())));
+        bar.Children.Add(Icones.Button(Icones.Nouveau, "Nouveau projet, dans un nouvel onglet (⌘N)", () => NouveauProjet()));
+        bar.Children.Add(Icones.Button(Icones.Ouvrir, "Ouvrir un projet .silx (⌘O)", () => _ = OuvrirProjetAsync()));
+        bar.Children.Add(Icones.Button(Icones.Enregistrer, "Enregistrer le projet (⌘S) ; ⇧⌘S : enregistrer sous", () => _ = EnregistrerAsync(_projet!, false)));
+        bar.Children.Add(Icones.Button(Icones.Exemple, "Ouvrir l'exemple : filtre RC et ses deux bancs de test", () => OuvrirDansOnglet(EtudeModel.Demo(), "Exemple RC", null)));
         bar.Children.Add(Ui.Separator());
         _toolSelect = Icones.Button(Icones.Selection, "Sélectionner et déplacer (Échap)", () => _canvas.Tool = Tool.Select);
         _toolWire = Icones.Button(Icones.Fil, "Tracer un fil (W) : double-clic ou arrivée sur une broche pour finir", () => _canvas.Tool = Tool.Wire);
@@ -1210,8 +1392,8 @@ public sealed class MainWindow : Window
         int nErr = issues.Count(i => i.Severity == Severity.Error), nWarn = issues.Count - nErr;
         _ercTab.Header = nErr + nWarn == 0 ? "Vérifications ✓" : $"Vérifications ({nErr + nWarn})";
         // Circuit modifié : tous les bancs sont à relancer. Calque modifié : seulement le banc actif.
-        bool had = _banc == null ? _results.Count > 0 : _last != null;
-        if (_banc == null) _results.Clear(); else _last = null;
+        bool had = !_chargement && (_banc == null ? _results.Count > 0 : _last != null);
+        if (!_chargement) { if (_banc == null) _results.Clear(); else _last = null; }
         if (had) { SetVerdict(null); RefreshGabarits(); RefreshPlot(); RefreshBenchBar(); if (_banc == null) RefreshSide(); }
         if (_banc != null && _banc.Type != _typeAffiche) { _typeAffiche = _banc.Type; _cursors.Clear(); RefreshSide(); RefreshBenchBar(); RefreshPlot(); }
         RefreshPlotToolbar();

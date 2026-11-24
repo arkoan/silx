@@ -99,3 +99,12 @@ Une source se règle par sa forme (continu, échelon / impulsion, sinus, petit s
 des champs en notation ingénieur ; l'expression SPICE est générée. Le **premier stimulus** posé dans un banc fixe son type :
 petit signal → fréquentiel (Bode), sinon temporel. Curseurs : en mode curseurs, un clic pose un curseur sur la courbe la plus
 proche (A puis B) ; un gabarit dessiné s'applique à la courbe la plus proche de son premier point.
+
+
+## Projets
+
+Un **projet** (.silx, JSON) contient tout : circuit sous test, bancs de test (calques, réglages, critères, gabarits dessinés,
+graphiques) et les composants SPICE importés (texte du modèle et symbole recopiés : le projet se rouvre et se resimule sans
+la bibliothèque de l'utilisateur). Les résultats ne sont pas enregistrés. Plusieurs projets s'ouvrent en parallèle, un onglet
+chacun (point orange = modifications non enregistrées). ⌘N nouveau, ⌘O ouvrir, ⌘S enregistrer, ⇧⌘S enregistrer sous,
+⌘W fermer ; une confirmation est demandée avant de perdre des modifications.
