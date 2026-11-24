@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/bench/">
     <Project Path="bench/Silx.Bench/Silx.Bench.csproj" />
+    <Project Path="bench/Silx.Perf/Silx.Perf.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/Silx.Core/Silx.Core.csproj" />

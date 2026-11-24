@@ -24,3 +24,8 @@
 
 ## Hors v0.1
 Gain à une fréquence imposée, marges à plusieurs croisements, signal bruité (lissage), THD+N, offset d'un amplificateur (Vos), lecture des fichiers ngspice, campagnes.
+
+## Gabarits graphiques (ajout)
+- Ligne brisée à x strictement croissants ; limite **haute** (interdit au-dessus) ou **basse** (interdit en dessous).
+- Contrôle sur la plage commune courbe/gabarit uniquement, aux échantillons **et** aux sommets du gabarit (une pointe entre deux échantillons n'échappe pas).
+- Marge = plus petite distance verticale, dans l'unité de la courbe (V, dB…), négative si violation. Interpolation en log x pour le fréquentiel.
