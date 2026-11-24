@@ -88,6 +88,10 @@ public sealed class MainWindow : Window
     public void SetZoomWindowMode(bool on) { _zoomMode = on; _cursorMode = false; RefreshPlotToolbar(); }
     public Control Readout => _readout;
     public Border PuceCourbes => _puceCourbes;
+    public bool PlanDeTestVisible => _benchPanel.IsEffectivelyVisible;
+    public bool ProprietesVisibles => _blocProps.IsEffectivelyVisible;
+    public int LignesPlan => _gabarits.Children.OfType<Button>().Count();
+    public void OuvrirLignePlan(object cle) { _ligneOuverte = cle; MontrerContrainte(cle); RefreshGabarits(); RefreshPlot(keepLimits: true); }
     public double? PhaseCurseur(Curseur c) => PhaseAt(c.Noeud, c.X);
     readonly TextBlock _drawHint = new() { FontSize = 12, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center };
     GabaritTrace? _drawing;
@@ -425,6 +429,11 @@ public sealed class MainWindow : Window
             row.Children.Add(new TextBlock { Text = text, FontSize = 12.5, FontWeight = active ? FontWeight.SemiBold : FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
             if (removable != null)
             {
+                // Roue dentée : réglages du banc (nom, analyse) dans une bulle.
+                var reg = new Button { Content = Icones.Make(Icones.Reglages, 12, Ui.Muted), Padding = new Thickness(3), Background = Brushes.Transparent, CornerRadius = new CornerRadius(8), Margin = new Thickness(2, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+                ToolTip.SetTip(reg, $"Réglages du banc « {removable.Nom} » : nom, analyse");
+                var rb = removable; reg.Click += (_, e) => { e.Handled = true; if (_banc != rb) SelectBanc(rb); OuvrirReglagesBanc(reg); };
+                row.Children.Add(reg);
                 var x = new Button { Content = Icones.Make(Icones.Croix, 10, Ui.Muted), Padding = new Thickness(3), Background = Brushes.Transparent, CornerRadius = new CornerRadius(8), Margin = new Thickness(2, 0, -6, 0), VerticalAlignment = VerticalAlignment.Center };
                 ToolTip.SetTip(x, $"Supprimer le banc « {removable.Nom} »");
                 x.Click += (_, e) => { e.Handled = true; DeleteBanc(removable); };
@@ -1114,8 +1123,9 @@ public sealed class MainWindow : Window
     Control BuildSidePanel()
     {
         var s = new StackPanel { Spacing = 6, Margin = new Thickness(12, 10) };
-        s.Children.Add(Ui.Title("Propriétés")); s.Children.Add(_props);
-        s.Children.Add(Ui.Rule());
+        // Inspecteur contextuel : la sélection, sinon le plan de test du banc (ou la vue d'ensemble des bancs).
+        _blocProps.Children.Add(Ui.Title("Propriétés")); _blocProps.Children.Add(_props);
+        s.Children.Add(_blocProps);
         s.Children.Add(_circuitPanel); s.Children.Add(_benchPanel);
         return _right = new Border { Width = 310, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(1, 0, 0, 0), Child = new ScrollViewer { Content = s } };
     }
@@ -1123,7 +1133,8 @@ public sealed class MainWindow : Window
     /// <summary>Panneau droit selon le contexte : vue d'ensemble des bancs (circuit) ou réglages du banc actif.</summary>
     void RefreshSide()
     {
-        _circuitPanel.IsVisible = _banc == null; _benchPanel.IsVisible = _banc != null;
+        bool sel = _canvas.Selection.Count + _canvas.FilsSelectionnes.Count > 0;
+        _circuitPanel.IsVisible = !sel && _banc == null; _benchPanel.IsVisible = !sel && _banc != null;
         _circuitPanel.Children.Clear(); _benchPanel.Children.Clear();
         if (_banc == null)
         {
@@ -1151,35 +1162,42 @@ public sealed class MainWindow : Window
             RefreshGabarits();
             return;
         }
-        var bh = new Grid { ColumnDefinitions = new("*,Auto") };
-        var t = Ui.Title("Banc de test"); t.Foreground = Ui.BenchBrush; bh.Children.Add(t);
-        var del = Ui.ToolButton("Supprimer le banc", "Supprimer ce banc, ses sources et ses gabarits", () =>
-        {
-            DeleteBanc(Banc);
-        });
-        del.FontSize = 11.5; del.Foreground = Ui.Muted; Grid.SetColumn(del, 1); bh.Children.Add(del);
-        _benchPanel.Children.Add(bh);
-        var nom = new TextBox { Text = Banc.Nom, FontSize = 13 };
-        void Rename() { var n = (nom.Text ?? "").Trim(); if (n.Length > 0 && n != Banc.Nom) { Banc.Nom = n; RefreshBenchBar(); SelectBanc(Banc); } }
-        nom.KeyDown += (_, e) => { if (e.Key == Key.Enter) Rename(); }; nom.LostFocus += (_, _) => Rename();
-        _benchPanel.Children.Add(Ui.Labeled("Nom", nom));
-        _benchPanel.Children.Add(Ui.Rule());
-        _benchPanel.Children.Add(Ui.Title("Analyses"));
-        _benchPanel.Children.Add(BuildAnalysisPanel());
-        _benchPanel.Children.Add(Ui.Rule());
+        // Plan de test du banc : une ligne par contrainte (critère mesuré ou gabarit dessiné), verdict et marge.
         var gh = new Grid { ColumnDefinitions = new("*,Auto") };
-        gh.Children.Add(Ui.Title("Critères mesurés"));
-        var add = Ui.ToolButton("+ Critère", "Ajouter un critère pass/fail", () =>
+        var titre = Ui.Title("Plan de test"); gh.Children.Add(titre);
+        var add = Ui.ToolButton("+ Critère", "Ajouter un critère mesuré (temps de montée, bande passante…)", () =>
         {
             var n = Connectivity.Build(SchemaCourant).NamedNodes.FirstOrDefault() ?? "OUT";
-            Banc.Gabarits.Add(new CritereGabarit { Mesure = Banc.Type == AnalyseKind.Ac ? TypeMesure.BandePassante3dB : TypeMesure.TempsDeMontee, Noeud = n }); RefreshGabarits();
+            var c = new CritereGabarit { Mesure = Banc.Type == AnalyseKind.Ac ? TypeMesure.BandePassante3dB : TypeMesure.TempsDeMontee, Noeud = n };
+            Banc.Gabarits.Add(c); _ligneOuverte = c; RefreshGabarits();
         });
         Grid.SetColumn(add, 1); gh.Children.Add(add);
-        _benchPanel.Children.Add(gh); _benchPanel.Children.Add(_gabarits);
-        var th = Ui.Title("Gabarits dessinés"); th.Margin = new Thickness(0, 12, 0, 6);
-        _benchPanel.Children.Add(th); _benchPanel.Children.Add(_traces);
+        _benchPanel.Children.Add(gh);
+        _benchPanel.Children.Add(_resumePlan);
+        _benchPanel.Children.Add(_gabarits);
+        _benchPanel.Children.Add(Ui.Hint("Gabarits dessinés : sous les courbes, « Limite haute » ou « Limite basse ». Réglages du banc (nom, analyse) : roue dentée de sa pastille."));
         RefreshGabarits();
     }
+
+    /// <summary>Bulle des réglages du banc actif, ouverte depuis la roue dentée de sa pastille.</summary>
+    public void OuvrirReglagesBanc(Control ancre)
+    {
+        if (_banc == null) return;
+        var sp = new StackPanel { Spacing = 6, Width = 300, Margin = new Thickness(4) };
+        var t = Ui.Title("Banc de test"); t.Foreground = Ui.BenchBrush; sp.Children.Add(t);
+        var nom = new TextBox { Text = Banc.Nom, FontSize = 13 };
+        void Renommer() { var n = (nom.Text ?? "").Trim(); if (n.Length > 0 && n != Banc.Nom) { Banc.Nom = n; RefreshBenchBar(); _canvas.Caption = $"Banc « {n} »"; _canvas.InvalidateVisual(); } }
+        nom.KeyDown += (_, e) => { if (e.Key == Key.Enter) Renommer(); }; nom.LostFocus += (_, _) => Renommer();
+        sp.Children.Add(Ui.Labeled("Nom", nom));
+        sp.Children.Add(Ui.Rule());
+        sp.Children.Add(Ui.Title("Analyse"));
+        sp.Children.Add(BuildAnalysisPanel());
+        var fly = new Flyout { Content = sp, Placement = PlacementMode.BottomEdgeAlignedLeft };
+        _bulleBanc = fly;
+        fly.ShowAt(ancre);
+    }
+    Flyout? _bulleBanc;
+    public bool ReglagesBancOuverts => _bulleBanc?.IsOpen == true;
 
     Control BuildAnalysisPanel()
     {
@@ -1226,10 +1244,15 @@ public sealed class MainWindow : Window
     StackPanel _cible = null!;
     Flyout? _bulle; StackPanel? _bulleContenu; PlacedComponent? _bulleComposant;
 
+    readonly StackPanel _blocProps = new() { Spacing = 6 };
+
     void RefreshProperties()
     {
         _cible = _props;
         Proprietes();
+        bool sel = _canvas.Selection.Count + _canvas.FilsSelectionnes.Count > 0;
+        _blocProps.IsVisible = sel;
+        _circuitPanel.IsVisible = !sel && _banc == null; _benchPanel.IsVisible = !sel && _banc != null;
         // Bulle d'édition ouverte : reconstruite si le composant est toujours sélectionné, fermée sinon.
         if (_bulle?.IsOpen == true && _bulleContenu != null)
         {
@@ -1395,85 +1418,104 @@ public sealed class MainWindow : Window
     }
 
     // ───────────────────────── gabarits ─────────────────────────
+    /// <summary>Contrainte dont la ligne est dépliée pour édition (critère) ou mise en avant (gabarit).</summary>
+    object? _ligneOuverte;
+    readonly TextBlock _resumePlan = new() { FontSize = 12, Foreground = Ui.Muted, Margin = new Thickness(0, -4, 0, 4) };
+    public object? ContrainteMiseEnAvant => _ligneOuverte;
+
     void RefreshGabarits()
     {
         _gabarits.Children.Clear(); _traces.Children.Clear();
         if (_banc == null) return;
-        RefreshTraces();
-        if (!Banc.CriteresActifs.Any())
-            _gabarits.Children.Add(Ui.Hint("Aucun critère. Ajoutez par exemple « Bande passante −3 dB ≥ 1 kHz sur OUT »."));
+        int n = Banc.CriteresActifs.Count() + Banc.TracesActives.Count();
+        _resumePlan.Text = n == 0 ? "Aucune contrainte : ajoutez un critère ou dessinez un gabarit sur les courbes."
+            : _last is { Erreur: null } r && r.Nombre > 0 ? $"{r.Respectes}/{r.Nombre} respectée(s) · banc {(Banc.Type == AnalyseKind.Ac ? "fréquentiel" : "temporel")}"
+            : $"{n} contrainte(s) · pas encore simulé";
         var nodes = Connectivity.Build(SchemaCourant).AllNodes.ToList();
         foreach (var g in Banc.CriteresActifs.ToList())
         {
-            var res = _last?.Criteres.FirstOrDefault(r => r.Critere == g)?.Resultat;
-            var card = new StackPanel { Spacing = 6 };
-            var head = new Grid { ColumnDefinitions = new("*,Auto") };
-            var choix = TypesMesure.Tous.Where(i => i.Analyse == Banc.Type).ToList();
-            var mesure = new ComboBox { ItemsSource = choix.Select(i => i.Nom).ToList(), SelectedIndex = choix.FindIndex(i => i.Type == g.Mesure), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
-            mesure.SelectionChanged += (_, _) => { if (mesure.SelectedIndex >= 0 && choix[mesure.SelectedIndex].Type != g.Mesure) { g.Mesure = choix[mesure.SelectedIndex].Type; Invalidate(); } };
-            var del = new Button { Content = "✕", Background = Brushes.Transparent, Foreground = Ui.Muted, Padding = new Thickness(6, 2), Margin = new Thickness(4, 0, 0, 0) };
-            ToolTip.SetTip(del, "Retirer ce critère");
-            del.Click += (_, _) => { Banc.Gabarits.Remove(g); Invalidate(); };
-            head.Children.Add(mesure); head.Children.Add(del); Grid.SetColumn(del, 1);
-            card.Children.Add(head);
-
-            var row = new Grid { ColumnDefinitions = new("*,6,*,6,*") };
-            var nodeItems = nodes.Contains(g.Noeud, StringComparer.OrdinalIgnoreCase) ? nodes : nodes.Append(g.Noeud).ToList();
-            var node = new ComboBox { ItemsSource = nodeItems, SelectedItem = nodeItems.First(n => n.Equals(g.Noeud, StringComparison.OrdinalIgnoreCase)), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
-            node.SelectionChanged += (_, _) => { if (node.SelectedItem is string n && n != g.Noeud) { g.Noeud = n; Invalidate(); } };
+            var res = _last?.Criteres.FirstOrDefault(x => x.Critere == g)?.Resultat;
             var unit = g.Info.Unite;
-            row.Children.Add(Ui.Labeled("Nœud", node));
-            var min = Ui.Field("Min", g.Min is { } a ? SpiceNumber.Format(a, unit) : "", v => { g.Min = SpiceNumber.ParseOrNull(v); }, "—");
-            Grid.SetColumn(min, 2); row.Children.Add(min);
-            var max = Ui.Field("Max", g.Max is { } b ? SpiceNumber.Format(b, unit) : "", v => { g.Max = SpiceNumber.ParseOrNull(v); }, "—");
-            Grid.SetColumn(max, 4); row.Children.Add(max);
-            card.Children.Add(row);
-
-            var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            line.Children.Add(Ui.Badge(res?.Verdict));
-            var analyse = g.Info.Analyse == AnalyseKind.Ac ? "AC" : "transitoire";
-            line.Children.Add(new TextBlock
+            string bornes = (g.Min, g.Max) switch
             {
-                Text = res == null ? $"Analyse {analyse} — pas encore simulé"
-                    : res.Valeur is { } v ? $"Mesuré : {SpiceNumber.Format(v, unit)}" : (res.Detail ?? "Non évaluable"),
-                VerticalAlignment = VerticalAlignment.Center, FontSize = 12, TextWrapping = TextWrapping.Wrap, MaxWidth = 230,
-                Foreground = res?.Verdict == Verdict.Fail ? Ui.FailBrush : Ui.Ink
-            });
-            card.Children.Add(line);
-            _gabarits.Children.Add(new Border { Child = card, Background = Brushes.White, BorderBrush = res?.Verdict == Verdict.Fail ? Ui.FailBrush : Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10) });
+                (double a, double b) => $"{SpiceNumber.Format(a, unit)} … {SpiceNumber.Format(b, unit)}",
+                (double a, null) => $"≥ {SpiceNumber.Format(a, unit)}", (null, double b) => $"≤ {SpiceNumber.Format(b, unit)}", _ => "sans borne"
+            };
+            string mesure = res == null ? "pas encore simulé" : res.Valeur is { } v ? $"mesuré {SpiceNumber.Format(v, unit)}" + Marge(g, v) : res.Detail ?? "non évaluable";
+            var ligne = LignePlan(res?.Verdict, $"{g.Info.Nom} · V({g.Noeud})", $"{bornes} · {mesure}", g, () => { Banc.Gabarits.Remove(g); Invalidate(); }, "Retirer ce critère");
+            _gabarits.Children.Add(ligne);
+            if (_ligneOuverte == g) _gabarits.Children.Add(EditeurCritere(g, nodes));
         }
-    }
-
-    void RefreshTraces()
-    {
-        _traces.Children.Clear();
-        if (!Banc.TracesActives.Any())
-            _traces.Children.Add(Ui.Hint("Aucun. En mode Test, sous les courbes : choisissez un signal puis « Limite haute » ou « Limite basse » et cliquez sur le graphique."));
         foreach (var g in Banc.TracesActives.ToList())
         {
             var res = _last?.Traces.FirstOrDefault(t => t.Gabarit == g)?.Resultat;
-            var card = new StackPanel { Spacing = 4 };
-            var head = new Grid { ColumnDefinitions = new("*,Auto") };
-            head.Children.Add(new TextBlock { Text = g.Nom, FontWeight = FontWeight.SemiBold, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap });
-            var del = new Button { Content = "✕", Background = Brushes.Transparent, Foreground = Ui.Muted, Padding = new Thickness(6, 2) };
-            ToolTip.SetTip(del, "Retirer ce gabarit");
-            del.Click += (_, _) => { Banc.GabaritsTraces.Remove(g); ReevaluateTraces(); RefreshGabarits(); RefreshPlot(keepLimits: true); };
-            Grid.SetColumn(del, 1); head.Children.Add(del);
-            card.Children.Add(head);
-            card.Children.Add(Ui.Hint($"{(g.Analyse == AnalyseKind.Ac ? "Bode" : "Temporel")} · {g.Points.Count} points de {Fx(g.Analyse, g.Points[0].X)} à {Fx(g.Analyse, g.Points[^1].X)}"));
-            var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            line.Children.Add(Ui.Badge(res?.Verdict));
-            line.Children.Add(new TextBlock
-            {
-                Text = res == null ? "Pas encore simulé" : res.Marge is { } m
-                    ? (m >= 0 ? $"Marge : {SpiceNumber.Format(m, g.Unite)} à {Fx(g.Analyse, res.XPire!.Value)}" : $"Franchi de {SpiceNumber.Format(-m, g.Unite)} à {Fx(g.Analyse, res.XPire!.Value)}")
-                    : res.Detail ?? "Non évaluable",
-                FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 230,
-                Foreground = res?.Verdict == Verdict.Fail ? Ui.FailBrush : Ui.Ink
-            });
-            card.Children.Add(line);
-            _traces.Children.Add(new Border { Child = card, Background = Brushes.White, BorderBrush = res?.Verdict == Verdict.Fail ? Ui.FailBrush : Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10) });
+            string detail = res == null ? $"{g.Points.Count} points · pas encore simulé" : res.Marge is { } m
+                ? (m >= 0 ? $"marge {SpiceNumber.Format(m, g.Unite)} à {Fx(g.Analyse, res.XPire!.Value)}" : $"franchi de {SpiceNumber.Format(-m, g.Unite)} à {Fx(g.Analyse, res.XPire!.Value)}")
+                : res.Detail ?? "non évaluable";
+            var titre = $"Gabarit {(g.Limite == Limite.Haute ? "haut" : "bas")} · {(g.Analyse == AnalyseKind.Ac ? $"|V({g.Noeud})|" : $"V({g.Noeud})")}";
+            _gabarits.Children.Add(LignePlan(res?.Verdict, titre, detail, g, () => { Banc.GabaritsTraces.Remove(g); _ligneOuverte = null; ReevaluateTraces(); RefreshGabarits(); RefreshPlot(keepLimits: true); }, "Retirer ce gabarit"));
         }
+    }
+
+    static string Marge(CritereGabarit g, double v)
+    {
+        double? m = (g.Min, g.Max) switch { (double a, double b) => Math.Min(v - a, b - v), (double a, null) => v - a, (null, double b) => b - v, _ => null };
+        return m is { } x && x >= 0 ? $" · marge {SpiceNumber.Format(x, g.Info.Unite)}" : "";
+    }
+
+    /// <summary>Ligne du plan de test : verdict, intitulé, bornes et mesure ; clic pour déplier ou mettre en avant.</summary>
+    Control LignePlan(Verdict? v, string titre, string detail, object cle, Action retirer, string tipRetirer)
+    {
+        var g = new Grid { ColumnDefinitions = new("Auto,*,Auto") };
+        var badge = Ui.Badge(v); badge.VerticalAlignment = VerticalAlignment.Top; badge.Margin = new Thickness(0, 2, 8, 0); g.Children.Add(badge);
+        var txt = new StackPanel { Spacing = 1 };
+        txt.Children.Add(new TextBlock { Text = titre, FontWeight = FontWeight.SemiBold, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis });
+        txt.Children.Add(new TextBlock { Text = detail, FontSize = 11.5, Foreground = v == Verdict.Fail ? Ui.FailBrush : Ui.Muted, TextWrapping = TextWrapping.Wrap });
+        Grid.SetColumn(txt, 1); g.Children.Add(txt);
+        var del = new Button { Content = Icones.Make(Icones.Croix, 10, Ui.Muted), Background = Brushes.Transparent, Padding = new Thickness(4), VerticalAlignment = VerticalAlignment.Top };
+        ToolTip.SetTip(del, tipRetirer); del.Click += (_, e) => { e.Handled = true; retirer(); };
+        Grid.SetColumn(del, 2); g.Children.Add(del);
+        bool ouverte = _ligneOuverte == cle;
+        var b = new Button
+        {
+            Content = g, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(8, 6),
+            Background = ouverte ? Ui.ActiveBg : Brushes.White, BorderBrush = v == Verdict.Fail ? Ui.FailBrush : ouverte ? Ui.AccentBrush : Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6)
+        };
+        ToolTip.SetTip(b, cle is CritereGabarit ? "Cliquer pour modifier ; le signal s'affiche sur les courbes" : "Cliquer pour mettre ce gabarit en avant sur les courbes");
+        b.Click += (_, _) => { _ligneOuverte = ouverte ? null : cle; if (!ouverte) MontrerContrainte(cle); RefreshGabarits(); RefreshPlot(keepLimits: true); };
+        return b;
+    }
+
+    /// <summary>Met une contrainte en avant : son signal est affiché (ajouté au graphique actif s'il n'y est pas).</summary>
+    void MontrerContrainte(object cle)
+    {
+        var noeud = cle switch { CritereGabarit c => c.Noeud, GabaritTrace t => t.Noeud, _ => null };
+        if (noeud == null || _banc == null) return;
+        if (_panes.FirstOrDefault(p => p.Signaux.Contains(noeud)) is { } pane) Activate(pane);
+        else if (_active != null) { _active.Signaux.Add(noeud); var i = _panes.IndexOf(_active); RebuildPanes(); Activate(_panes[i]); }
+        if (_disposition == Disposition.Schema) Disposer(Disposition.Mixte);
+        _bottomTabs.SelectedIndex = 0;
+    }
+
+    Control EditeurCritere(CritereGabarit g, List<string> nodes)
+    {
+        var card = new StackPanel { Spacing = 6, Margin = new Thickness(8, 0, 0, 6) };
+        var choix = TypesMesure.Tous.Where(i => i.Analyse == Banc.Type).ToList();
+        var mesure = new ComboBox { ItemsSource = choix.Select(i => i.Nom).ToList(), SelectedIndex = choix.FindIndex(i => i.Type == g.Mesure), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+        mesure.SelectionChanged += (_, _) => { if (mesure.SelectedIndex >= 0 && choix[mesure.SelectedIndex].Type != g.Mesure) { g.Mesure = choix[mesure.SelectedIndex].Type; Invalidate(); } };
+        card.Children.Add(Ui.Labeled("Mesure", mesure));
+        var row = new Grid { ColumnDefinitions = new("*,6,*,6,*") };
+        var nodeItems = nodes.Contains(g.Noeud, StringComparer.OrdinalIgnoreCase) ? nodes : nodes.Append(g.Noeud).ToList();
+        var node = new ComboBox { ItemsSource = nodeItems, SelectedItem = nodeItems.First(n => n.Equals(g.Noeud, StringComparison.OrdinalIgnoreCase)), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+        node.SelectionChanged += (_, _) => { if (node.SelectedItem is string n && n != g.Noeud) { g.Noeud = n; Invalidate(); } };
+        var unit = g.Info.Unite;
+        row.Children.Add(Ui.Labeled("Signal", node));
+        var min = Ui.Field($"Min ({unit})", g.Min is { } a ? SpiceNumber.Format(a, unit) : "", v => { var x = SpiceNumber.ParseOrNull(v); if (x != g.Min) { g.Min = x; Invalidate(); } }, "—");
+        Grid.SetColumn(min, 2); row.Children.Add(min);
+        var max = Ui.Field($"Max ({unit})", g.Max is { } b ? SpiceNumber.Format(b, unit) : "", v => { var x = SpiceNumber.ParseOrNull(v); if (x != g.Max) { g.Max = x; Invalidate(); } }, "—");
+        Grid.SetColumn(max, 4); row.Children.Add(max);
+        card.Children.Add(row);
+        return card;
     }
 
     static string Fx(AnalyseKind k, double x) => k == AnalyseKind.Ac ? SpiceNumber.Format(x, "Hz") : SpiceNumber.Format(x, "s");
@@ -1633,7 +1675,7 @@ public sealed class MainWindow : Window
                     poly.LineStyle.Width = 0;
                 }
                 var line = p.Add.ScatterLine(c.Select(q => q.X).ToArray(), c.Select(q => q.Y).ToArray());
-                line.Color = red; line.LineWidth = 2.5f; line.MarkerSize = 7; line.MarkerShape = ScottPlot.MarkerShape.FilledSquare; line.MarkerColor = red;
+                line.Color = red; line.LineWidth = _ligneOuverte == g ? 4.5f : 2.5f; line.MarkerSize = 7; line.MarkerShape = ScottPlot.MarkerShape.FilledSquare; line.MarkerColor = red;
                 if (draft) line.LinePattern = ScottPlot.LinePattern.Dashed;
                 var hv = _dragVertex ?? _hoverVertex;
                 if (hv is { } h0 && h0.G == g && h0.I < c.Count)

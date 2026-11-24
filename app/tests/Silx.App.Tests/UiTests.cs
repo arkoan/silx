@@ -433,4 +433,23 @@ public class UiTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.True(w.Canevas.IsEffectivelyVisible && w.PlotControl.IsEffectivelyVisible);
     }
+
+    /// <summary>B1 + E1 : inspecteur contextuel (propriétés seulement avec une sélection) et plan de test en lignes.</summary>
+    [AvaloniaFact]
+    public async Task Inspecteur_et_plan_de_test()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(w.PlanDeTestVisible); Assert.False(w.ProprietesVisibles);
+        Assert.Equal(4, w.LignesPlan);                       // 2 critères + 2 gabarits dessinés
+        w.OuvrirLignePlan(w.BancActif!.Gabarits[0]);         // ligne dépliée pour édition
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Shot(w, "30-plan-de-test.png");
+        // Sélection d'un composant : l'inspecteur ne montre que lui.
+        var p = w.Canevas.TranslatePoint(w.Canevas.ScreenOf(new Silx.Etude.GridPoint(4, 10)), w)!.Value;
+        w.MouseDown(p, Avalonia.Input.MouseButton.Left); w.MouseUp(p, Avalonia.Input.MouseButton.Left);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(w.ProprietesVisibles); Assert.False(w.PlanDeTestVisible);
+    }
 }
