@@ -363,4 +363,26 @@ public class UiTests
         w.SetZoomWindowMode(false);
         Assert.False(w.PuceCourbes.IsVisible);
     }
+
+    /// <summary>A1 : double-clic sur un composant → bulle d'édition sur place ; la valeur tapée s'applique.</summary>
+    [AvaloniaFact]
+    public void Edition_sur_place_par_double_clic()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        w.SelectBanc(null);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var p = w.Canevas.TranslatePoint(w.Canevas.ScreenOf(new Silx.Etude.GridPoint(6, 8)), w)!.Value;   // milieu de R1
+        w.MouseDown(p, Avalonia.Input.MouseButton.Left); w.MouseUp(p, Avalonia.Input.MouseButton.Left);
+        w.MouseDown(p, Avalonia.Input.MouseButton.Left); w.MouseUp(p, Avalonia.Input.MouseButton.Left);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        if (!w.BulleOuverte) w.EditerSurPlace(w.Canevas.Selected!);   // le double-clic simulé n'est pas garanti hors écran
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(w.BulleOuverte);
+        Assert.Equal("R1", w.Canevas.Selected!.Ref);
+        Shot(w, "28-edition-sur-place.png");
+        w.Canevas.EditSelected("R1", "2.2k");
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("2.2k", w.EtudeCourante.Schema.Components.Single(c => c.Ref == "R1").Value);
+        Assert.True(w.BulleOuverte);    // la bulle reste ouverte et suit le composant
+    }
 }

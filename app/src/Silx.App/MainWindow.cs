@@ -1,3 +1,4 @@
+using Avalonia.LogicalTree;
 using Avalonia.Platform.Storage;
 using Avalonia;
 using Avalonia.Controls;
@@ -157,6 +158,7 @@ public sealed class MainWindow : Window
         _canvas.SelectionChanged += RefreshProperties;
         _canvas.ToolChanged += RefreshToolButtons;
         _canvas.Probed += OnProbed;
+        _canvas.DoubleClic += EditerSurPlace;
         KeyDown += async (_, e) =>
         {
             if (_drawing != null && e.Key is Key.Enter or Key.Escape) { e.Handled = true; EndDrawing(e.Key == Key.Enter); return; }
@@ -1186,14 +1188,58 @@ public sealed class MainWindow : Window
         return s;
     }
 
+    /// <summary>Panneau où s'écrivent les propriétés : le panneau droit, ou la bulle d'édition sur place.</summary>
+    StackPanel _cible = null!;
+    Flyout? _bulle; StackPanel? _bulleContenu; PlacedComponent? _bulleComposant;
+
     void RefreshProperties()
     {
-        _props.Children.Clear();
+        _cible = _props;
+        Proprietes();
+        // Bulle d'édition ouverte : reconstruite si le composant est toujours sélectionné, fermée sinon.
+        if (_bulle?.IsOpen == true && _bulleContenu != null)
+        {
+            if (_canvas.Selected != _bulleComposant) { _bulle.Hide(); return; }
+            _cible = _bulleContenu; Proprietes(); _cible = _props;
+        }
+    }
+
+    /// <summary>Édition sur place : double-clic sur un composant → bulle avec ses propriétés, près du pointeur.</summary>
+    public void EditerSurPlace(PlacedComponent c)
+    {
+        if (_canvas.Selected != c) return;
+        _bulleComposant = c;
+        _bulleContenu = new StackPanel { Spacing = 6, Width = 280, Margin = new Thickness(4) };
+        _cible = _bulleContenu; Proprietes(); _cible = _props;
+        _bulle = new Flyout { Content = _bulleContenu, Placement = PlacementMode.Pointer, ShowMode = FlyoutShowMode.Standard };
+        _bulle.ShowAt(_canvas, showAtPointer: true);
+        // Première zone de saisie active : on tape directement la nouvelle valeur.
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            var tb = _bulleContenu.GetLogicalDescendants().OfType<TextBox>().Skip(c.Kind is ComponentKind.Label ? 0 : 1).FirstOrDefault();
+            tb?.Focus(); tb?.SelectAll();
+        });
+    }
+    public bool BulleOuverte => _bulle?.IsOpen == true;
+
+    /// <summary>Vrai pendant la reconstruction d'un panneau : les zones de saisie retirées perdent le focus et ne doivent rien réécrire.</summary>
+    bool _reconstruction;
+    void EditerSelection(string reference, string valeur) { if (!_reconstruction) _canvas.EditSelected(reference, valeur); }
+
+    void Proprietes()
+    {
+        _reconstruction = true;
+        try { ProprietesInterne(); } finally { _reconstruction = false; }
+    }
+
+    void ProprietesInterne()
+    {
+        _cible.Children.Clear();
         var c = _canvas.Selected;
         if (c == null)
         {
             int n = _canvas.Selection.Count, nf = _canvas.FilsSelectionnes.Count;
-            _props.Children.Add(new TextBlock { Text = n + nf > 1
+            _cible.Children.Add(new TextBlock { Text = n + nf > 1
                 ? $"{n} composant(s) et {nf} fil(s) sélectionnés : glisser pour déplacer, ⌘R pour pivoter, Suppr pour effacer. Maj+clic ajoute ou retire un élément."
                 : "Sélectionnez un composant sur le schéma pour modifier sa référence et sa valeur. Glissez depuis le fond pour sélectionner plusieurs éléments.", TextWrapping = TextWrapping.Wrap, Foreground = Ui.Muted, FontSize = 12 });
             return;
@@ -1205,8 +1251,8 @@ public sealed class MainWindow : Window
             ComponentKind.Diode => "Diode", ComponentKind.Ground => "Masse", _ => "Étiquette de nœud"
         };
         if (c.Kind == ComponentKind.Spice) { ProprietesSpice(c); return; }
-        _props.Children.Add(new TextBlock { Text = kindName, FontWeight = FontWeight.SemiBold });
-        if (c.Kind == ComponentKind.Ground) { _props.Children.Add(Ui.Hint("Nœud 0 de référence. Toutes les masses sont reliées.")); return; }
+        _cible.Children.Add(new TextBlock { Text = kindName, FontWeight = FontWeight.SemiBold });
+        if (c.Kind == ComponentKind.Ground) { _cible.Children.Add(Ui.Hint("Nœud 0 de référence. Toutes les masses sont reliées.")); return; }
 
         var refBox = new TextBox { Text = c.Ref };
         if (c.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource) { ProprietesStimulus(c, refBox); return; }
@@ -1215,23 +1261,23 @@ public sealed class MainWindow : Window
         if (c.Kind == ComponentKind.Diode)
         {
             var cb = new ComboBox { ItemsSource = DiodeModels.All.Keys.ToList(), SelectedItem = DiodeModels.All.Keys.FirstOrDefault(k => k.Equals(c.Value, StringComparison.OrdinalIgnoreCase)), HorizontalAlignment = HorizontalAlignment.Stretch };
-            cb.SelectionChanged += (_, _) => _canvas.EditSelected(refBox.Text ?? c.Ref, cb.SelectedItem as string ?? c.Value);
+            cb.SelectionChanged += (_, _) => EditerSelection(refBox.Text ?? c.Ref, cb.SelectedItem as string ?? c.Value);
             valueEditor = cb; value = () => cb.SelectedItem as string ?? c.Value;
         }
         else
         {
             var vb = new TextBox { Text = c.Value };
-            vb.KeyDown += (_, e) => { if (e.Key == Key.Enter) _canvas.EditSelected(refBox.Text ?? c.Ref, vb.Text ?? ""); };
-            vb.LostFocus += (_, _) => _canvas.EditSelected(refBox.Text ?? c.Ref, vb.Text ?? "");
+            vb.KeyDown += (_, e) => { if (e.Key == Key.Enter) EditerSelection(refBox.Text ?? c.Ref, vb.Text ?? ""); };
+            vb.LostFocus += (_, _) => EditerSelection(refBox.Text ?? c.Ref, vb.Text ?? "");
             valueEditor = vb; value = () => vb.Text ?? "";
         }
-        refBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) _canvas.EditSelected(refBox.Text ?? c.Ref, value()); };
-        refBox.LostFocus += (_, _) => _canvas.EditSelected(refBox.Text ?? c.Ref, value());
+        refBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) EditerSelection(refBox.Text ?? c.Ref, value()); };
+        refBox.LostFocus += (_, _) => EditerSelection(refBox.Text ?? c.Ref, value());
 
-        if (c.Kind != ComponentKind.Label) { _props.Children.Add(Ui.Label("Référence")); _props.Children.Add(refBox); }
-        _props.Children.Add(Ui.Label(c.Kind switch { ComponentKind.Label => "Nom du nœud", ComponentKind.Diode => "Modèle", _ => "Valeur" }));
-        _props.Children.Add(valueEditor);
-        _props.Children.Add(Ui.Hint(c.Kind switch
+        if (c.Kind != ComponentKind.Label) { _cible.Children.Add(Ui.Label("Référence")); _cible.Children.Add(refBox); }
+        _cible.Children.Add(Ui.Label(c.Kind switch { ComponentKind.Label => "Nom du nœud", ComponentKind.Diode => "Modèle", _ => "Valeur" }));
+        _cible.Children.Add(valueEditor);
+        _cible.Children.Add(Ui.Hint(c.Kind switch
         {
             ComponentKind.Resistor => "Ex. 4,7k · 10meg · 220",
             ComponentKind.Capacitor => "Ex. 100n · 4,7u · 22p",
@@ -1248,9 +1294,9 @@ public sealed class MainWindow : Window
     {
         bool courant = c.Kind == ComponentKind.CurrentSource;
         var st = Stimulus.Lire(c.Value);
-        void Appliquer() => _canvas.EditSelected(refBox.Text ?? c.Ref, st.VersSpice());
+        void Appliquer() => EditerSelection(refBox.Text ?? c.Ref, st.VersSpice());
         refBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) Appliquer(); }; refBox.LostFocus += (_, _) => Appliquer();
-        _props.Children.Add(Ui.Label("Référence")); _props.Children.Add(refBox);
+        _cible.Children.Add(Ui.Label("Référence")); _cible.Children.Add(refBox);
         var formes = Enum.GetValues<FormeStimulus>().ToList();
         var forme = new ComboBox { ItemsSource = formes.Select(Stimulus.Libelle).ToList(), SelectedIndex = formes.IndexOf(st.Forme), HorizontalAlignment = HorizontalAlignment.Stretch };
         forme.SelectionChanged += (_, _) =>
@@ -1260,14 +1306,14 @@ public sealed class MainWindow : Window
             st = f == FormeStimulus.Expression ? new Stimulus { Forme = f, Expression = st.VersSpice() } : Stimulus.Nouveau(f);
             Appliquer();
         };
-        _props.Children.Add(Ui.Label("Forme")); _props.Children.Add(forme);
+        _cible.Children.Add(Ui.Label("Forme")); _cible.Children.Add(forme);
         if (st.Forme == FormeStimulus.Expression)
         {
             var ex = new TextBox { Text = st.Expression, FontFamily = new FontFamily("Menlo, Consolas, monospace"), FontSize = 12 };
             void Ex() { st.Expression = ex.Text ?? ""; Appliquer(); }
             ex.KeyDown += (_, e) => { if (e.Key == Key.Enter) Ex(); }; ex.LostFocus += (_, _) => Ex();
-            _props.Children.Add(Ui.Label("Expression SPICE")); _props.Children.Add(ex);
-            _props.Children.Add(Ui.Hint("Pour les formes non prévues (PWL, EXP…). Ex. PWL(0 0 1m 5)."));
+            _cible.Children.Add(Ui.Label("Expression SPICE")); _cible.Children.Add(ex);
+            _cible.Children.Add(Ui.Hint("Pour les formes non prévues (PWL, EXP…). Ex. PWL(0 0 1m 5)."));
         }
         else
         {
@@ -1281,25 +1327,25 @@ public sealed class MainWindow : Window
                 f.Margin = new Thickness(0, 0, 0, 4);
                 Grid.SetRow(f, i / 2); Grid.SetColumn(f, i % 2 == 0 ? 0 : 2); grid.Children.Add(f);
             }
-            _props.Children.Add(grid);
-            _props.Children.Add(Ui.Hint((st.Forme == FormeStimulus.PetitSignal ? "Source petit signal : le banc devient fréquentiel (Bode) si c'est son premier stimulus. "
+            _cible.Children.Add(grid);
+            _cible.Children.Add(Ui.Hint((st.Forme == FormeStimulus.PetitSignal ? "Source petit signal : le banc devient fréquentiel (Bode) si c'est son premier stimulus. "
                 : "Le banc est temporel si c'est son premier stimulus. ") + "Valeurs en notation ingénieur : 4,7k · 100n · 1meg." + (courant ? " Courant de la broche 1 vers la broche 2 dans la source." : "")));
         }
-        _props.Children.Add(new TextBlock { Text = "SPICE : " + st.VersSpice(), FontSize = 11, Foreground = Ui.Muted, FontFamily = new FontFamily("Menlo, Consolas, monospace"), TextWrapping = TextWrapping.Wrap });
+        _cible.Children.Add(new TextBlock { Text = "SPICE : " + st.VersSpice(), FontSize = 11, Foreground = Ui.Muted, FontFamily = new FontFamily("Menlo, Consolas, monospace"), TextWrapping = TextWrapping.Wrap });
     }
 
     void ProprietesSpice(PlacedComponent c)
     {
         var d = c.Definition;
-        _props.Children.Add(new TextBlock { Text = d == null ? "Composant SPICE" : $"{d.Nom} · {d.Description}", FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
+        _cible.Children.Add(new TextBlock { Text = d == null ? "Composant SPICE" : $"{d.Nom} · {d.Description}", FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
         var refBox = new TextBox { Text = c.Ref };
         var vb = new TextBox { Text = c.Value, PlaceholderText = d?.Type == TypeModele.SousCircuit ? d.Parametres : "" };
-        void Commit() => _canvas.EditSelected(refBox.Text ?? c.Ref, vb.Text ?? "");
+        void Commit() => EditerSelection(refBox.Text ?? c.Ref, vb.Text ?? "");
         foreach (var t in new[] { refBox, vb }) { t.KeyDown += (_, e) => { if (e.Key == Key.Enter) Commit(); }; t.LostFocus += (_, _) => Commit(); }
-        _props.Children.Add(Ui.Label("Référence")); _props.Children.Add(refBox);
-        _props.Children.Add(Ui.Label("Paramètres d'instance (facultatifs)")); _props.Children.Add(vb);
+        _cible.Children.Add(Ui.Label("Référence")); _cible.Children.Add(refBox);
+        _cible.Children.Add(Ui.Label("Paramètres d'instance (facultatifs)")); _cible.Children.Add(vb);
         if (d == null) return;
-        _props.Children.Add(Ui.Hint($"Ligne SPICE : {c.Ref} {string.Join(" ", d.BrochesModele)} {d.Modele} [paramètres]. "
+        _cible.Children.Add(Ui.Hint($"Ligne SPICE : {c.Ref} {string.Join(" ", d.BrochesModele)} {d.Modele} [paramètres]. "
             + d.Type switch
             {
                 TypeModele.Nmos or TypeModele.Pmos => "Ex. W=2u L=180n.",
@@ -1311,7 +1357,7 @@ public sealed class MainWindow : Window
         sp.Children.Add(Icones.Make(Icones.EditerSymbole, 15)); sp.Children.Add(new TextBlock { Text = "Modifier le symbole", FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
         edit.Content = sp; ToolTip.SetTip(edit, "Dessin et correspondance des broches ; s'applique à tous les composants de ce modèle");
         edit.Click += async (_, _) => await OuvrirEditeurAsync(d);
-        _props.Children.Add(edit);
+        _cible.Children.Add(edit);
     }
 
     // ───────────────────────── gabarits ─────────────────────────

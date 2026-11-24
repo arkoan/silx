@@ -47,6 +47,8 @@ public sealed class SchematicCanvas : Control
     public event Action? ToolChanged;
     /// <summary>Sonde posée : nom du nœud (équipotentiel) cliqué.</summary>
     public event Action<string>? Probed;
+    /// <summary>Double-clic sur un composant (outil Sélection) : édition sur place.</summary>
+    public event Action<PlacedComponent>? DoubleClic;
     /// <summary>Calques des bancs de test posés sur le circuit édité : quand une broche du circuit bouge, leurs fils suivent
     /// (et l'annulation les restaure avec le circuit).</summary>
     public IReadOnlyList<Schematic> CalquesLies { get; set; } = [];
@@ -311,7 +313,9 @@ public sealed class SchematicCanvas : Control
                 }
                 break;
             case Tool.Select:
-                var hit = Schematic.Components.LastOrDefault(c => HitTest(c, pos));
+                // Un composant électrique l'emporte sur une étiquette ou une masse qui le chevauche.
+                var touches = Schematic.Components.Where(c => HitTest(c, pos)).ToList();
+                var hit = touches.LastOrDefault(c => c.IsElectrical) ?? touches.LastOrDefault();
                 var wire = hit == null ? Schematic.Wires.LastOrDefault(w => HitWire(w, pos)) : null;
                 bool maj = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
                 if (hit == null && wire == null)
@@ -322,6 +326,7 @@ public sealed class SchematicCanvas : Control
                     break;
                 }
                 if (maj) { Basculer(hit, wire); break; }
+                if (e.ClickCount >= 2 && hit != null) { Select(hit); DoubleClic?.Invoke(hit); break; }   // édition sur place
                 bool groupe = hit != null && _multi.Contains(hit) && _multi.Count + _multiWires.Count > 1;
                 if (!groupe) Select(hit, wire);
                 if (hit != null)
