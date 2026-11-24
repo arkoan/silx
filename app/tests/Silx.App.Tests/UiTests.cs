@@ -472,4 +472,23 @@ public class UiTests
         Assert.Contains(s.Wires, x => x == new Silx.Etude.Wire(new(18, 8), new(18, 4)));
         Assert.Equal(new Silx.Etude.GridPoint(12, 8), s.Components.Single(c => c.Ref == "C1").Position);   // le composant n'a pas bougé
     }
+
+    /// <summary>A4 : depuis un banc, modifier un composant du circuit sous test sans quitter le banc.</summary>
+    [AvaloniaFact]
+    public async Task Circuit_modifiable_depuis_un_banc()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var c1 = w.EtudeCourante.Schema.Components.Single(c => c.Ref == "C1");
+        w.EditerCircuitDepuisBanc(c1);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(w.BulleOuverte);
+        Assert.NotNull(w.BancActif);                                  // on reste sur le banc
+        w.ModifierComposantDeLaBulle("C1", "2u");
+        Assert.Equal("2u", c1.Value);
+        Assert.Null(w.Resultats);                                     // résultats à refaire
+        await w.SimulateAsync();
+        Assert.Equal(Silx.Mesures.Gabarits.Verdict.Fail, w.Resultats!.Global);   // tau doublé : montée hors gabarit
+    }
 }

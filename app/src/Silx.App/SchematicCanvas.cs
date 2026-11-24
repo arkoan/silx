@@ -49,6 +49,8 @@ public sealed class SchematicCanvas : Control
     public event Action<string>? Probed;
     /// <summary>Double-clic sur un composant (outil Sélection) : édition sur place.</summary>
     public event Action<PlacedComponent>? DoubleClic;
+    /// <summary>Double-clic, depuis un banc, sur un composant du circuit sous test affiché dessous.</summary>
+    public event Action<PlacedComponent>? DoubleClicCircuit;
     /// <summary>Calques des bancs de test posés sur le circuit édité : quand une broche du circuit bouge, leurs fils suivent
     /// (et l'annulation les restaure avec le circuit).</summary>
     public IReadOnlyList<Schematic> CalquesLies { get; set; } = [];
@@ -405,6 +407,9 @@ public sealed class SchematicCanvas : Control
                 var hit = touches.LastOrDefault(c => c.IsElectrical) ?? touches.LastOrDefault();
                 var wire = hit == null ? Schematic.Wires.LastOrDefault(w => HitWire(w, pos)) : null;
                 bool maj = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+                if (hit == null && wire == null && e.ClickCount >= 2 && _underlay != null
+                    && _underlay.Components.Where(c => c.IsElectrical && HitTest(c, pos)).LastOrDefault() is { } duCircuit)
+                { DoubleClicCircuit?.Invoke(duCircuit); break; }
                 if (hit == null && wire == null)
                 {
                     // Fond : rectangle de sélection (Maj : ajoute à la sélection).

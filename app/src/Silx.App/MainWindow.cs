@@ -164,6 +164,7 @@ public sealed class MainWindow : Window
         _canvas.ToolChanged += RefreshToolButtons;
         _canvas.Probed += OnProbed;
         _canvas.DoubleClic += EditerSurPlace;
+        _canvas.DoubleClicCircuit += EditerCircuitDepuisBanc;
         KeyDown += async (_, e) =>
         {
             if (_drawing != null && e.Key is Key.Enter or Key.Escape) { e.Handled = true; EndDrawing(e.Key == Key.Enter); return; }
@@ -1243,12 +1244,14 @@ public sealed class MainWindow : Window
     /// <summary>Panneau où s'écrivent les propriétés : le panneau droit, ou la bulle d'édition sur place.</summary>
     StackPanel _cible = null!;
     Flyout? _bulle; StackPanel? _bulleContenu; PlacedComponent? _bulleComposant;
+    /// <summary>Composant dont on construit les propriétés ; <see cref="_bulleCircuit"/> : composant du circuit sous test édité depuis un banc.</summary>
+    PlacedComponent? _composantCible; bool _bulleCircuit;
 
     readonly StackPanel _blocProps = new() { Spacing = 6 };
 
     void RefreshProperties()
     {
-        _cible = _props;
+        _cible = _props; _composantCible = _canvas.Selected;
         Proprietes();
         bool sel = _canvas.Selection.Count + _canvas.FilsSelectionnes.Count > 0;
         _blocProps.IsVisible = sel;
@@ -1256,18 +1259,23 @@ public sealed class MainWindow : Window
         // Bulle d'édition ouverte : reconstruite si le composant est toujours sélectionné, fermée sinon.
         if (_bulle?.IsOpen == true && _bulleContenu != null)
         {
-            if (_canvas.Selected != _bulleComposant) { _bulle.Hide(); return; }
-            _cible = _bulleContenu; Proprietes(); _cible = _props;
+            if (!_bulleCircuit && _canvas.Selected != _bulleComposant) { _bulle.Hide(); return; }
+            _cible = _bulleContenu; _composantCible = _bulleComposant; Proprietes(); _cible = _props; _composantCible = _canvas.Selected;
         }
     }
 
     /// <summary>Édition sur place : double-clic sur un composant → bulle avec ses propriétés, près du pointeur.</summary>
-    public void EditerSurPlace(PlacedComponent c)
+    public void EditerSurPlace(PlacedComponent c) => OuvrirBulle(c, circuit: false);
+
+    /// <summary>Depuis un banc : double-clic sur un composant du circuit sous test (atténué) pour le modifier sans quitter le banc.</summary>
+    public void EditerCircuitDepuisBanc(PlacedComponent c) => OuvrirBulle(c, circuit: true);
+
+    void OuvrirBulle(PlacedComponent c, bool circuit)
     {
-        if (_canvas.Selected != c) return;
-        _bulleComposant = c;
+        if (!circuit && _canvas.Selected != c) return;
+        _bulleComposant = c; _bulleCircuit = circuit;
         _bulleContenu = new StackPanel { Spacing = 6, Width = 280, Margin = new Thickness(4) };
-        _cible = _bulleContenu; Proprietes(); _cible = _props;
+        _cible = _bulleContenu; _composantCible = c; Proprietes(); _cible = _props; _composantCible = _canvas.Selected;
         _bulle = new Flyout { Content = _bulleContenu, Placement = PlacementMode.Pointer, ShowMode = FlyoutShowMode.Standard };
         _bulle.ShowAt(_canvas, showAtPointer: true);
         // Première zone de saisie active : on tape directement la nouvelle valeur.
@@ -1278,10 +1286,26 @@ public sealed class MainWindow : Window
         });
     }
     public bool BulleOuverte => _bulle?.IsOpen == true;
+    public void ModifierComposantDeLaBulle(string reference, string valeur) { if (_bulleComposant != null) { _composantCible = _bulleComposant; EditerSelection(reference, valeur); _composantCible = _canvas.Selected; } }
 
     /// <summary>Vrai pendant la reconstruction d'un panneau : les zones de saisie retirées perdent le focus et ne doivent rien réécrire.</summary>
     bool _reconstruction;
-    void EditerSelection(string reference, string valeur) { if (!_reconstruction) _canvas.EditSelected(reference, valeur); }
+    void EditerSelection(string reference, string valeur)
+    {
+        if (_reconstruction) return;
+        if (_bulleCircuit && _composantCible is { } c && c != _canvas.Selected)
+        {
+            // Composant du circuit sous test modifié depuis un banc : vaut pour tous les bancs, résultats à refaire.
+            if (c.Ref == reference.Trim() && c.Value == valeur) return;
+            c.Ref = reference.Trim(); c.Value = valeur;
+            _results.Clear(); SetVerdict(null); _canvas.InvalidateVisual();
+            RefreshGabarits(); RefreshBenchBar(); RefreshPlot();
+            _status.Text = $"{c.Ref} modifié dans le circuit sous test : relancez les bancs.";
+            if (_bulle?.IsOpen == true && _bulleContenu != null) { _cible = _bulleContenu; Proprietes(); _cible = _props; }
+            return;
+        }
+        _canvas.EditSelected(reference, valeur);
+    }
 
     void Proprietes()
     {
@@ -1292,7 +1316,9 @@ public sealed class MainWindow : Window
     void ProprietesInterne()
     {
         _cible.Children.Clear();
-        var c = _canvas.Selected;
+        var c = _composantCible;
+        if (_bulleCircuit && c != null && _cible != _props && c != _canvas.Selected)
+            _cible.Children.Add(new TextBlock { Text = "Circuit sous test : la modification vaut pour tous les bancs.", FontSize = 11.5, Foreground = Ui.AccentBrush, TextWrapping = TextWrapping.Wrap });
         if (c == null)
         {
             int n = _canvas.Selection.Count, nf = _canvas.FilsSelectionnes.Count;
