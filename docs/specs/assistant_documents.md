@@ -1,6 +1,6 @@
 # Chapitre de spécification : assistant IA appuyé sur des datasheets et notes d'application
 
-Statut : proposition, à valider.
+Statut : validé le 24/11/2026.
 Complète la spécification fonctionnelle (§3.7 Assistant de conception, §3.8
 Interface, §3.9 Intégration IA) et la spécification technique (§4 Intégration
 IA / MCP).
@@ -114,8 +114,10 @@ projet, réponses listées avec citations.
 - Rattachement : un document peut être lié à un symbole, à un modèle SPICE
   ou à une instance du schéma (U3). La liaison est proposée automatiquement
   par correspondance de référence, confirmée par l'utilisateur.
-- Une bibliothèque documentaire utilisateur (hors projet) permet de réutiliser
-  les datasheets courantes d'un projet à l'autre.
+- Une bibliothèque documentaire utilisateur (hors projet), **locale au poste**,
+  permet de réutiliser les datasheets courantes d'un projet à l'autre. Une
+  bibliothèque partagée en équipe est hors périmètre v1 (décision du
+  24/11/2026).
 
 ### 3.2 Extraction du texte
 
@@ -154,10 +156,11 @@ précieuse et la plus difficile.
 - v1 : les figures (courbes typiques, schémas d'application, brochages) sont
   extraites comme images, indexées par leur légende et leur numéro, et
   affichables en citation. **[H2]**
-- Lecture de valeurs sur une courbe : **numérisation assistée** (l'utilisateur
-  cale les axes, éventuellement log, et clique des points ; l'outil
-  interpole). Toute valeur ainsi obtenue est étiquetée « lue sur figure »,
-  avec une incertitude affichée. Elle n'est jamais présentée comme une
+- Lecture de valeurs sur une courbe : **numérisation assistée**, reportée
+  après la v1 (décision du 24/11/2026). Principe retenu pour plus tard :
+  l'utilisateur cale les axes, éventuellement log, et clique des points ;
+  l'outil interpole. Toute valeur ainsi obtenue sera étiquetée « lue sur
+  figure », avec une incertitude affichée, et jamais présentée comme une
   valeur garantie.
 - La lecture automatique de courbe par un modèle à vision est **hors
   périmètre v1** : les modèles locaux visés en sont peu capables et l'erreur
@@ -293,7 +296,7 @@ conditions, le conflit est affiché avec les deux citations, et l'utilisateur
 choisit. La décision est enregistrée dans le projet (qui, quand, pourquoi)
 et reprise dans le rapport.
 
-### 7.2 Ordre de priorité proposé par défaut **[H5]**
+### 7.2 Ordre de priorité par défaut (validé le 24/11/2026)
 
 Proposé comme suggestion, jamais appliqué sans affichage :
 
@@ -495,8 +498,8 @@ Le volume d'outils augmente, ce qui pèse sur les petits modèles locaux
 
 - **[H1]** Le PDF couvre l'essentiel du besoin (datasheets et AN sont
   quasiment toujours en PDF).
-- **[H2]** En v1, les figures servent de citation visuelle et de support de
-  numérisation manuelle, pas de source automatique de valeurs.
+- **[H2]** En v1, les figures servent de citation visuelle uniquement, pas de
+  source de valeurs (validé le 24/11/2026).
 - **[H3]** Les modèles locaux visés (taille 7 à 30 milliards de paramètres)
   n'ont pas une vision fiable sur des courbes techniques. À réévaluer si un
   modèle local multimodal fiable devient courant.
@@ -504,7 +507,7 @@ Le volume d'outils augmente, ce qui pèse sur les petits modèles locaux
   surtout sur des références, symboles et noms de paramètres ; la recherche
   sémantique est un plus optionnel.
 - **[H5]** L'ordre de priorité des sources du §7.2 correspond à la pratique
-  des bureaux d'étude ; à valider avec Régis.
+  des bureaux d'étude (validé le 24/11/2026).
 - **[H6]** Exposer le serveur MCP à des clients externes (transport local,
   sur la machine de l'utilisateur) est souhaité, en plus du prompt intégré.
 - **[H7]** L'extraction des tableaux en paramètres est faite par du code
@@ -527,13 +530,20 @@ Le volume d'outils augmente, ce qui pèse sur les petits modèles locaux
 | **J4. Règles de conception** | Règles structurelles et comportementales, liste de contrôle manuelle, `check_design_rules` | CU3 sur un étage buck de référence |
 | **J5. Conflits et modèles** | Détection de conflits, comparaison de révisions, `compare_model_to_datasheet` | CU5 sur un ampli-op du corpus ; rapport listant conflits et décisions |
 
-Procédures d'AN pas à pas (CU4) et numérisation assistée de courbes : après
-J5, selon les retours.
+Après la v1, selon les retours : procédures d'AN pas à pas (CU4),
+numérisation assistée de courbes (§3.4), bibliothèque documentaire partagée
+en équipe.
 
-## 13. Questions ouvertes pour validation
+## 13. Décisions validées (24/11/2026)
 
-1. L'ordre de priorité des sources (§7.2) est-il conforme à vos pratiques ?
-2. La numérisation assistée de courbes est-elle utile dès la v1, ou la
-   citation visuelle de la figure suffit-elle ?
-3. Faut-il gérer dès la v1 une bibliothèque documentaire partagée en équipe,
-   ou seulement locale à l'utilisateur ?
+1. Ordre de priorité des sources du §7.2 : conservé tel quel.
+2. Numérisation assistée de courbes : reportée après la v1 ; en v1, les
+   figures servent de citation visuelle.
+3. Bibliothèque documentaire : locale à l'utilisateur en v1 ; bibliothèque
+   partagée en équipe reportée.
+4. Pas d'exigence de confidentialité particulière ; l'utilisateur connecte
+   librement ses propres IA (§8).
+
+Restent ouverts, à trancher aux jalons : méthode d'extraction des tableaux
+(J0), évaluateur de formules avec unités (J3), recherche sémantique en
+complément de la recherche plein texte (optionnelle).
