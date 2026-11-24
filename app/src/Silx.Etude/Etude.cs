@@ -36,6 +36,17 @@ public sealed class CritereGabarit
     public TypesMesure.Info Info => TypesMesure.Get(Mesure);
 }
 
+/// <summary>Gabarit dessiné sur une courbe : x en secondes (transitoire) ou en Hz (AC) ; y en V ou en dB.</summary>
+public sealed class GabaritTrace
+{
+    public AnalyseKind Analyse { get; set; }
+    public string Noeud { get; set; } = "OUT";
+    public Silx.Mesures.Gabarits.Limite Limite { get; set; }
+    public List<(double X, double Y)> Points { get; set; } = new();
+    public string Nom => $"Limite {(Limite == Silx.Mesures.Gabarits.Limite.Haute ? "haute" : "basse")} sur {(Analyse == AnalyseKind.Ac ? "|V(" + Noeud + ")| dB" : "V(" + Noeud + ")")}";
+    public string Unite => Analyse == AnalyseKind.Ac ? "dB" : "V";
+}
+
 /// <summary>Une étude = un schéma + les réglages d'analyse + les gabarits à vérifier.</summary>
 public sealed class Etude
 {
@@ -43,6 +54,7 @@ public sealed class Etude
     public ReglagesTransitoire Transitoire { get; } = new();
     public ReglagesAc Ac { get; } = new();
     public List<CritereGabarit> Gabarits { get; } = new();
+    public List<GabaritTrace> GabaritsTraces { get; } = new();
 
     /// <summary>Filtre RC passe-bas de démonstration, avec deux critères.</summary>
     public static Etude Demo()
@@ -60,6 +72,8 @@ public sealed class Etude
         e.Gabarits.Add(new() { Mesure = TypeMesure.TempsDeMontee, Noeud = "OUT", Max = 2.5e-3 });
         e.Gabarits.Add(new() { Mesure = TypeMesure.Depassement, Noeud = "OUT", Max = 5 });
         e.Gabarits.Add(new() { Mesure = TypeMesure.BandePassante3dB, Noeud = "OUT", Min = 150 });
+        e.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Haute, Points = [(0, 1.1), (10e-3, 1.1)] });
+        e.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Basse, Points = [(2e-3, 0), (3e-3, 0.8), (6e-3, 0.95), (10e-3, 0.95)] });
         return e;
     }
 }

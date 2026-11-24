@@ -26,6 +26,7 @@ public sealed class MainWindow : Window
     readonly Border _verdict = new() { CornerRadius = new CornerRadius(4), Padding = new Thickness(10, 4), VerticalAlignment = VerticalAlignment.Center, IsVisible = false };
     readonly StackPanel _props = new() { Spacing = 6 };
     readonly StackPanel _gabarits = new() { Spacing = 8 };
+    readonly StackPanel _traces = new() { Spacing = 8 };
     readonly StackPanel _palette = new() { Spacing = 2 };
     readonly TabControl _bottomTabs = new();
     readonly TabItem _ercTab = new();
@@ -34,6 +35,15 @@ public sealed class MainWindow : Window
     readonly RadioButton _showAc = new() { Content = "AC (Bode)", GroupName = "aff" };
     readonly Dictionary<ComponentKind, Button> _paletteButtons = new();
     Button _toolSelect = null!, _toolWire = null!;
+    // Courbes : mode Simulation (courbes seules) / Test (gabarits visibles et dessinables).
+    bool _modeTest = true;
+    readonly Button _modeSim = new(), _modeTestBtn = new();
+    readonly StackPanel _testTools = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
+    readonly ComboBox _signal = new() { MinWidth = 110, FontSize = 12 };
+    readonly Button _drawHigh = new(), _drawLow = new();
+    readonly TextBlock _drawHint = new() { FontSize = 12, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center };
+    GabaritTrace? _drawing;
+    (double X, double Y)? _hover;
     ResultatEtude? _last;
     CancellationTokenSource? _cts;
 
@@ -66,6 +76,7 @@ public sealed class MainWindow : Window
         _canvas.ToolChanged += RefreshToolButtons;
         KeyDown += async (_, e) =>
         {
+            if (_drawing != null && e.Key is Key.Enter or Key.Escape) { e.Handled = true; EndDrawing(e.Key == Key.Enter); return; }
             if (e.Key == Key.F5 || (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Meta))) { e.Handled = true; await SimulateAsync(); }
         };
         _showTran.IsCheckedChanged += (_, _) => { if (_showTran.IsChecked == true) RefreshPlot(); };
@@ -76,6 +87,8 @@ public sealed class MainWindow : Window
     }
 
     public EtudeModel EtudeCourante => _etude;
+    public AvaPlot PlotControl => _plot;
+    public void SetModeTest(bool test) { _modeTest = test; RefreshPlotToolbar(); RefreshPlot(); }
     public void ShowAnalysis(AnalyseKind k) { (k == AnalyseKind.Ac ? _showAc : _showTran).IsChecked = true; RefreshPlot(); }
 
     void LoadEtude(EtudeModel e)
@@ -173,7 +186,7 @@ public sealed class MainWindow : Window
 
         _plot.Plot.FigureBackground.Color = ScottPlot.Colors.White;
         _ercTab.Header = "Vérifications"; _ercTab.FontSize = 15;
-        _bottomTabs.Items.Add(new TabItem { FontSize = 15, Header = "Courbes", Content = _plot });
+        _bottomTabs.Items.Add(new TabItem { FontSize = 15, Header = "Courbes", Content = BuildPlotArea() });
         _bottomTabs.Items.Add(_ercTab); _ercTab.Content = new ScrollViewer { Content = _ercList };
         _bottomTabs.Items.Add(new TabItem { FontSize = 15, Header = "Journal ngspice", Content = _journal });
 
@@ -182,6 +195,122 @@ public sealed class MainWindow : Window
         var split = new GridSplitter { Background = Ui.Line, ResizeDirection = GridResizeDirection.Rows }; Grid.SetRow(split, 1); g.Children.Add(split);
         var bottom = new Border { Background = Ui.Panel, Child = _bottomTabs }; Grid.SetRow(bottom, 2); g.Children.Add(bottom);
         return g;
+    }
+
+    // ───────────────────────── zone des courbes ─────────────────────────
+    Control BuildPlotArea()
+    {
+        void Seg(Button b, string text, string tip, bool test)
+        {
+            b.Content = text; b.Padding = new Thickness(12, 4); b.FontSize = 12; ToolTip.SetTip(b, tip);
+            b.Click += (_, _) => { _modeTest = test; if (!test) EndDrawing(false); RefreshPlotToolbar(); RefreshPlot(); };
+        }
+        Seg(_modeSim, "Simulation", "Courbes seules", false);
+        Seg(_modeTestBtn, "Test", "Courbes avec gabarits : dessiner et vérifier des limites", true);
+        var seg = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
+        seg.Children.Add(_modeSim); seg.Children.Add(_modeTestBtn);
+
+        var view = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, VerticalAlignment = VerticalAlignment.Center };
+        _showTran.Content = "Temporel"; _showAc.Content = "Bode"; _showTran.FontSize = _showAc.FontSize = 12;
+        view.Children.Add(_showTran); view.Children.Add(_showAc);
+
+        _drawHigh.Content = "▔ Limite haute"; _drawLow.Content = "▁ Limite basse";
+        foreach (var (b, lim) in new[] { (_drawHigh, Limite.Haute), (_drawLow, Limite.Basse) })
+        {
+            b.FontSize = 12; b.Padding = new Thickness(10, 4); b.Background = Brushes.Transparent;
+            ToolTip.SetTip(b, lim == Limite.Haute ? "Dessiner une limite que le signal ne doit pas dépasser (zone interdite au-dessus)" : "Dessiner une limite sous laquelle le signal ne doit pas descendre (zone interdite en dessous)");
+            var l = lim; b.Click += (_, _) => StartDrawing(l);
+        }
+        _signal.SelectionChanged += (_, _) => { if (_drawing == null) RefreshPlot(keepLimits: true); };
+        _testTools.Children.Add(new TextBlock { Text = "Signal", FontSize = 12, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center });
+        _testTools.Children.Add(_signal); _testTools.Children.Add(_drawHigh); _testTools.Children.Add(_drawLow); _testTools.Children.Add(_drawHint);
+
+        var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, Margin = new Thickness(8, 4) };
+        bar.Children.Add(seg); bar.Children.Add(Ui.Separator()); bar.Children.Add(view); bar.Children.Add(Ui.Separator()); bar.Children.Add(_testTools);
+
+        _plot.AddHandler(PointerPressedEvent, OnPlotPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        _plot.AddHandler(PointerMovedEvent, OnPlotMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        var dock = new DockPanel();
+        DockPanel.SetDock(bar, Dock.Top); dock.Children.Add(bar); dock.Children.Add(_plot);
+        RefreshPlotToolbar();
+        return dock;
+    }
+
+    void RefreshPlotToolbar()
+    {
+        Ui.SetActive(_modeSim, !_modeTest); Ui.SetActive(_modeTestBtn, _modeTest);
+        _testTools.IsVisible = _modeTest;
+        Ui.SetActive(_drawHigh, _drawing?.Limite == Limite.Haute); Ui.SetActive(_drawLow, _drawing?.Limite == Limite.Basse);
+        _drawHint.Text = _drawing == null ? "" : _drawing.Points.Count == 0
+            ? "Cliquez pour poser le premier point (de gauche à droite)…"
+            : "Cliquez pour ajouter un point · double-clic ou Entrée pour terminer · Échap pour annuler";
+        var conn = Connectivity.Build(_etude.Schema);
+        var nodes = conn.AllNodes.ToList();
+        var cur = _signal.SelectedItem as string;
+        if (!(_signal.ItemsSource is List<string> old && old.SequenceEqual(nodes)))
+        {
+            _signal.ItemsSource = nodes;
+            _signal.SelectedItem = nodes.Contains(cur ?? "") ? cur : nodes.FirstOrDefault(n => n == "OUT") ?? conn.NamedNodes.LastOrDefault() ?? nodes.FirstOrDefault();
+        }
+    }
+
+    string? SelectedSignal => _signal.SelectedItem as string;
+
+    public void StartDrawing(Limite lim)
+    {
+        if (SelectedSignal is not { } n) return;
+        if (_last == null || !_last.Resultats.ContainsKey(Shown)) { _status.Text = "Simulez d'abord : le gabarit se dessine sur la courbe."; return; }
+        _drawing = new GabaritTrace { Analyse = Shown, Noeud = n, Limite = lim };
+        _plot.UserInputProcessor.Disable();
+        RefreshPlotToolbar(); RefreshPlot(keepLimits: true);
+    }
+
+    public void EndDrawing(bool keep)
+    {
+        if (_drawing == null) return;
+        if (keep && _drawing.Points.Count >= 2)
+        {
+            _etude.GabaritsTraces.Add(_drawing);
+            ReevaluateTraces();
+        }
+        _drawing = null; _hover = null;
+        _plot.UserInputProcessor.Enable();
+        RefreshPlotToolbar(); RefreshGabarits(); RefreshPlot(keepLimits: true);
+    }
+
+    /// <summary>Réévalue les gabarits dessinés sur les résultats déjà calculés (pas besoin de resimuler).</summary>
+    void ReevaluateTraces()
+    {
+        if (_last == null || _last.Erreur != null) return;
+        var traces = _etude.GabaritsTraces.Where(g => _last.Resultats.ContainsKey(g.Analyse))
+            .Select(g => new ResultatTrace(g, Verification.EvaluerTrace(g, _last.Resultats[g.Analyse]))).ToList();
+        _last = _last with { Traces = traces };
+        if (_etude.GabaritsTraces.Any(g => !_last.Resultats.ContainsKey(g.Analyse))) SetVerdict(null); else SetVerdict(_last.Nombre == 0 ? null : _last.Global);
+    }
+
+    (double X, double Y) ToData(PointerEventArgs e)
+    {
+        var pos = e.GetPosition(_plot); var sc = _plot.DisplayScale;
+        var c = _plot.Plot.GetCoordinates(new ScottPlot.Pixel((float)(pos.X * sc), (float)(pos.Y * sc)));
+        return Shown == AnalyseKind.Ac ? (Math.Pow(10, c.X), c.Y) : (c.X * 1e-3, c.Y);
+    }
+
+    void OnPlotPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_drawing == null) return;
+        e.Handled = true;
+        if (!e.GetCurrentPoint(_plot).Properties.IsLeftButtonPressed) { EndDrawing(false); return; }
+        if (e.ClickCount > 1) { EndDrawing(true); return; }
+        var p = ToData(e);
+        if (_drawing.Points.Count > 0 && p.X <= _drawing.Points[^1].X) { _drawHint.Text = "Les points se posent de gauche à droite."; return; }
+        _drawing.Points.Add(p);
+        RefreshPlotToolbar(); RefreshPlot(keepLimits: true);
+    }
+
+    void OnPlotMoved(object? sender, PointerEventArgs e)
+    {
+        if (_drawing == null || _drawing.Points.Count == 0) return;
+        _hover = ToData(e); RefreshPlot(keepLimits: true);
     }
 
     // ───────────────────────── panneau droit ─────────────────────────
@@ -194,7 +323,7 @@ public sealed class MainWindow : Window
         s.Children.Add(BuildAnalysisPanel());
         s.Children.Add(Ui.Rule());
         var gh = new Grid { ColumnDefinitions = new("*,Auto") };
-        gh.Children.Add(Ui.Title("Gabarits"));
+        gh.Children.Add(Ui.Title("Critères mesurés"));
         var add = Ui.ToolButton("+ Critère", "Ajouter un critère pass/fail", () =>
         {
             var n = Connectivity.Build(_etude.Schema).NamedNodes.FirstOrDefault() ?? "OUT";
@@ -202,6 +331,8 @@ public sealed class MainWindow : Window
         });
         Grid.SetColumn(add, 1); gh.Children.Add(add);
         s.Children.Add(gh); s.Children.Add(_gabarits);
+        var th = Ui.Title("Gabarits dessinés"); th.Margin = new Thickness(0, 12, 0, 6);
+        s.Children.Add(th); s.Children.Add(_traces);
         return new Border { Width = 350, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(1, 0, 0, 0), Child = new ScrollViewer { Content = s } };
     }
 
@@ -221,10 +352,6 @@ public sealed class MainWindow : Window
 
         s.Children.Add(Ui.SubTitle("Transitoire (.tran)")); s.Children.Add(tran);
         s.Children.Add(Ui.SubTitle("Petit signal (.ac, décade)")); s.Children.Add(ac);
-        var show = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, Margin = new Thickness(0, 4, 0, 0) };
-        show.Children.Add(new TextBlock { Text = "Tracer :", VerticalAlignment = VerticalAlignment.Center, Foreground = Ui.Muted });
-        show.Children.Add(_showTran); show.Children.Add(_showAc);
-        s.Children.Add(show);
         return s;
     }
 
@@ -283,6 +410,7 @@ public sealed class MainWindow : Window
     // ───────────────────────── gabarits ─────────────────────────
     void RefreshGabarits()
     {
+        RefreshTraces();
         _gabarits.Children.Clear();
         if (_etude.Gabarits.Count == 0)
             _gabarits.Children.Add(Ui.Hint("Aucun critère. Ajoutez par exemple « Bande passante −3 dB ≥ 1 kHz sur OUT »."));
@@ -327,6 +455,40 @@ public sealed class MainWindow : Window
         }
     }
 
+    void RefreshTraces()
+    {
+        _traces.Children.Clear();
+        if (_etude.GabaritsTraces.Count == 0)
+            _traces.Children.Add(Ui.Hint("Aucun. En mode Test, sous les courbes : choisissez un signal puis « Limite haute » ou « Limite basse » et cliquez sur le graphique."));
+        foreach (var g in _etude.GabaritsTraces.ToList())
+        {
+            var res = _last?.Traces.FirstOrDefault(t => t.Gabarit == g)?.Resultat;
+            var card = new StackPanel { Spacing = 4 };
+            var head = new Grid { ColumnDefinitions = new("*,Auto") };
+            head.Children.Add(new TextBlock { Text = g.Nom, FontWeight = FontWeight.SemiBold, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap });
+            var del = new Button { Content = "✕", Background = Brushes.Transparent, Foreground = Ui.Muted, Padding = new Thickness(6, 2) };
+            ToolTip.SetTip(del, "Retirer ce gabarit");
+            del.Click += (_, _) => { _etude.GabaritsTraces.Remove(g); ReevaluateTraces(); RefreshGabarits(); RefreshPlot(keepLimits: true); };
+            Grid.SetColumn(del, 1); head.Children.Add(del);
+            card.Children.Add(head);
+            card.Children.Add(Ui.Hint($"{(g.Analyse == AnalyseKind.Ac ? "Bode" : "Temporel")} · {g.Points.Count} points de {Fx(g.Analyse, g.Points[0].X)} à {Fx(g.Analyse, g.Points[^1].X)}"));
+            var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            line.Children.Add(Ui.Badge(res?.Verdict));
+            line.Children.Add(new TextBlock
+            {
+                Text = res == null ? "Pas encore simulé" : res.Marge is { } m
+                    ? (m >= 0 ? $"Marge : {SpiceNumber.Format(m, g.Unite)} à {Fx(g.Analyse, res.XPire!.Value)}" : $"Franchi de {SpiceNumber.Format(-m, g.Unite)} à {Fx(g.Analyse, res.XPire!.Value)}")
+                    : res.Detail ?? "Non évaluable",
+                FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap, MaxWidth = 230,
+                Foreground = res?.Verdict == Verdict.Fail ? Ui.FailBrush : Ui.Ink
+            });
+            card.Children.Add(line);
+            _traces.Children.Add(new Border { Child = card, Background = Brushes.White, BorderBrush = res?.Verdict == Verdict.Fail ? Ui.FailBrush : Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10) });
+        }
+    }
+
+    static string Fx(AnalyseKind k, double x) => k == AnalyseKind.Ac ? SpiceNumber.Format(x, "Hz") : SpiceNumber.Format(x, "s");
+
     /// <summary>Un critère a changé : les résultats affichés ne correspondent plus.</summary>
     void Invalidate() { _last = _last is null ? null : _last with { Criteres = [] }; SetVerdict(null); RefreshGabarits(); }
 
@@ -342,7 +504,8 @@ public sealed class MainWindow : Window
             _ercList.Children.Add(new TextBlock { Text = (i.Severity == Severity.Error ? "⛔ " : "⚠ ") + i.Message, Foreground = i.Severity == Severity.Error ? Ui.FailBrush : Ui.WarnBrush, TextWrapping = TextWrapping.Wrap });
         int nErr = issues.Count(i => i.Severity == Severity.Error), nWarn = issues.Count - nErr;
         _ercTab.Header = nErr + nWarn == 0 ? "Vérifications ✓" : $"Vérifications ({nErr + nWarn})";
-        if (_last != null) { _last = null; SetVerdict(null); RefreshGabarits(); }
+        if (_last != null) { _last = null; SetVerdict(null); RefreshGabarits(); RefreshPlot(); }
+        RefreshPlotToolbar();
         RefreshProperties();
     }
 
@@ -365,9 +528,9 @@ public sealed class MainWindow : Window
             }
             else
             {
-                int pass = r.Criteres.Count(c => c.Resultat.Verdict == Verdict.Pass);
-                _status.Text = $"Simulé en {sw.ElapsedMilliseconds} ms ({string.Join(" + ", r.Resultats.Keys.Select(k => k == AnalyseKind.Ac ? "AC" : "transitoire"))}) · {pass}/{r.Criteres.Count} critère(s) respecté(s)";
-                SetVerdict(r.Criteres.Count == 0 ? null : r.Global);
+                int pass = r.Respectes;
+                _status.Text = $"Simulé en {sw.ElapsedMilliseconds} ms ({string.Join(" + ", r.Resultats.Keys.Select(k => k == AnalyseKind.Ac ? "AC" : "transitoire"))}) · {pass}/{r.Nombre} contrainte(s) respectée(s)";
+                SetVerdict(r.Nombre == 0 ? null : r.Global);
                 _bottomTabs.SelectedIndex = 0;
             }
             RefreshGabarits(); RefreshPlot();
@@ -384,9 +547,11 @@ public sealed class MainWindow : Window
         _verdict.Child = new TextBlock { Text = v == Verdict.Pass ? "GABARITS OK" : v == Verdict.Fail ? "GABARITS NON RESPECTÉS" : "NON ÉVALUABLE", Foreground = Brushes.White, FontWeight = FontWeight.Bold, FontSize = 12 };
     }
 
-    void RefreshPlot()
+    void RefreshPlot(bool keepLimits = false)
     {
-        var p = _plot.Plot; p.Clear(); p.Axes.Right.IsVisible = false;
+        var p = _plot.Plot;
+        var limits = p.Axes.GetLimits();
+        p.Clear(); p.Axes.Right.IsVisible = false;
         p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic();
         if (_last == null || !_last.Resultats.TryGetValue(Shown, out var raw))
         {
@@ -396,49 +561,99 @@ public sealed class MainWindow : Window
             p.Axes.SetLimits(-1, 1, -1, 1); p.HideGrid(); _plot.Refresh(); return;
         }
         p.ShowGrid();
+        bool ac = Shown == AnalyseKind.Ac;
+        double X(double x) => ac ? Math.Log10(x) : x * 1e3;
         var conn = Connectivity.Build(_etude.Schema);
-        var nodes = (conn.NamedNodes.Count > 0 ? conn.NamedNodes : conn.AllNodes).Take(8).ToList();
+        var nodes = (conn.NamedNodes.Count > 0 ? conn.NamedNodes : conn.AllNodes).ToList();
+        if (_modeTest && SelectedSignal is { } sel && !nodes.Contains(sel)) nodes.Add(sel);
         var palette = new ScottPlot.Palettes.Category10();
+        double yMin = double.PositiveInfinity, yMax = double.NegativeInfinity, xLo = double.PositiveInfinity, xHi = double.NegativeInfinity;
         int idx = 0;
-        if (Shown == AnalyseKind.Transitoire)
+        foreach (var n in nodes.Take(8))
         {
-            foreach (var n in nodes)
+            var (xs, ys) = Verification.Courbe(Shown, raw, n);
+            bool dim = _modeTest && SelectedSignal != null && n != SelectedSignal;
+            var color = palette.GetColor(idx);
+            var sc = p.Add.ScatterLine(xs.Select(X).ToArray(), ys);
+            sc.LegendText = ac ? $"|V({n})| (dB)" : $"V({n})"; sc.LineWidth = dim ? 1.5f : 2.5f; sc.Color = dim ? color.WithAlpha(0.35) : color;
+            yMin = Math.Min(yMin, ys.Min()); yMax = Math.Max(yMax, ys.Max()); xLo = Math.Min(xLo, X(xs[0])); xHi = Math.Max(xHi, X(xs[^1]));
+            if (ac && !_modeTest)
             {
-                var c = Verification.Temporelle(raw, $"v({n})");
-                var sc = p.Add.ScatterLine(c.Temps.ToArray().Select(x => x * 1e3).ToArray(), c.Valeurs.ToArray());
-                sc.LegendText = $"V({n})"; sc.LineWidth = 2; sc.Color = palette.GetColor(idx++);
+                var r = Verification.Frequentielle(raw, $"v({n})");
+                var ph = p.Add.ScatterLine(xs.Select(X).ToArray(), Unwrap(r.Valeurs.ToArray().Select(z => z.Phase * 180 / Math.PI).ToArray()));
+                ph.LegendText = $"phase V({n}) (°)"; ph.LineWidth = 1.5f; ph.Color = color.WithAlpha(0.6); ph.LinePattern = ScottPlot.LinePattern.Dashed;
+                ph.Axes.YAxis = p.Axes.Right; p.Axes.Right.IsVisible = true; p.Axes.Right.Label.Text = "Phase (°)";
             }
-            p.Axes.Bottom.Label.Text = "Temps (ms)"; p.Axes.Left.Label.Text = "Tension (V)";
+            idx++;
         }
-        else
+        if (ac)
         {
             p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic
             {
                 MinorTickGenerator = new ScottPlot.TickGenerators.LogMinorTickGenerator(), IntegerTicksOnly = true,
                 LabelFormatter = x => SpiceNumber.Format(Math.Pow(10, x), "Hz")
             };
-            foreach (var n in nodes)
-            {
-                var r = Verification.Frequentielle(raw, $"v({n})");
-                var lf = r.Frequences.ToArray().Select(Math.Log10).ToArray();
-                var sc = p.Add.ScatterLine(lf, r.Valeurs.ToArray().Select(Silx.Mesures.Mesures.Frequentiel.Db).ToArray());
-                sc.LegendText = $"|V({n})| (dB)"; sc.LineWidth = 2; sc.Color = palette.GetColor(idx);
-                var ph = p.Add.ScatterLine(lf, Unwrap(r.Valeurs.ToArray().Select(z => z.Phase * 180 / Math.PI).ToArray()));
-                ph.LegendText = $"phase V({n}) (°)"; ph.LineWidth = 1.5f; ph.Color = palette.GetColor(idx++).WithAlpha(0.6); ph.LinePattern = ScottPlot.LinePattern.Dashed;
-                ph.Axes.YAxis = p.Axes.Right;
-            }
-            p.Axes.Right.IsVisible = true; p.Axes.Right.Label.Text = "Phase (°)";
             p.Axes.Bottom.Label.Text = "Fréquence"; p.Axes.Left.Label.Text = "Gain (dB)";
-            foreach (var rc in _last.Criteres.Where(c => c.Critere.Mesure == TypeMesure.BandePassante3dB && c.Resultat.Valeur is not null))
+        }
+        else { p.Axes.Bottom.Label.Text = "Temps (ms)"; p.Axes.Left.Label.Text = "Tension (V)"; }
+
+        if (_modeTest)
+        {
+            double span = Math.Max(yMax - yMin, 1e-9), far = 1000 * span;
+            var red = ScottPlot.Color.FromHex("#b91c1c");
+            void DrawMask(GabaritTrace g, IReadOnlyList<(double X, double Y)> pts, ResultatGabaritGraphique? res, bool draft)
+            {
+                if (pts.Count == 0) return;
+                var c = pts.Select(q => new ScottPlot.Coordinates(X(q.X), q.Y)).ToList();
+                if (c.Count >= 2)
+                {
+                    double edge = g.Limite == Limite.Haute ? yMax + far : yMin - far;
+                    var poly = p.Add.Polygon(c.Append(new(c[^1].X, edge)).Append(new(c[0].X, edge)).ToArray());
+                    poly.FillStyle.Color = red.WithAlpha(0.10); poly.FillStyle.Hatch = new ScottPlot.Hatches.Striped(); poly.FillStyle.HatchColor = red.WithAlpha(draft ? 0.4 : 0.7);
+                    poly.LineStyle.Width = 0;
+                }
+                var line = p.Add.ScatterLine(c.Select(q => q.X).ToArray(), c.Select(q => q.Y).ToArray());
+                line.Color = red; line.LineWidth = 2.5f; line.MarkerSize = 7; line.MarkerShape = ScottPlot.MarkerShape.FilledSquare; line.MarkerColor = red;
+                if (draft) line.LinePattern = ScottPlot.LinePattern.Dashed;
+                if (res?.XPire is { } xp && res.YPire is { } yp && res.Marge is { } m)
+                {
+                    var ok = res.Verdict == Verdict.Pass;
+                    var col = ok ? ScottPlot.Color.FromHex("#15803d") : red;
+                    var mk = p.Add.Marker(X(xp), yp); mk.Color = col; mk.Size = 10; mk.Shape = ScottPlot.MarkerShape.OpenCircle; mk.LineWidth = 2;
+                    var lim = (double)(g.Limite == Limite.Haute ? yp + m : yp - m);
+                    var conn2 = p.Add.Line(X(xp), yp, X(xp), lim); conn2.Color = col; conn2.LineWidth = 1.5f; conn2.LinePattern = ScottPlot.LinePattern.Dotted;
+                    var txt = p.Add.Text(ok ? $"marge {SpiceNumber.Format(m, g.Unite)}" : $"franchi de {SpiceNumber.Format(-m, g.Unite)}", X(xp), (yp + lim) / 2);
+                    txt.LabelFontColor = col; txt.LabelFontSize = 12; txt.LabelBold = true;
+                    bool droite = X(xp) > (xLo + xHi) / 2;
+                    txt.LabelOffsetX = droite ? -10 : 10;
+                    txt.LabelAlignment = droite ? ScottPlot.Alignment.MiddleRight : ScottPlot.Alignment.MiddleLeft; txt.LabelBackgroundColor = ScottPlot.Colors.White.WithAlpha(0.85);
+                }
+            }
+            foreach (var g in _etude.GabaritsTraces.Where(g => g.Analyse == Shown))
+                DrawMask(g, g.Points, _last.Traces.FirstOrDefault(t => t.Gabarit == g)?.Resultat, false);
+            if (_drawing != null)
+                DrawMask(_drawing, _hover is { } h && (_drawing.Points.Count == 0 || h.X > _drawing.Points[^1].X) ? _drawing.Points.Append(h).ToList() : _drawing.Points, null, true);
+            foreach (var g in _etude.GabaritsTraces.Where(g => g.Analyse == Shown)) foreach (var q in g.Points) { yMin = Math.Min(yMin, q.Y); yMax = Math.Max(yMax, q.Y); }
+
+            foreach (var rc in _last.Criteres.Where(c => ac && c.Critere.Mesure == TypeMesure.BandePassante3dB && c.Resultat.Valeur is not null))
             {
                 var vl = p.Add.VerticalLine(Math.Log10(rc.Resultat.Valeur!.Value));
-                vl.Color = rc.Resultat.Verdict == Verdict.Pass ? ScottPlot.Color.FromHex("#15803d") : ScottPlot.Color.FromHex("#b91c1c");
+                vl.Color = rc.Resultat.Verdict == Verdict.Pass ? ScottPlot.Color.FromHex("#15803d") : red;
                 vl.LinePattern = ScottPlot.LinePattern.Dotted; vl.LineWidth = 1.5f;
                 vl.LegendText = $"fc −3 dB = {SpiceNumber.Format(rc.Resultat.Valeur!.Value, "Hz")}";
             }
         }
-        p.Title(""); p.ShowLegend(Shown == AnalyseKind.Ac ? ScottPlot.Alignment.LowerLeft : ScottPlot.Alignment.LowerRight);
-        p.Axes.AutoScale(); _plot.Refresh();
+        p.Title(""); p.ShowLegend(ac ? ScottPlot.Alignment.LowerLeft : ScottPlot.Alignment.LowerRight);
+        if (keepLimits && limits.Rect.Width > 0 && limits.Left != -1) p.Axes.SetLimits(limits);
+        else
+        {
+            var all = _last.Resultats[Shown];
+            var (x0, _) = Verification.Courbe(Shown, all, nodes.First());
+            double pad = Math.Max((yMax - yMin) * (_modeTest ? 0.18 : 0.06), 1e-6);
+            p.Axes.SetLimits(X(x0[0]), X(x0[^1]), yMin - pad, yMax + pad);
+            if (ac && !_modeTest) p.Axes.AutoScaleY(p.Axes.Right);
+        }
+        _plot.Refresh();
     }
 
     static double[] Unwrap(double[] deg)

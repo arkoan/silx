@@ -27,8 +27,37 @@ public class UiTests
         var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
         Shot(w, "1-ouverture.png");
         await w.SimulateAsync();
-        Shot(w, "2-transitoire.png");
+        Shot(w, "2-test-gabarits.png");
+        w.SetModeTest(false);
+        Shot(w, "3-simulation.png");
         w.ShowAnalysis(Silx.Etude.AnalyseKind.Ac);
-        Shot(w, "3-ac-bode.png");
+        Shot(w, "4-bode.png");
+    }
+
+    /// <summary>Dessin d'une limite basse à la souris sur la courbe transitoire : 3 clics puis fin de tracé.</summary>
+    [AvaloniaFact]
+    public async Task Dessiner_une_limite_a_la_souris()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        int avant = w.EtudeCourante.GabaritsTraces.Count;
+        w.StartDrawing(Silx.Mesures.Gabarits.Limite.Basse);
+        var plot = w.PlotControl;
+        foreach (var (tMs, v) in new[] { (1.0, -0.1), (4.0, 0.5), (9.0, 0.7) })
+        {
+            var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(tMs, v));
+            var pt = plot.TranslatePoint(new Point(px.X / plot.DisplayScale, px.Y / plot.DisplayScale), w)!.Value;
+            w.MouseDown(pt, Avalonia.Input.MouseButton.Left); w.MouseUp(pt, Avalonia.Input.MouseButton.Left);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+        Shot(w, "5-dessin-en-cours.png");
+        w.EndDrawing(true);
+        var g = w.EtudeCourante.GabaritsTraces[^1];
+        Assert.Equal(avant + 1, w.EtudeCourante.GabaritsTraces.Count);
+        Assert.Equal(3, g.Points.Count);
+        Assert.Equal(4e-3, g.Points[1].X, 2e-4);
+        Assert.Equal(0.5, g.Points[1].Y, 0.03);
+        Shot(w, "6-dessin-termine.png");
     }
 }

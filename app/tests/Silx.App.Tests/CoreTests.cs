@@ -90,6 +90,25 @@ public class CoreTests
     }
 
     [Fact]
+    public async Task Gabarits_dessines_de_la_demo_passent_avec_marge_en_fin_de_courbe()
+    {
+        var r = await Verification.RunAsync(Silx.Etude.Etude.Demo(), []);
+        var basse = r.Traces.Single(t => t.Gabarit.Limite == Limite.Basse).Resultat;
+        Assert.Equal(Verdict.Pass, basse.Verdict);
+        Assert.InRange(basse.Marge!.Value, 0.03, 0.06);          // au plus près vers 6 ms : 1 − e^-5,5 − 0,95 ≈ 0,046 V
+        Assert.Equal(Verdict.Pass, r.Traces.Single(t => t.Gabarit.Limite == Limite.Haute).Resultat.Verdict);
+    }
+
+    [Fact]
+    public async Task Gabarit_dessine_franchi_echoue()
+    {
+        var e = Silx.Etude.Etude.Demo();
+        e.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Limite.Basse, Points = [(1e-3, 0.9), (5e-3, 0.9)] });
+        var r = await Verification.RunAsync(e, []);
+        Assert.Equal(Verdict.Fail, r.Global);
+    }
+
+    [Fact]
     public async Task Gabarit_trop_serre_echoue()
     {
         var e = Silx.Etude.Etude.Demo();

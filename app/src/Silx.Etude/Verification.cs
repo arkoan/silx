@@ -9,14 +9,27 @@ namespace Silx.Etude;
 
 public sealed record ResultatCritere(CritereGabarit Critere, ResultatGabarit Resultat);
 
+public sealed record ResultatTrace(GabaritTrace Gabarit, ResultatGabaritGraphique Resultat);
+
 public sealed record ResultatEtude(
     IReadOnlyDictionary<AnalyseKind, RawFile> Resultats,
     IReadOnlyList<ResultatCritere> Criteres,
+    IReadOnlyList<ResultatTrace> Traces,
     IReadOnlyList<ErcIssue> Erc,
     string Journal,
     string? Erreur)
 {
-    public Verdict Global => Criteres.Count == 0 ? Verdict.NonEvaluable : Gabarits.Global(Criteres.Select(c => c.Resultat));
+    public int Nombre => Criteres.Count + Traces.Count;
+    public int Respectes => Criteres.Count(c => c.Resultat.Verdict == Verdict.Pass) + Traces.Count(t => t.Resultat.Verdict == Verdict.Pass);
+    public Verdict Global
+    {
+        get
+        {
+            var v = Criteres.Select(c => c.Resultat.Verdict).Concat(Traces.Select(t => t.Resultat.Verdict)).ToList();
+            if (v.Contains(Verdict.Fail)) return Verdict.Fail;
+            return v.Count == 0 || v.Contains(Verdict.NonEvaluable) ? Verdict.NonEvaluable : Verdict.Pass;
+        }
+    }
 }
 
 /// <summary>Orchestration : ERC → circuits → ngspice (analyses en parallèle) → mesures → verdicts.</summary>
@@ -37,9 +50,9 @@ public static class Verification
         var conn = Connectivity.Build(etude.Schema);
         var erc = Erc.Check(etude.Schema, conn);
         if (erc.Any(i => i.Severity == Severity.Error))
-            return new(new Dictionary<AnalyseKind, RawFile>(), [], erc, "", "Simulation bloquée : corriger les erreurs de vérification du schéma.");
+            return new(new Dictionary<AnalyseKind, RawFile>(), [], [], erc, "", "Simulation bloquée : corriger les erreurs de vérification du schéma.");
 
-        var kinds = toujours.Concat(etude.Gabarits.Select(g => g.Info.Analyse)).Distinct().ToList();
+        var kinds = toujours.Concat(etude.Gabarits.Select(g => g.Info.Analyse)).Concat(etude.GabaritsTraces.Select(g => g.Analyse)).Distinct().ToList();
         var runner = new NgspiceRunner { Executable = NgspiceExecutable() };
         var raws = new Dictionary<AnalyseKind, RawFile>();
         var journal = new System.Text.StringBuilder();
@@ -57,11 +70,30 @@ public static class Verification
             }
         }
         catch (OperationCanceledException) { throw; }
-        catch (NgspiceException ex) { return new(raws, [], erc, ex.Log, ex.Message); }
-        catch (Exception ex) { return new(raws, [], erc, journal.ToString(), ex.Message); }
+        catch (NgspiceException ex) { return new(raws, [], [], erc, ex.Log, ex.Message); }
+        catch (Exception ex) { return new(raws, [], [], erc, journal.ToString(), ex.Message); }
 
         var criteres = etude.Gabarits.Select(g => new ResultatCritere(g, Evaluer(g, raws[g.Info.Analyse]))).ToList();
-        return new(raws, criteres, erc, journal.ToString(), null);
+        var traces = etude.GabaritsTraces.Select(g => new ResultatTrace(g, EvaluerTrace(g, raws[g.Analyse]))).ToList();
+        return new(raws, criteres, traces, erc, journal.ToString(), null);
+    }
+
+    public static ResultatGabaritGraphique EvaluerTrace(GabaritTrace g, RawFile raw)
+    {
+        string vec = $"v({g.Noeud})";
+        if (!raw.Variables.Any(v => string.Equals(v.Name, vec, StringComparison.OrdinalIgnoreCase)))
+            return new(g.Nom, Verdict.NonEvaluable, null, null, null, $"Nœud « {g.Noeud} » absent des résultats.");
+        var (x, y) = Courbe(g.Analyse, raw, g.Noeud);
+        try { return new GabaritGraphique(g.Nom, g.Limite, g.Points, g.Analyse == AnalyseKind.Ac).Evaluer(x, y); }
+        catch (ArgumentException ex) { return new(g.Nom, Verdict.NonEvaluable, null, null, null, ex.Message); }
+    }
+
+    /// <summary>Courbe affichée et contrôlée : v(t) en transitoire, |v| en dB en AC.</summary>
+    public static (double[] X, double[] Y) Courbe(AnalyseKind k, RawFile raw, string noeud)
+    {
+        if (k == AnalyseKind.Transitoire) { var c = Temporelle(raw, $"v({noeud})"); return (c.Temps.ToArray(), c.Valeurs.ToArray()); }
+        var r = Frequentielle(raw, $"v({noeud})");
+        return (r.Frequences.ToArray(), r.Valeurs.ToArray().Select(Frequentiel.Db).ToArray());
     }
 
     public static ResultatGabarit Evaluer(CritereGabarit g, RawFile raw)
