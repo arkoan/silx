@@ -45,14 +45,16 @@ public static class Verification
         return "ngspice";
     }
 
-    public static async Task<ResultatEtude> RunAsync(Etude etude, IEnumerable<AnalyseKind> toujours, CancellationToken ct = default)
+    public static async Task<ResultatEtude> RunAsync(Etude circuit, Banc etude, IEnumerable<AnalyseKind> toujours, CancellationToken ct = default)
     {
-        var conn = Connectivity.Build(etude.Schema);
-        var erc = Erc.Check(etude.Schema, conn);
+        var schema = etude.Fusion(circuit.Schema);
+        var conn = Connectivity.Build(schema);
+        var erc = Erc.Check(schema, conn);
         if (erc.Any(i => i.Severity == Severity.Error))
             return new(new Dictionary<AnalyseKind, RawFile>(), [], [], erc, "", "Simulation bloquée : corriger les erreurs de vérification du schéma.");
 
         var kinds = toujours.Concat(etude.Gabarits.Select(g => g.Info.Analyse)).Concat(etude.GabaritsTraces.Select(g => g.Analyse)).Distinct().ToList();
+        if (kinds.Count == 0) kinds.Add(AnalyseKind.Transitoire);
         var runner = new NgspiceRunner { Executable = NgspiceExecutable() };
         var raws = new Dictionary<AnalyseKind, RawFile>();
         var journal = new System.Text.StringBuilder();
@@ -60,8 +62,8 @@ public static class Verification
         {
             var tasks = kinds.Select(async k =>
             {
-                var circuit = CircuitBuilder.Build(etude.Schema, conn, CircuitBuilder.AnalysisFor(etude, k), "Silx " + k);
-                return (k, await runner.RunAsync(circuit, ct));
+                var c = CircuitBuilder.Build(schema, conn, CircuitBuilder.AnalysisFor(etude, k), $"Silx {etude.Nom} {k}");
+                return (k, await runner.RunAsync(c, ct));
             }).ToList();
             foreach (var (k, r) in await Task.WhenAll(tasks))
             {

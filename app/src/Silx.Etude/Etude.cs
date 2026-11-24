@@ -47,20 +47,38 @@ public sealed class GabaritTrace
     public string Unite => Analyse == AnalyseKind.Ac ? "dB" : "V";
 }
 
-/// <summary>Une étude = un schéma + les réglages d'analyse + les gabarits à vérifier.</summary>
-public sealed class Etude
+/// <summary>
+/// Banc de test : calque posé sur le circuit sous test, comme les appareils d'un labo branchés sur une carte.
+/// Il porte les sources (stimuli, alimentations), charges et sondes, les réglages d'analyse et les gabarits.
+/// Ses éléments se connectent au circuit par coïncidence de broches ou par étiquette de nœud de même nom.
+/// </summary>
+public sealed class Banc
 {
-    public Schematic Schema { get; set; } = new();
+    public string Nom { get; set; } = "Banc";
+    public Schematic Calque { get; set; } = new();
     public ReglagesTransitoire Transitoire { get; } = new();
     public ReglagesAc Ac { get; } = new();
     public List<CritereGabarit> Gabarits { get; } = new();
     public List<GabaritTrace> GabaritsTraces { get; } = new();
 
-    /// <summary>Filtre RC passe-bas de démonstration, avec deux critères.</summary>
+    /// <summary>Schéma simulé : circuit sous test + éléments du banc.</summary>
+    public Schematic Fusion(Schematic circuit) => new()
+    {
+        Components = circuit.Components.Select(c => c.Clone()).Concat(Calque.Components.Select(c => c.Clone())).ToList(),
+        Wires = circuit.Wires.Concat(Calque.Wires).ToList(),
+    };
+}
+
+/// <summary>Une étude = le circuit sous test (sans stimuli) + ses bancs de test.</summary>
+public sealed class Etude
+{
+    public Schematic Schema { get; set; } = new();
+    public List<Banc> Bancs { get; } = new();
+
+    /// <summary>Filtre RC passe-bas de démonstration avec deux bancs : échelon et réponse en fréquence.</summary>
     public static Etude Demo()
     {
         var s = new Schematic();
-        s.Components.Add(new() { Ref = "V1", Kind = ComponentKind.VoltageSource, Position = new(4, 8), Rotation = 1, Value = "DC 0 AC 1 PULSE(0 1 0.5m 1u 1u 20m 40m)" });
         s.Components.Add(new() { Ref = "R1", Kind = ComponentKind.Resistor, Position = new(4, 8), Value = "1k" });
         s.Components.Add(new() { Ref = "C1", Kind = ComponentKind.Capacitor, Position = new(12, 8), Rotation = 1, Value = "1u" });
         s.Wires.Add(new(new(8, 8), new(12, 8)));
@@ -69,11 +87,23 @@ public sealed class Etude
         s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(4, 8), Value = "IN" });
         s.Components.Add(new() { Ref = "NET2", Kind = ComponentKind.Label, Position = new(12, 8), Value = "OUT" });
         var e = new Etude { Schema = s };
-        e.Gabarits.Add(new() { Mesure = TypeMesure.TempsDeMontee, Noeud = "OUT", Max = 2.5e-3 });
-        e.Gabarits.Add(new() { Mesure = TypeMesure.Depassement, Noeud = "OUT", Max = 5 });
-        e.Gabarits.Add(new() { Mesure = TypeMesure.BandePassante3dB, Noeud = "OUT", Min = 150 });
-        e.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Haute, Points = [(0, 1.1), (10e-3, 1.1)] });
-        e.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Basse, Points = [(2e-3, 0), (3e-3, 0.8), (6e-3, 0.95), (10e-3, 0.95)] });
+
+        var echelon = new Banc { Nom = "Échelon 1 V" };
+        echelon.Calque.Components.Add(new() { Ref = "V1", Kind = ComponentKind.VoltageSource, Position = new(4, 8), Rotation = 1, Value = "PULSE(0 1 0.5m 1u 1u 20m 40m)" });
+        echelon.Gabarits.Add(new() { Mesure = TypeMesure.TempsDeMontee, Noeud = "OUT", Max = 2.5e-3 });
+        echelon.Gabarits.Add(new() { Mesure = TypeMesure.Depassement, Noeud = "OUT", Max = 5 });
+        echelon.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Haute, Points = [(0, 1.1), (10e-3, 1.1)] });
+        echelon.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Basse, Points = [(2e-3, 0), (3e-3, 0.8), (6e-3, 0.95), (10e-3, 0.95)] });
+        e.Bancs.Add(echelon);
+
+        var bode = new Banc { Nom = "Réponse en fréquence" };
+        bode.Calque.Components.Add(new() { Ref = "V1", Kind = ComponentKind.VoltageSource, Position = new(4, 8), Rotation = 1, Value = "AC 1" });
+        bode.Calque.Components.Add(new() { Ref = "RL", Kind = ComponentKind.Resistor, Position = new(16, 8), Rotation = 1, Value = "100k" });
+        bode.Calque.Wires.Add(new(new(12, 8), new(16, 8)));
+        bode.Calque.Wires.Add(new(new(16, 12), new(12, 12)));
+        bode.Gabarits.Add(new() { Mesure = TypeMesure.BandePassante3dB, Noeud = "OUT", Min = 150 });
+        bode.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Ac, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Haute, Points = [(1e3, -12), (1e5, -35), (1e6, -55)] });
+        e.Bancs.Add(bode);
         return e;
     }
 }

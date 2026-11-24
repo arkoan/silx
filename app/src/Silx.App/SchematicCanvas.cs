@@ -11,7 +11,12 @@ public enum Tool { Select, Wire, Place }
 public sealed class SchematicCanvas : Control
 {
     public const int Grid = 12;             // pixels par pas de grille à zoom 1
+    /// <summary>Schéma en cours d'édition : le circuit sous test, ou le calque du banc actif.</summary>
     public Schematic Schematic { get; private set; } = new();
+    /// <summary>Circuit sous test affiché sous le calque (atténué, non éditable) quand un banc est actif.</summary>
+    Schematic? _underlay;
+    /// <summary>Texte affiché en haut à gauche du canevas.</summary>
+    public string Caption { get; set; } = "";
     public Tool Tool { get => _tool; set { _tool = value; _wireStart = null; ToolChanged?.Invoke(); InvalidateVisual(); } }
     public ComponentKind PlaceKind { get; private set; }
     /// <summary>Le schéma a changé (topologie, valeurs).</summary>
@@ -32,10 +37,23 @@ public sealed class SchematicCanvas : Control
     static readonly IBrush LabelBrush = new SolidColorBrush(Color.Parse("#b45309"));
     static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#5b6170"));
     static readonly IBrush GridDot = new SolidColorBrush(Color.Parse("#c9ccd3"));
+    public static readonly IBrush BenchBrush = new SolidColorBrush(Color.Parse("#7c3aed"));
+    static readonly IBrush Line = new SolidColorBrush(Color.Parse("#dfe2e8"));
 
     public SchematicCanvas() { Focusable = true; ClipToBounds = true; }
 
-    public void Load(Schematic s) { Schematic = s; _undo.Clear(); _redo.Clear(); Select(null); Changed?.Invoke(); InvalidateVisual(); }
+    public void Load(Schematic s, Schematic? underlay = null)
+    {
+        Schematic = s; _underlay = underlay; _undo.Clear(); _redo.Clear(); _wireStart = null; Select(null); Changed?.Invoke(); InvalidateVisual();
+    }
+    public bool IsLayer => _underlay != null;
+    IEnumerable<PlacedComponent> AllComponents => _underlay == null ? Schematic.Components : _underlay.Components.Concat(Schematic.Components);
+    IEnumerable<Wire> AllWires => _underlay == null ? Schematic.Wires : _underlay.Wires.Concat(Schematic.Wires);
+    string NextRef(ComponentKind k)
+    {
+        var merged = new Schematic { Components = AllComponents.ToList() };
+        return merged.NextRef(k);
+    }
     public void BeginPlace(ComponentKind k) { PlaceKind = k; Tool = Tool.Place; Focus(); }
 
     // ---- transformations ----
@@ -108,7 +126,7 @@ public sealed class SchematicCanvas : Control
                 break;
             case Tool.Place:
                 Commit();
-                var comp = new PlacedComponent { Ref = Schematic.NextRef(PlaceKind), Kind = PlaceKind, Position = g, Rotation = _ghostRotation, Value = Schematic.DefaultValue(PlaceKind) };
+                var comp = new PlacedComponent { Ref = NextRef(PlaceKind), Kind = PlaceKind, Position = g, Rotation = _ghostRotation, Value = Schematic.DefaultValue(PlaceKind) };
                 Schematic.Components.Add(comp);
                 Done();
                 if (!e.KeyModifiers.HasFlag(KeyModifiers.Shift)) { Tool = Tool.Select; Select(comp); }
@@ -118,8 +136,8 @@ public sealed class SchematicCanvas : Control
     }
 
     bool IsConnectionPoint(GridPoint g, List<Wire> justAdded)
-        => Schematic.Components.Any(c => c.Pins.Contains(g))
-        || Schematic.Wires.Except(justAdded).Any(w => w.A.Equals(g) || w.B.Equals(g) || OnSeg(g, w));
+        => AllComponents.Any(c => c.Pins.Contains(g))
+        || AllWires.Except(justAdded).Any(w => w.A.Equals(g) || w.B.Equals(g) || OnSeg(g, w));
 
     static bool OnSeg(GridPoint p, Wire w)
         => (w.A.X == w.B.X && p.X == w.A.X && p.Y > Math.Min(w.A.Y, w.B.Y) && p.Y < Math.Max(w.A.Y, w.B.Y))
@@ -207,18 +225,38 @@ public sealed class SchematicCanvas : Control
         }
 
         double lw = Math.Max(1.2, 1.6 * _zoom / 2);
-        var wirePen = new Pen(WireBrush, lw);
+        var layer = _underlay != null;
+        var wireBrush = layer ? BenchBrush : WireBrush;
+        var wirePen = new Pen(wireBrush, lw);
+        if (_underlay != null)
+        {
+            // Circuit sous test en dessous : atténué, non éditable.
+            using (ctx.PushOpacity(0.38))
+            {
+                var dim = new Pen(WireBrush, lw);
+                foreach (var w in _underlay.Wires) ctx.DrawLine(dim, ToScreen(w.A), ToScreen(w.B));
+            }
+            foreach (var c in _underlay.Components) DrawComponent(ctx, c, c.Kind == ComponentKind.Label ? LabelBrush : Ink, c.Kind == ComponentKind.Label ? 0.75 : 0.38, labels: true);
+        }
         foreach (var w in Schematic.Wires) ctx.DrawLine(w == _selectedWire ? new Pen(Accent, lw + 1) : wirePen, ToScreen(w.A), ToScreen(w.B));
 
-        // Jonctions : point plein là où au moins 3 éléments se rejoignent.
-        var ends = Schematic.Wires.SelectMany(w => new[] { w.A, w.B }).Concat(Schematic.Components.SelectMany(c => c.Pins)).ToList();
+        // Jonctions : point plein là où au moins 3 éléments se rejoignent (circuit et banc confondus).
+        var allWires = AllWires.ToList();
+        var ends = allWires.SelectMany(w => new[] { w.A, w.B }).Concat(AllComponents.SelectMany(c => c.Pins)).ToList();
         foreach (var p in ends.Distinct())
         {
-            int n = ends.Count(q => q.Equals(p)) + Schematic.Wires.Count(w => OnSeg(p, w)) * 2;
-            if (n >= 3) ctx.DrawEllipse(WireBrush, null, ToScreen(p), 3.2 * _zoom / 2 + 1, 3.2 * _zoom / 2 + 1);
+            int n = ends.Count(q => q.Equals(p)) + allWires.Count(w => OnSeg(p, w)) * 2;
+            if (n >= 3) ctx.DrawEllipse(layer ? BenchBrush : WireBrush, null, ToScreen(p), 3.2 * _zoom / 2 + 1, 3.2 * _zoom / 2 + 1);
         }
 
-        foreach (var c in Schematic.Components) DrawComponent(ctx, c, c == _selected ? Accent : c.Kind == ComponentKind.Label ? LabelBrush : Ink, 1);
+        foreach (var c in Schematic.Components) DrawComponent(ctx, c, c == _selected ? Accent : layer ? BenchBrush : c.Kind == ComponentKind.Label ? LabelBrush : Ink, 1);
+        if (Caption.Length > 0)
+        {
+            var t = new FormattedText(Caption, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default), 12, layer ? BenchBrush : Muted);
+            var box = new Rect(10, 10, t.Width + 16, t.Height + 8);
+            ctx.DrawRectangle(new SolidColorBrush(Color.Parse(layer ? "#f3effe" : "#f3f4f6")), new Pen(layer ? BenchBrush : Line, 1), box, 4, 4);
+            ctx.DrawText(t, new Point(18, 14));
+        }
 
         if (_inside && _tool == Tool.Place)
             DrawComponent(ctx, new PlacedComponent { Ref = Schematic.Prefix(PlaceKind) + "?", Kind = PlaceKind, Position = _cursor, Rotation = _ghostRotation, Value = "" }, Accent, 0.45);
@@ -239,7 +277,7 @@ public sealed class SchematicCanvas : Control
     FormattedText Text(string s, double size, IBrush b, FontWeight w = FontWeight.Normal)
         => new(s, System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, w), size * _zoom / 2, b);
 
-    void DrawComponent(DrawingContext ctx, PlacedComponent c, IBrush brush, double opacity)
+    void DrawComponent(DrawingContext ctx, PlacedComponent c, IBrush brush, double opacity, bool labels = false)
     {
         using var _ = ctx.PushOpacity(opacity);
         var pen = new Pen(brush, Math.Max(1.2, 1.6 * _zoom / 2));
@@ -330,7 +368,7 @@ public sealed class SchematicCanvas : Control
                 }
         }
         ctx.DrawEllipse(brush, null, a, 2, 2); ctx.DrawEllipse(brush, null, b, 2, 2);
-        if (opacity < 1) return;
+        if (opacity < 1 && !labels) return;
         var refT = Text(c.Ref, 11, brush, FontWeight.SemiBold);
         var valT = Text(Short(c.Value), 10, Muted);
         bool vertical = Math.Abs(u.Y) > 0.5;

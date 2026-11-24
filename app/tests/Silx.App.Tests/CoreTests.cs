@@ -75,24 +75,50 @@ public class CoreTests
     [Fact]
     public void Format_ingenieur_avec_virgule() => Assert.Equal("2,20 ms", SpiceNumber.Format(2.2e-3, "s"));
 
-    /// <summary>RC 1 kΩ / 1 µF : tau = 1 ms → montée 10–90 % = 2,197 ms ; fc = 159,15 Hz ; pas de dépassement.</summary>
+    static Banc Banc(Silx.Etude.Etude e, string debut) => e.Bancs.First(b => b.Nom.StartsWith(debut));
+
+    /// <summary>RC 1 kΩ / 1 µF : tau = 1 ms → montée 10–90 % = 2,197 ms ; fc = 159,15 Hz (charge 100 kΩ : +1 %).</summary>
     [Fact]
-    public async Task Demo_rc_simulee_respecte_ses_gabarits_avec_valeurs_analytiques()
+    public async Task Demo_rc_les_deux_bancs_passent_avec_valeurs_analytiques()
     {
         var e = Silx.Etude.Etude.Demo();
-        var r = await Verification.RunAsync(e, [AnalyseKind.Transitoire]);
+        var r = await Verification.RunAsync(e, Banc(e, "Échelon"), [AnalyseKind.Transitoire]);
         Assert.Null(r.Erreur);
         Assert.Equal(Verdict.Pass, r.Global);
-        var montee = r.Criteres.Single(c => c.Critere.Mesure == TypeMesure.TempsDeMontee).Resultat.Valeur!.Value;
-        Assert.InRange(montee, 2.15e-3, 2.25e-3);
-        var fc = r.Criteres.Single(c => c.Critere.Mesure == TypeMesure.BandePassante3dB).Resultat.Valeur!.Value;
-        Assert.InRange(fc, 157, 161);
+        Assert.InRange(r.Criteres.Single(c => c.Critere.Mesure == TypeMesure.TempsDeMontee).Resultat.Valeur!.Value, 2.15e-3, 2.25e-3);
+        var rb = await Verification.RunAsync(e, Banc(e, "Réponse"), []);
+        Assert.Equal(Verdict.Pass, rb.Global);
+        Assert.InRange(rb.Criteres.Single(c => c.Critere.Mesure == TypeMesure.BandePassante3dB).Resultat.Valeur!.Value, 157, 163);
+    }
+
+    [Fact]
+    public void Circuit_seul_sans_source_ni_masse_n_est_pas_en_erreur_mais_le_banc_le_complete()
+    {
+        var e = Silx.Etude.Etude.Demo();
+        var c = Connectivity.Build(e.Schema);
+        Assert.DoesNotContain(Erc.Check(e.Schema, c, circuitSeul: true), i => i.Severity == Severity.Error);
+        var fusion = e.Bancs[0].Fusion(e.Schema);
+        Assert.Contains(fusion.Components, k => k.Ref == "V1");
+        Assert.DoesNotContain(e.Schema.Components, k => k.Ref == "V1");   // le stimulus n'appartient qu'au banc
+        Assert.Empty(Erc.Check(fusion, Connectivity.Build(fusion)));
+    }
+
+    [Fact]
+    public async Task Modifier_le_circuit_se_repercute_sur_tous_les_bancs()
+    {
+        var e = Silx.Etude.Etude.Demo();
+        e.Schema.Components.Single(k => k.Ref == "C1").Value = "10u";     // tau x10
+        var r1 = await Verification.RunAsync(e, Banc(e, "Échelon"), []);
+        var r2 = await Verification.RunAsync(e, Banc(e, "Réponse"), []);
+        Assert.Equal(Verdict.Fail, r1.Global);
+        Assert.Equal(Verdict.Fail, r2.Global);
     }
 
     [Fact]
     public async Task Gabarits_dessines_de_la_demo_passent_avec_marge_en_fin_de_courbe()
     {
-        var r = await Verification.RunAsync(Silx.Etude.Etude.Demo(), []);
+        var e = Silx.Etude.Etude.Demo();
+        var r = await Verification.RunAsync(e, Banc(e, "Échelon"), []);
         var basse = r.Traces.Single(t => t.Gabarit.Limite == Limite.Basse).Resultat;
         Assert.Equal(Verdict.Pass, basse.Verdict);
         Assert.InRange(basse.Marge!.Value, 0.03, 0.06);          // au plus près vers 6 ms : 1 − e^-5,5 − 0,95 ≈ 0,046 V
@@ -102,25 +128,15 @@ public class CoreTests
     [Fact]
     public async Task Gabarit_dessine_franchi_echoue()
     {
-        var e = Silx.Etude.Etude.Demo();
-        e.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Limite.Basse, Points = [(1e-3, 0.9), (5e-3, 0.9)] });
-        var r = await Verification.RunAsync(e, []);
-        Assert.Equal(Verdict.Fail, r.Global);
-    }
-
-    [Fact]
-    public async Task Gabarit_trop_serre_echoue()
-    {
-        var e = Silx.Etude.Etude.Demo();
-        e.Gabarits.Single(g => g.Mesure == TypeMesure.BandePassante3dB).Min = 1000;
-        var r = await Verification.RunAsync(e, []);
-        Assert.Equal(Verdict.Fail, r.Global);
+        var e = Silx.Etude.Etude.Demo(); var b = Banc(e, "Échelon");
+        b.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Limite.Basse, Points = [(1e-3, 0.9), (5e-3, 0.9)] });
+        Assert.Equal(Verdict.Fail, (await Verification.RunAsync(e, b, [])).Global);
     }
 
     [Fact]
     public async Task Diode_redresse()
     {
-        var e = new Silx.Etude.Etude();
+        var e = new Silx.Etude.Etude(); var banc = new Banc();
         var s = e.Schema;
         s.Components.Add(new() { Ref = "V1", Kind = ComponentKind.VoltageSource, Position = new(0, 4), Rotation = 3, Value = "SIN(0 5 1k)" }); // + en (0,0)
         s.Components.Add(new() { Ref = "D1", Kind = ComponentKind.Diode, Position = new(0, 0), Value = "1N4148" });
@@ -128,8 +144,8 @@ public class CoreTests
         s.Wires.Add(new(new(0, 4), new(4, 4)));
         s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(0, 4) });
         s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(4, 0), Value = "OUT" });
-        e.Transitoire.Duree = 3e-3; e.Transitoire.Pas = 5e-6;
-        var r = await Verification.RunAsync(e, [AnalyseKind.Transitoire]);
+        banc.Transitoire.Duree = 3e-3; banc.Transitoire.Pas = 5e-6;
+        var r = await Verification.RunAsync(e, banc, [AnalyseKind.Transitoire]);
         Assert.Null(r.Erreur);
         var v = r.Resultats[AnalyseKind.Transitoire].Vector("v(out)");
         Assert.True(v.Min() > -0.05);          // demi-alternance négative bloquée

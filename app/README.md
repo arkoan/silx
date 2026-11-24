@@ -8,7 +8,7 @@
 ```bash
 brew install ngspice                      # moteur de simulation
 dotnet run --project src/Silx.App         # .NET 10 requis
-dotnet test                               # 18 tests, dont simulations ngspice réelles
+dotnet test                               # 19 tests, dont simulations ngspice réelles
 ```
 
 ngspice est cherché dans `SILX_NGSPICE`, puis `/opt/homebrew/bin`, `/usr/local/bin`, puis le PATH.
@@ -20,7 +20,7 @@ Captures d'écran hors écran : `SILX_SHOT_DIR=/un/dossier dotnet test`.
 |---|---|
 | Barre du haut | Nouveau / exemple, outils (sélection, fil, pivoter, supprimer, annuler), verdict global, **Simuler et vérifier** (F5) |
 | Gauche | Palette de composants avec recherche et raccourcis clavier |
-| Centre | Onglets **Schéma** / **Netlist** (synchronisée en direct) |
+| Centre | Onglets **Schéma** / **Netlist** ; au-dessus du schéma, **Circuit sous test** puis un onglet par **banc de test** |
 | Bas | **Courbes** en mode *Simulation* (courbes seules) ou *Test* (gabarits dessinés, zone interdite hachurée, marge affichée), vue temporelle ou Bode ; **Vérifications** (ERC) ; **Journal ngspice** |
 | Droite | **Propriétés** du composant sélectionné, réglages des **analyses** (.tran, .ac), **critères mesurés** (mesure + nœud + bornes → PASS/FAIL) et **gabarits dessinés** (verdict + marge) |
 
@@ -30,6 +30,14 @@ Captures d'écran hors écran : `SILX_SHOT_DIR=/un/dossier dotnet test`.
   orchestration simulation → mesures → verdicts (`Verification`).
 - `src/Silx.App` : interface Avalonia 12 (UI en C#, sans XAML), canevas, ScottPlot.
 - `tests/Silx.App.Tests` : connectivité, ERC, notation ingénieur, RC contre valeurs analytiques (tr = 2,2 ms, fc = 159 Hz), diode, rendu de la fenêtre.
+
+## Circuit sous test et bancs de test
+
+Le circuit sous test ne contient que le montage (pas de source) ; ses étiquettes de nœud (IN, OUT, VCC…) servent de points de
+connexion. Un **banc de test** est un calque posé sur le circuit, comme les appareils d'un labo : sources, alimentations,
+charges, plus ses analyses et ses gabarits. Ses éléments (en violet) ne s'affichent et ne s'éditent que lorsque le banc est
+sélectionné ; le circuit reste visible dessous, atténué et verrouillé. Une modification du circuit vaut pour tous les bancs ;
+« Simuler et vérifier » depuis l'onglet du circuit relance tous les bancs en parallèle (non-régression).
 
 ## Gabarits dessinés
 
@@ -51,4 +59,4 @@ W fil · ⌘R pivoter · Suppr · Échap · ⌘Z / ⇧⌘Z · Maj+clic pour pose
 4. Modèles de diodes intégrés génériques et indicatifs (1N4148, 1N4007, BAT54) en attendant la gestion de bibliothèques.
 5. Pas d'enregistrement de fichier ni de transistors dans cette première itération.
 6. Gabarits dessinés en temps absolu (pas encore relatifs au front du stimulus) ; en Bode, sur le gain en dB uniquement.
-7. Pas encore de « banc de test » qui fige stimuli et conditions : proposé, en attente de validation.
+7. Les éléments d'un banc se connectent au circuit par coïncidence de broches ou par étiquette de même nom ; les alimentations sont dans le banc.

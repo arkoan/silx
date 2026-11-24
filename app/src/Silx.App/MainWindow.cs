@@ -44,8 +44,26 @@ public sealed class MainWindow : Window
     readonly TextBlock _drawHint = new() { FontSize = 12, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center };
     GabaritTrace? _drawing;
     (double X, double Y)? _hover;
-    ResultatEtude? _last;
     CancellationTokenSource? _cts;
+    // Bancs de test : null = circuit sous test seul.
+    Banc? _banc;
+    readonly Dictionary<Banc, ResultatEtude> _results = new();
+    readonly StackPanel _benchBar = new() { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8, 6) };
+    readonly StackPanel _benchPanel = new() { Spacing = 6 };
+    readonly StackPanel _circuitPanel = new() { Spacing = 8 };
+    readonly StackPanel _analysisHost = new();
+    readonly List<Button> _sourceButtons = new();
+    readonly TextBlock _paletteHint = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Foreground = Ui.Muted, Margin = new Thickness(2, 4, 0, 0) };
+
+    Banc Banc => _banc ?? throw new InvalidOperationException("Aucun banc actif.");
+    /// <summary>Schéma vu par les analyses et les listes de nœuds : circuit + calque du banc actif.</summary>
+    Schematic SchemaCourant => _banc?.Fusion(_etude.Schema) ?? _etude.Schema;
+    /// <summary>Résultats du banc actif.</summary>
+    ResultatEtude? _last
+    {
+        get => _banc != null && _results.TryGetValue(_banc, out var r) ? r : null;
+        set { if (_banc == null) return; if (value == null) _results.Remove(_banc); else _results[_banc] = value; }
+    }
 
     AnalyseKind Shown => _showAc.IsChecked == true ? AnalyseKind.Ac : AnalyseKind.Transitoire;
 
@@ -93,7 +111,62 @@ public sealed class MainWindow : Window
 
     void LoadEtude(EtudeModel e)
     {
-        _etude = e; _last = null; _canvas.Load(e.Schema); RefreshGabarits(); RefreshPlot(); SetVerdict(null);
+        _etude = e; _results.Clear(); SelectBanc(e.Bancs.FirstOrDefault());
+    }
+
+    public void SelectBanc(Banc? b)
+    {
+        EndDrawing(false);
+        _banc = b;
+        _canvas.Caption = b == null
+            ? "Circuit sous test — sans stimuli : les sources se branchent dans un banc de test"
+            : $"Banc « {b.Nom} » — calque en violet ; le circuit dessous se modifie dans « Circuit sous test »";
+        _canvas.Load(b?.Calque ?? _etude.Schema, b == null ? null : _etude.Schema);
+        foreach (var sb in _sourceButtons) sb.IsEnabled = b != null;
+        _paletteHint.Text = b == null ? "Sources et alimentations : dans un banc de test." : "";
+        _paletteHint.IsVisible = b == null;
+        RefreshSide(); RefreshBenchBar(); RefreshPlotToolbar(); RefreshPlot();
+        SetVerdict(b == null ? GlobalVerdict() : _last is { Erreur: null } r && r.Nombre > 0 ? r.Global : null);
+    }
+
+    public Banc? BancActif => _banc;
+
+    Verdict? GlobalVerdict()
+    {
+        if (_etude.Bancs.Count == 0 || _etude.Bancs.Any(b => !_results.ContainsKey(b))) return null;
+        var v = _etude.Bancs.Select(b => _results[b]).Select(r => r.Erreur != null ? Verdict.NonEvaluable : r.Nombre == 0 ? Verdict.Pass : r.Global).ToList();
+        return v.Contains(Verdict.Fail) ? Verdict.Fail : v.Contains(Verdict.NonEvaluable) ? Verdict.NonEvaluable : Verdict.Pass;
+    }
+
+    void RefreshBenchBar()
+    {
+        _benchBar.Children.Clear();
+        Button Tab(string text, bool active, Verdict? v, Action click, IBrush accent)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            if (v != null) row.Children.Add(new Border { Width = 8, Height = 8, CornerRadius = new CornerRadius(4), VerticalAlignment = VerticalAlignment.Center, Background = v == Verdict.Pass ? Ui.PassBrush : v == Verdict.Fail ? Ui.FailBrush : Ui.WarnBrush });
+            row.Children.Add(new TextBlock { Text = text, FontSize = 12.5, FontWeight = active ? FontWeight.SemiBold : FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
+            var b = new Button { Content = row, Padding = new Thickness(12, 5), CornerRadius = new CornerRadius(14), BorderThickness = new Thickness(1),
+                BorderBrush = active ? accent : Ui.Line, Background = active ? (accent == Ui.AccentBrush ? Ui.ActiveBg : Ui.BenchBg) : Brushes.White, Foreground = active ? accent : Ui.Ink };
+            b.Click += (_, _) => click();
+            _benchBar.Children.Add(b);
+            return b;
+        }
+        Tab("Circuit sous test", _banc == null, null, () => SelectBanc(null), Ui.AccentBrush);
+        _benchBar.Children.Add(new TextBlock { Text = "Bancs :", Foreground = Ui.Muted, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(10, 0, 2, 0) });
+        foreach (var b in _etude.Bancs)
+        {
+            Verdict? v = _results.TryGetValue(b, out var r) ? (r.Erreur != null ? Verdict.NonEvaluable : r.Nombre == 0 ? null : r.Global) : null;
+            var bb = b; Tab(b.Nom, _banc == b, v, () => SelectBanc(bb), Ui.BenchBrush);
+        }
+        var add = new Button { Content = "+ Banc de test", Padding = new Thickness(10, 5), Background = Brushes.Transparent, Foreground = Ui.BenchBrush, FontSize = 12.5 };
+        ToolTip.SetTip(add, "Nouveau banc : un calque où brancher sources, alimentations et charges sur le circuit");
+        add.Click += (_, _) =>
+        {
+            var b = new Banc { Nom = $"Banc {_etude.Bancs.Count + 1}" };
+            _etude.Bancs.Add(b); SelectBanc(b);
+        };
+        _benchBar.Children.Add(add);
     }
 
     // ───────────────────────── barre d'outils ─────────────────────────
@@ -155,8 +228,10 @@ public sealed class MainWindow : Window
                 ToolTip.SetTip(b, $"Placer : {nom} (touche {touche}). Maj+clic pour en placer plusieurs.");
                 var kind = k; b.Click += (_, _) => _canvas.BeginPlace(kind);
                 _paletteButtons[k] = b; bs.Add(b); _palette.Children.Add(b);
+                if (k is ComponentKind.VoltageSource or ComponentKind.CurrentSource) _sourceButtons.Add(b);
             }
             headers.Add((h, bs));
+            if (titre == "Sources") _palette.Children.Add(_paletteHint);
         }
         search.TextChanged += (_, _) =>
         {
@@ -181,7 +256,10 @@ public sealed class MainWindow : Window
     Control BuildCenter()
     {
         var tabs = new TabControl { Padding = new Thickness(0) };
-        tabs.Items.Add(new TabItem { FontSize = 15, Header = "Schéma", Content = new Border { BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 0), Child = _canvas } });
+        var schemaDock = new DockPanel();
+        var barBorder = new Border { Child = new ScrollViewer { Content = _benchBar, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled }, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 1) };
+        DockPanel.SetDock(barBorder, Dock.Top); schemaDock.Children.Add(barBorder); schemaDock.Children.Add(_canvas);
+        tabs.Items.Add(new TabItem { FontSize = 15, Header = "Schéma", Content = schemaDock });
         tabs.Items.Add(new TabItem { FontSize = 15, Header = "Netlist", Content = _netlist });
 
         _plot.Plot.FigureBackground.Color = ScottPlot.Colors.White;
@@ -239,12 +317,12 @@ public sealed class MainWindow : Window
     void RefreshPlotToolbar()
     {
         Ui.SetActive(_modeSim, !_modeTest); Ui.SetActive(_modeTestBtn, _modeTest);
-        _testTools.IsVisible = _modeTest;
+        _testTools.IsVisible = _modeTest && _banc != null;
         Ui.SetActive(_drawHigh, _drawing?.Limite == Limite.Haute); Ui.SetActive(_drawLow, _drawing?.Limite == Limite.Basse);
         _drawHint.Text = _drawing == null ? "" : _drawing.Points.Count == 0
             ? "Cliquez pour poser le premier point (de gauche à droite)…"
             : "Cliquez pour ajouter un point · double-clic ou Entrée pour terminer · Échap pour annuler";
-        var conn = Connectivity.Build(_etude.Schema);
+        var conn = Connectivity.Build(SchemaCourant);
         var nodes = conn.AllNodes.ToList();
         var cur = _signal.SelectedItem as string;
         if (!(_signal.ItemsSource is List<string> old && old.SequenceEqual(nodes)))
@@ -258,7 +336,7 @@ public sealed class MainWindow : Window
 
     public void StartDrawing(Limite lim)
     {
-        if (SelectedSignal is not { } n) return;
+        if (SelectedSignal is not { } n || _banc == null) return;
         if (_last == null || !_last.Resultats.ContainsKey(Shown)) { _status.Text = "Simulez d'abord : le gabarit se dessine sur la courbe."; return; }
         _drawing = new GabaritTrace { Analyse = Shown, Noeud = n, Limite = lim };
         _plot.UserInputProcessor.Disable();
@@ -270,7 +348,7 @@ public sealed class MainWindow : Window
         if (_drawing == null) return;
         if (keep && _drawing.Points.Count >= 2)
         {
-            _etude.GabaritsTraces.Add(_drawing);
+            Banc.GabaritsTraces.Add(_drawing);
             ReevaluateTraces();
         }
         _drawing = null; _hover = null;
@@ -281,11 +359,11 @@ public sealed class MainWindow : Window
     /// <summary>Réévalue les gabarits dessinés sur les résultats déjà calculés (pas besoin de resimuler).</summary>
     void ReevaluateTraces()
     {
-        if (_last == null || _last.Erreur != null) return;
-        var traces = _etude.GabaritsTraces.Where(g => _last.Resultats.ContainsKey(g.Analyse))
+        if (_banc == null || _last == null || _last.Erreur != null) return;
+        var traces = Banc.GabaritsTraces.Where(g => _last.Resultats.ContainsKey(g.Analyse))
             .Select(g => new ResultatTrace(g, Verification.EvaluerTrace(g, _last.Resultats[g.Analyse]))).ToList();
         _last = _last with { Traces = traces };
-        if (_etude.GabaritsTraces.Any(g => !_last.Resultats.ContainsKey(g.Analyse))) SetVerdict(null); else SetVerdict(_last.Nombre == 0 ? null : _last.Global);
+        if (Banc.GabaritsTraces.Any(g => !_last.Resultats.ContainsKey(g.Analyse))) SetVerdict(null); else SetVerdict(_last.Nombre == 0 ? null : _last.Global);
     }
 
     (double X, double Y) ToData(PointerEventArgs e)
@@ -319,35 +397,83 @@ public sealed class MainWindow : Window
         var s = new StackPanel { Spacing = 6, Margin = new Thickness(12) };
         s.Children.Add(Ui.Title("Propriétés")); s.Children.Add(_props);
         s.Children.Add(Ui.Rule());
-        s.Children.Add(Ui.Title("Analyses"));
-        s.Children.Add(BuildAnalysisPanel());
-        s.Children.Add(Ui.Rule());
+        s.Children.Add(_circuitPanel); s.Children.Add(_benchPanel);
+        return new Border { Width = 350, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(1, 0, 0, 0), Child = new ScrollViewer { Content = s } };
+    }
+
+    /// <summary>Panneau droit selon le contexte : vue d'ensemble des bancs (circuit) ou réglages du banc actif.</summary>
+    void RefreshSide()
+    {
+        _circuitPanel.IsVisible = _banc == null; _benchPanel.IsVisible = _banc != null;
+        _circuitPanel.Children.Clear(); _benchPanel.Children.Clear();
+        if (_banc == null)
+        {
+            _circuitPanel.Children.Add(Ui.Title("Bancs de test"));
+            _circuitPanel.Children.Add(Ui.Hint("Chaque banc branche ses propres sources, alimentations et charges sur ce circuit, avec ses analyses et ses gabarits. Une modification du circuit vaut pour tous les bancs : « Simuler et vérifier » les relance tous."));
+            if (_etude.Bancs.Count == 0) _circuitPanel.Children.Add(Ui.Hint("Aucun banc pour l'instant : « + Banc de test » au-dessus du schéma."));
+            foreach (var b in _etude.Bancs)
+            {
+                var r = _results.GetValueOrDefault(b);
+                var row = new Grid { ColumnDefinitions = new("Auto,*,Auto") };
+                row.Children.Add(Ui.Badge(r == null ? null : r.Erreur != null ? Verdict.NonEvaluable : r.Nombre == 0 ? null : r.Global));
+                var name = new TextBlock { Text = b.Nom, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0) };
+                Grid.SetColumn(name, 1); row.Children.Add(name);
+                var detail = new TextBlock
+                {
+                    FontSize = 11.5, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center,
+                    Text = r == null ? $"{b.Gabarits.Count + b.GabaritsTraces.Count} contrainte(s)" : r.Erreur != null ? "erreur" : $"{r.Respectes}/{r.Nombre} respectée(s)"
+                };
+                Grid.SetColumn(detail, 2); row.Children.Add(detail);
+                var bb = b;
+                var btn = new Button { Content = row, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Background = Brushes.White, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 8) };
+                btn.Click += (_, _) => SelectBanc(bb);
+                _circuitPanel.Children.Add(btn);
+            }
+            RefreshGabarits();
+            return;
+        }
+        var bh = new Grid { ColumnDefinitions = new("*,Auto") };
+        var t = Ui.Title("Banc de test"); t.Foreground = Ui.BenchBrush; bh.Children.Add(t);
+        var del = Ui.ToolButton("Supprimer le banc", "Supprimer ce banc, ses sources et ses gabarits", () =>
+        {
+            _results.Remove(Banc); _etude.Bancs.Remove(Banc); SelectBanc(null);
+        });
+        del.FontSize = 11.5; del.Foreground = Ui.Muted; Grid.SetColumn(del, 1); bh.Children.Add(del);
+        _benchPanel.Children.Add(bh);
+        var nom = new TextBox { Text = Banc.Nom, FontSize = 13 };
+        void Rename() { var n = (nom.Text ?? "").Trim(); if (n.Length > 0 && n != Banc.Nom) { Banc.Nom = n; RefreshBenchBar(); SelectBanc(Banc); } }
+        nom.KeyDown += (_, e) => { if (e.Key == Key.Enter) Rename(); }; nom.LostFocus += (_, _) => Rename();
+        _benchPanel.Children.Add(Ui.Labeled("Nom", nom));
+        _benchPanel.Children.Add(Ui.Rule());
+        _benchPanel.Children.Add(Ui.Title("Analyses"));
+        _benchPanel.Children.Add(BuildAnalysisPanel());
+        _benchPanel.Children.Add(Ui.Rule());
         var gh = new Grid { ColumnDefinitions = new("*,Auto") };
         gh.Children.Add(Ui.Title("Critères mesurés"));
         var add = Ui.ToolButton("+ Critère", "Ajouter un critère pass/fail", () =>
         {
-            var n = Connectivity.Build(_etude.Schema).NamedNodes.FirstOrDefault() ?? "OUT";
-            _etude.Gabarits.Add(new CritereGabarit { Mesure = TypeMesure.BandePassante3dB, Noeud = n }); RefreshGabarits();
+            var n = Connectivity.Build(SchemaCourant).NamedNodes.FirstOrDefault() ?? "OUT";
+            Banc.Gabarits.Add(new CritereGabarit { Mesure = TypeMesure.BandePassante3dB, Noeud = n }); RefreshGabarits();
         });
         Grid.SetColumn(add, 1); gh.Children.Add(add);
-        s.Children.Add(gh); s.Children.Add(_gabarits);
+        _benchPanel.Children.Add(gh); _benchPanel.Children.Add(_gabarits);
         var th = Ui.Title("Gabarits dessinés"); th.Margin = new Thickness(0, 12, 0, 6);
-        s.Children.Add(th); s.Children.Add(_traces);
-        return new Border { Width = 350, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(1, 0, 0, 0), Child = new ScrollViewer { Content = s } };
+        _benchPanel.Children.Add(th); _benchPanel.Children.Add(_traces);
+        RefreshGabarits();
     }
 
     Control BuildAnalysisPanel()
     {
         var s = new StackPanel { Spacing = 6 };
         var tran = new Grid { ColumnDefinitions = new("*,8,*") };
-        tran.Children.Add(Ui.Field("Pas", SpiceNumber.Format(_etude.Transitoire.Pas, "s"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) _etude.Transitoire.Pas = x; }));
-        var dur = Ui.Field("Durée", SpiceNumber.Format(_etude.Transitoire.Duree, "s"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) _etude.Transitoire.Duree = x; });
+        tran.Children.Add(Ui.Field("Pas", SpiceNumber.Format(Banc.Transitoire.Pas, "s"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) Banc.Transitoire.Pas = x; }));
+        var dur = Ui.Field("Durée", SpiceNumber.Format(Banc.Transitoire.Duree, "s"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) Banc.Transitoire.Duree = x; });
         Grid.SetColumn(dur, 2); tran.Children.Add(dur);
         var ac = new Grid { ColumnDefinitions = new("*,8,*,8,70") };
-        ac.Children.Add(Ui.Field("De", SpiceNumber.Format(_etude.Ac.FDebut, "Hz"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) _etude.Ac.FDebut = x; }));
-        var to = Ui.Field("À", SpiceNumber.Format(_etude.Ac.FFin, "Hz"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) _etude.Ac.FFin = x; });
+        ac.Children.Add(Ui.Field("De", SpiceNumber.Format(Banc.Ac.FDebut, "Hz"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) Banc.Ac.FDebut = x; }));
+        var to = Ui.Field("À", SpiceNumber.Format(Banc.Ac.FFin, "Hz"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) Banc.Ac.FFin = x; });
         Grid.SetColumn(to, 2); ac.Children.Add(to);
-        var pts = Ui.Field("Pts/déc.", _etude.Ac.PointsParDecade.ToString(), v => { if (int.TryParse(v, out var x) && x > 0) _etude.Ac.PointsParDecade = x; });
+        var pts = Ui.Field("Pts/déc.", Banc.Ac.PointsParDecade.ToString(), v => { if (int.TryParse(v, out var x) && x > 0) Banc.Ac.PointsParDecade = x; });
         Grid.SetColumn(pts, 4); ac.Children.Add(pts);
 
         s.Children.Add(Ui.SubTitle("Transitoire (.tran)")); s.Children.Add(tran);
@@ -410,12 +536,13 @@ public sealed class MainWindow : Window
     // ───────────────────────── gabarits ─────────────────────────
     void RefreshGabarits()
     {
+        _gabarits.Children.Clear(); _traces.Children.Clear();
+        if (_banc == null) return;
         RefreshTraces();
-        _gabarits.Children.Clear();
-        if (_etude.Gabarits.Count == 0)
+        if (Banc.Gabarits.Count == 0)
             _gabarits.Children.Add(Ui.Hint("Aucun critère. Ajoutez par exemple « Bande passante −3 dB ≥ 1 kHz sur OUT »."));
-        var nodes = Connectivity.Build(_etude.Schema).AllNodes.ToList();
-        foreach (var g in _etude.Gabarits.ToList())
+        var nodes = Connectivity.Build(SchemaCourant).AllNodes.ToList();
+        foreach (var g in Banc.Gabarits.ToList())
         {
             var res = _last?.Criteres.FirstOrDefault(r => r.Critere == g)?.Resultat;
             var card = new StackPanel { Spacing = 6 };
@@ -424,7 +551,7 @@ public sealed class MainWindow : Window
             mesure.SelectionChanged += (_, _) => { if (mesure.SelectedIndex >= 0 && TypesMesure.Tous[mesure.SelectedIndex].Type != g.Mesure) { g.Mesure = TypesMesure.Tous[mesure.SelectedIndex].Type; Invalidate(); } };
             var del = new Button { Content = "✕", Background = Brushes.Transparent, Foreground = Ui.Muted, Padding = new Thickness(6, 2), Margin = new Thickness(4, 0, 0, 0) };
             ToolTip.SetTip(del, "Retirer ce critère");
-            del.Click += (_, _) => { _etude.Gabarits.Remove(g); Invalidate(); };
+            del.Click += (_, _) => { Banc.Gabarits.Remove(g); Invalidate(); };
             head.Children.Add(mesure); head.Children.Add(del); Grid.SetColumn(del, 1);
             card.Children.Add(head);
 
@@ -458,9 +585,9 @@ public sealed class MainWindow : Window
     void RefreshTraces()
     {
         _traces.Children.Clear();
-        if (_etude.GabaritsTraces.Count == 0)
+        if (Banc.GabaritsTraces.Count == 0)
             _traces.Children.Add(Ui.Hint("Aucun. En mode Test, sous les courbes : choisissez un signal puis « Limite haute » ou « Limite basse » et cliquez sur le graphique."));
-        foreach (var g in _etude.GabaritsTraces.ToList())
+        foreach (var g in Banc.GabaritsTraces.ToList())
         {
             var res = _last?.Traces.FirstOrDefault(t => t.Gabarit == g)?.Resultat;
             var card = new StackPanel { Spacing = 4 };
@@ -468,7 +595,7 @@ public sealed class MainWindow : Window
             head.Children.Add(new TextBlock { Text = g.Nom, FontWeight = FontWeight.SemiBold, FontSize = 12, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap });
             var del = new Button { Content = "✕", Background = Brushes.Transparent, Foreground = Ui.Muted, Padding = new Thickness(6, 2) };
             ToolTip.SetTip(del, "Retirer ce gabarit");
-            del.Click += (_, _) => { _etude.GabaritsTraces.Remove(g); ReevaluateTraces(); RefreshGabarits(); RefreshPlot(keepLimits: true); };
+            del.Click += (_, _) => { Banc.GabaritsTraces.Remove(g); ReevaluateTraces(); RefreshGabarits(); RefreshPlot(keepLimits: true); };
             Grid.SetColumn(del, 1); head.Children.Add(del);
             card.Children.Add(head);
             card.Children.Add(Ui.Hint($"{(g.Analyse == AnalyseKind.Ac ? "Bode" : "Temporel")} · {g.Points.Count} points de {Fx(g.Analyse, g.Points[0].X)} à {Fx(g.Analyse, g.Points[^1].X)}"));
@@ -495,16 +622,20 @@ public sealed class MainWindow : Window
     // ───────────────────────── schéma → netlist / ERC ─────────────────────────
     void OnSchemaChanged()
     {
-        var conn = Connectivity.Build(_etude.Schema);
-        var issues = Erc.Check(_etude.Schema, conn);
-        _netlist.Text = CircuitBuilder.Preview(_etude.Schema, conn, CircuitBuilder.AnalysisFor(_etude, Shown));
+        var schema = SchemaCourant;
+        var conn = Connectivity.Build(schema);
+        var issues = Erc.Check(schema, conn, circuitSeul: _banc == null);
+        _netlist.Text = CircuitBuilder.Preview(schema, conn, _banc == null ? null : CircuitBuilder.AnalysisFor(Banc, Shown));
         _ercList.Children.Clear();
-        if (issues.Count == 0) _ercList.Children.Add(new TextBlock { Text = "✓ Schéma cohérent : masse présente, pas de broche flottante ni de référence dupliquée.", Foreground = Ui.PassBrush });
+        if (issues.Count == 0) _ercList.Children.Add(new TextBlock { Text = _banc == null ? "✓ Circuit cohérent (références, valeurs). Masse et broches libres sont vérifiées avec chaque banc." : "✓ Banc cohérent : masse présente, pas de broche flottante ni de référence dupliquée.", Foreground = Ui.PassBrush });
         foreach (var i in issues)
             _ercList.Children.Add(new TextBlock { Text = (i.Severity == Severity.Error ? "⛔ " : "⚠ ") + i.Message, Foreground = i.Severity == Severity.Error ? Ui.FailBrush : Ui.WarnBrush, TextWrapping = TextWrapping.Wrap });
         int nErr = issues.Count(i => i.Severity == Severity.Error), nWarn = issues.Count - nErr;
         _ercTab.Header = nErr + nWarn == 0 ? "Vérifications ✓" : $"Vérifications ({nErr + nWarn})";
-        if (_last != null) { _last = null; SetVerdict(null); RefreshGabarits(); RefreshPlot(); }
+        // Circuit modifié : tous les bancs sont à relancer. Calque modifié : seulement le banc actif.
+        bool had = _banc == null ? _results.Count > 0 : _last != null;
+        if (_banc == null) _results.Clear(); else _last = null;
+        if (had) { SetVerdict(null); RefreshGabarits(); RefreshPlot(); RefreshBenchBar(); if (_banc == null) RefreshSide(); }
         RefreshPlotToolbar();
         RefreshProperties();
     }
@@ -513,27 +644,41 @@ public sealed class MainWindow : Window
     public async Task SimulateAsync()
     {
         _cts?.Cancel(); _cts = new();
-        _simulate.IsEnabled = false; _status.Text = "Simulation ngspice en cours…";
+        _simulate.IsEnabled = false;
         try
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            var r = await Verification.RunAsync(_etude, [Shown], _cts.Token);
-            _last = r;
-            _journal.Text = r.Journal;
-            if (r.Erreur != null)
+            if (_banc == null)
             {
-                _status.Text = "⛔ " + r.Erreur;
-                _bottomTabs.SelectedIndex = r.Erc.Any(i => i.Severity == Severity.Error) ? 1 : 2;
+                // Depuis le circuit : tous les bancs, en parallèle (non-régression).
+                if (_etude.Bancs.Count == 0) { _status.Text = "Aucun banc de test : créez-en un pour brancher des stimuli sur le circuit."; return; }
+                _status.Text = $"Simulation de {_etude.Bancs.Count} banc(s)…";
+                var all = await Task.WhenAll(_etude.Bancs.Select(async b => (b, r: await Verification.RunAsync(_etude, b, [], _cts.Token))));
+                foreach (var (b, r) in all) _results[b] = r;
+                _journal.Text = string.Join("\n", all.Select(x => $"════ {x.b.Nom} ════\n{x.r.Journal}"));
+                int ok = all.Count(x => x.r.Erreur == null && (x.r.Nombre == 0 || x.r.Global == Verdict.Pass));
+                _status.Text = $"{all.Length} banc(s) simulé(s) en {sw.ElapsedMilliseconds} ms · {ok}/{all.Length} conforme(s)";
+                SetVerdict(GlobalVerdict());
+                RefreshSide(); RefreshBenchBar();
+                return;
+            }
+            _status.Text = "Simulation ngspice en cours…";
+            var res = await Verification.RunAsync(_etude, Banc, [Shown], _cts.Token);
+            _last = res;
+            _journal.Text = res.Journal;
+            if (res.Erreur != null)
+            {
+                _status.Text = "⛔ " + res.Erreur;
+                _bottomTabs.SelectedIndex = res.Erc.Any(i => i.Severity == Severity.Error) ? 1 : 2;
                 SetVerdict(null);
             }
             else
             {
-                int pass = r.Respectes;
-                _status.Text = $"Simulé en {sw.ElapsedMilliseconds} ms ({string.Join(" + ", r.Resultats.Keys.Select(k => k == AnalyseKind.Ac ? "AC" : "transitoire"))}) · {pass}/{r.Nombre} contrainte(s) respectée(s)";
-                SetVerdict(r.Nombre == 0 ? null : r.Global);
+                _status.Text = $"« {Banc.Nom} » simulé en {sw.ElapsedMilliseconds} ms ({string.Join(" + ", res.Resultats.Keys.Select(k => k == AnalyseKind.Ac ? "AC" : "transitoire"))}) · {res.Respectes}/{res.Nombre} contrainte(s) respectée(s)";
+                SetVerdict(res.Nombre == 0 ? null : res.Global);
                 _bottomTabs.SelectedIndex = 0;
             }
-            RefreshGabarits(); RefreshPlot();
+            RefreshGabarits(); RefreshPlot(); RefreshBenchBar();
         }
         catch (OperationCanceledException) { }
         finally { _simulate.IsEnabled = true; }
@@ -553,17 +698,17 @@ public sealed class MainWindow : Window
         var limits = p.Axes.GetLimits();
         p.Clear(); p.Axes.Right.IsVisible = false;
         p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic();
-        if (_last == null || !_last.Resultats.TryGetValue(Shown, out var raw))
+        if (_banc == null || _last == null || !_last.Resultats.TryGetValue(Shown, out var raw))
         {
             p.Title(""); p.Axes.Bottom.Label.Text = ""; p.Axes.Left.Label.Text = "";
-            var t = p.Add.Text(_last == null ? "Lancez « Simuler et vérifier » pour tracer les courbes" : "Cette analyse n'a pas été simulée : relancez la simulation", 0, 0);
+            var t = p.Add.Text(_banc == null ? "Sélectionnez un banc de test pour voir ses courbes" : _last == null ? "Lancez « Simuler et vérifier » pour tracer les courbes" : "Cette analyse n'a pas été simulée : relancez la simulation", 0, 0);
             t.LabelFontSize = 14; t.LabelFontColor = ScottPlot.Color.FromHex("#5b6170"); t.LabelAlignment = ScottPlot.Alignment.MiddleCenter;
-            p.Axes.SetLimits(-1, 1, -1, 1); p.HideGrid(); _plot.Refresh(); return;
+            p.Axes.SetLimits(-1, 1, -1, 1); p.HideGrid(); p.Axes.Left.IsVisible = p.Axes.Bottom.IsVisible = p.Axes.Top.IsVisible = false; _plot.Refresh(); return;
         }
-        p.ShowGrid();
+        p.ShowGrid(); p.Axes.Left.IsVisible = p.Axes.Bottom.IsVisible = p.Axes.Top.IsVisible = true;
         bool ac = Shown == AnalyseKind.Ac;
         double X(double x) => ac ? Math.Log10(x) : x * 1e3;
-        var conn = Connectivity.Build(_etude.Schema);
+        var conn = Connectivity.Build(SchemaCourant);
         var nodes = (conn.NamedNodes.Count > 0 ? conn.NamedNodes : conn.AllNodes).ToList();
         if (_modeTest && SelectedSignal is { } sel && !nodes.Contains(sel)) nodes.Add(sel);
         var palette = new ScottPlot.Palettes.Category10();
@@ -629,11 +774,11 @@ public sealed class MainWindow : Window
                     txt.LabelAlignment = droite ? ScottPlot.Alignment.MiddleRight : ScottPlot.Alignment.MiddleLeft; txt.LabelBackgroundColor = ScottPlot.Colors.White.WithAlpha(0.85);
                 }
             }
-            foreach (var g in _etude.GabaritsTraces.Where(g => g.Analyse == Shown))
+            foreach (var g in Banc.GabaritsTraces.Where(g => g.Analyse == Shown))
                 DrawMask(g, g.Points, _last.Traces.FirstOrDefault(t => t.Gabarit == g)?.Resultat, false);
             if (_drawing != null)
                 DrawMask(_drawing, _hover is { } h && (_drawing.Points.Count == 0 || h.X > _drawing.Points[^1].X) ? _drawing.Points.Append(h).ToList() : _drawing.Points, null, true);
-            foreach (var g in _etude.GabaritsTraces.Where(g => g.Analyse == Shown)) foreach (var q in g.Points) { yMin = Math.Min(yMin, q.Y); yMax = Math.Max(yMax, q.Y); }
+            foreach (var g in Banc.GabaritsTraces.Where(g => g.Analyse == Shown)) foreach (var q in g.Points) { yMin = Math.Min(yMin, q.Y); yMax = Math.Max(yMax, q.Y); }
 
             foreach (var rc in _last.Criteres.Where(c => ac && c.Critere.Mesure == TypeMesure.BandePassante3dB && c.Resultat.Valeur is not null))
             {

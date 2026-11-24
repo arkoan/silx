@@ -6,14 +6,15 @@ public sealed record ErcIssue(Severity Severity, string Message);
 /// <summary>Vérification de cohérence électrique avant simulation (spec §3.1).</summary>
 public static class Erc
 {
-    public static IReadOnlyList<ErcIssue> Check(Schematic s, Connectivity c)
+    /// <param name="circuitSeul">Circuit sous test sans banc : pas de masse ni de source exigées, broches ouvertes tolérées sur les nœuds étiquetés (points de connexion du banc).</param>
+    public static IReadOnlyList<ErcIssue> Check(Schematic s, Connectivity c, bool circuitSeul = false)
     {
         var issues = new List<ErcIssue>();
         foreach (var g in s.Components.Where(k => k.IsElectrical).GroupBy(x => x.Ref, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
             issues.Add(new(Severity.Error, $"Référence dupliquée : {g.Key}"));
         var elec = s.Components.Where(k => k.IsElectrical).ToList();
         if (elec.Count == 0) { issues.Add(new(Severity.Warning, "Schéma vide")); return issues; }
-        if (!s.Components.Any(k => k.Kind == ComponentKind.Ground))
+        if (!circuitSeul && !s.Components.Any(k => k.Kind == ComponentKind.Ground))
             issues.Add(new(Severity.Error, "Aucune masse (GND) : le nœud 0 est requis par SPICE"));
         foreach (var k in elec)
         {
@@ -25,7 +26,7 @@ public static class Erc
             for (int i = 0; i < k.Pins.Count; i++)
             {
                 var node = c.NodeOf[k.Pins[i]];
-                if (c.PinCount[node] == 1 && node != "0")
+                if (c.PinCount[node] == 1 && node != "0" && !(circuitSeul && c.NamedNodes.Contains(node)))
                     issues.Add(new(Severity.Warning, $"{k.Ref} broche {i + 1} non connectée (nœud {node} flottant)"));
             }
         }

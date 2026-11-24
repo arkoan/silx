@@ -27,11 +27,18 @@ public class UiTests
         var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
         Shot(w, "1-ouverture.png");
         await w.SimulateAsync();
-        Shot(w, "2-test-gabarits.png");
+        Shot(w, "2-banc-echelon.png");
         w.SetModeTest(false);
         Shot(w, "3-simulation.png");
+        w.SetModeTest(true);
+        w.SelectBanc(w.EtudeCourante.Bancs[1]);
         w.ShowAnalysis(Silx.Etude.AnalyseKind.Ac);
-        Shot(w, "4-bode.png");
+        await w.SimulateAsync();
+        Shot(w, "4-banc-bode.png");
+        w.SelectBanc(null);
+        await w.SimulateAsync();
+        Shot(w, "5-circuit-sous-test.png");
+        Assert.All(w.EtudeCourante.Bancs, b => Assert.DoesNotContain(w.EtudeCourante.Schema.Components, c => c.Kind == Silx.Etude.ComponentKind.VoltageSource));
     }
 
     /// <summary>Dessin d'une limite basse à la souris sur la courbe transitoire : 3 clics puis fin de tracé.</summary>
@@ -41,7 +48,7 @@ public class UiTests
         var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
         await w.SimulateAsync();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        int avant = w.EtudeCourante.GabaritsTraces.Count;
+        int avant = w.BancActif!.GabaritsTraces.Count;
         w.StartDrawing(Silx.Mesures.Gabarits.Limite.Basse);
         var plot = w.PlotControl;
         foreach (var (tMs, v) in new[] { (1.0, -0.1), (4.0, 0.5), (9.0, 0.7) })
@@ -51,13 +58,13 @@ public class UiTests
             w.MouseDown(pt, Avalonia.Input.MouseButton.Left); w.MouseUp(pt, Avalonia.Input.MouseButton.Left);
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         }
-        Shot(w, "5-dessin-en-cours.png");
+        Shot(w, "6-dessin-en-cours.png");
         w.EndDrawing(true);
-        var g = w.EtudeCourante.GabaritsTraces[^1];
-        Assert.Equal(avant + 1, w.EtudeCourante.GabaritsTraces.Count);
+        var g = w.BancActif!.GabaritsTraces[^1];
+        Assert.Equal(avant + 1, w.BancActif!.GabaritsTraces.Count);
         Assert.Equal(3, g.Points.Count);
         Assert.Equal(4e-3, g.Points[1].X, 2e-4);
         Assert.Equal(0.5, g.Points[1].Y, 0.03);
-        Shot(w, "6-dessin-termine.png");
+        Shot(w, "7-dessin-termine.png");
     }
 }

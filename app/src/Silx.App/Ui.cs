@@ -16,6 +16,8 @@ static class Ui
     public static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#5b6170"));
     public static readonly IBrush AccentBrush = new SolidColorBrush(Color.Parse("#2563eb"));
     public static readonly IBrush ActiveBg = new SolidColorBrush(Color.Parse("#dbe6fe"));
+    public static readonly IBrush BenchBrush = SchematicCanvas.BenchBrush;
+    public static readonly IBrush BenchBg = new SolidColorBrush(Color.Parse("#f3effe"));
     public static readonly IBrush PassBrush = new SolidColorBrush(Color.Parse("#15803d"));
     public static readonly IBrush FailBrush = new SolidColorBrush(Color.Parse("#b91c1c"));
     public static readonly IBrush WarnBrush = new SolidColorBrush(Color.Parse("#b45309"));
