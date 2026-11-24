@@ -56,7 +56,6 @@ public sealed class MainWindow : Window
     bool _modeTest = true;
     readonly Button _modeSim = new(), _modeTestBtn = new();
     readonly StackPanel _testTools = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
-    readonly ComboBox _signal = new() { MinWidth = 110, FontSize = 12 };
     readonly Button _drawHigh = new(), _drawLow = new();
     Button _viewTran = null!, _viewAc = null!;
     // Édition des points d'un gabarit : survol (grossit) puis glisser.
@@ -90,6 +89,7 @@ public sealed class MainWindow : Window
     readonly Button _undoDelete = new() { Content = "Rétablir le banc", FontSize = 12, Padding = new Thickness(8, 1), IsVisible = false, Background = Brushes.Transparent, Foreground = Ui.AccentBrush };
 
     Banc Banc => _banc ?? throw new InvalidOperationException("Aucun banc actif.");
+    AnalyseKind _typeAffiche;
     /// <summary>Schéma vu par les analyses et les listes de nœuds : circuit + calque du banc actif.</summary>
     Schematic SchemaCourant => _banc?.Fusion(_etude.Schema) ?? _etude.Schema;
     /// <summary>Résultats du banc actif.</summary>
@@ -176,7 +176,7 @@ public sealed class MainWindow : Window
     {
         EndDrawing(false);
         if (_banc != b) _cursors.Clear();
-        _banc = b;
+        _banc = b; _typeAffiche = b?.Type ?? AnalyseKind.Transitoire;
         _canvas.Caption = b == null
             ? "Circuit sous test — sans stimuli : les sources se branchent dans un banc de test"
             : $"Banc « {b.Nom} » — calque en violet ; le circuit dessous se modifie dans « Circuit sous test »";
@@ -453,9 +453,6 @@ public sealed class MainWindow : Window
             ToolTip.SetTip(b, lim == Limite.Haute ? "Dessiner une limite haute : zone interdite au-dessus" : "Dessiner une limite basse : zone interdite en dessous");
             var l = lim; b.Click += (_, _) => StartDrawing(l);
         }
-        _signal.SelectionChanged += (_, _) => { if (_drawing == null) RefreshPlot(keepLimits: true); };
-        ToolTip.SetTip(_signal, "Signal auquel s'applique le gabarit dessiné");
-        _signal.MinHeight = 28; _signal.Padding = new Thickness(8, 2);
         _testTools.Children.Add(_drawHigh); _testTools.Children.Add(_drawLow); _testTools.Children.Add(_drawHint);
 
         var zoom = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
@@ -477,7 +474,7 @@ public sealed class MainWindow : Window
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(6, 2) };
         bar.Children.Add(probes); bar.Children.Add(Ui.Separator());
         bar.Children.Add(seg); bar.Children.Add(Ui.Separator()); bar.Children.Add(view); bar.Children.Add(Ui.Separator());
-        bar.Children.Add(zoom); bar.Children.Add(Ui.Separator()); bar.Children.Add(_signal); bar.Children.Add(curs); bar.Children.Add(Ui.Separator()); bar.Children.Add(_testTools);
+        bar.Children.Add(zoom); bar.Children.Add(Ui.Separator()); bar.Children.Add(curs); bar.Children.Add(Ui.Separator()); bar.Children.Add(_testTools);
 
         var dock = new DockPanel();
         _overlay.Children.Add(_zoomRect);
@@ -547,7 +544,6 @@ public sealed class MainWindow : Window
         foreach (var p in _panes) p.Frame.BorderBrush = p == pane && _panes.Count > 1 ? Ui.AccentBrush : Brushes.Transparent;
         (_overlay.Parent as Panel)?.Children.Remove(_overlay); (_readout.Parent as Panel)?.Children.Remove(_readout);
         pane.Host.Children.Add(_overlay); pane.Host.Children.Add(_readout);
-        if (pane.Signaux.Count > 0 && _signal.ItemsSource is List<string> l && !pane.Signaux.Contains(SelectedSignal ?? "") && l.Contains(pane.Signaux[0])) _signal.SelectedItem = pane.Signaux[0];
     }
 
     void AddPane()
@@ -566,7 +562,6 @@ public sealed class MainWindow : Window
         if (!_active.Signaux.Contains(node)) _active.Signaux.Add(node);
         var idx = _panes.IndexOf(_active);
         RebuildPanes(); Activate(_panes[idx]); RefreshPlot();
-        if (_signal.ItemsSource is List<string> l && l.Contains(node)) _signal.SelectedItem = node;
         _status.Text = $"V({node}) ajoutée au graphique {idx + 1}" + (_last == null ? " — lancez la simulation pour la voir." : ".");
     }
 
@@ -574,7 +569,6 @@ public sealed class MainWindow : Window
     {
         Ui.SetActive(_modeSim, !_modeTest); Ui.SetActive(_modeTestBtn, _modeTest);
         if (_cursorBtn != null) { Ui.SetActive(_cursorBtn, _cursorMode); Ui.SetActive(_zoomWinBtn, _zoomMode); }
-        _signal.IsVisible = _banc != null;
         if (_viewTran != null)
         {
             // La vue suit le type du banc : l'autre est grisée.
@@ -585,23 +579,28 @@ public sealed class MainWindow : Window
         _testTools.IsVisible = _modeTest && _banc != null;
         Ui.SetActive(_drawHigh, _drawing?.Limite == Limite.Haute); Ui.SetActive(_drawLow, _drawing?.Limite == Limite.Basse);
         _drawHint.Text = _drawing == null ? "" : _drawing.Points.Count == 0
-            ? "Cliquez pour poser le premier point (de gauche à droite)…"
+            ? "Cliquez près de la courbe à contraindre pour poser le premier point (de gauche à droite)…"
             : "Cliquez pour ajouter un point · double-clic ou Entrée pour terminer · Échap pour annuler";
-        var conn = Connectivity.Build(SchemaCourant);
-        var nodes = conn.AllNodes.ToList();
-        var cur = _signal.SelectedItem as string;
-        if (!(_signal.ItemsSource is List<string> old && old.SequenceEqual(nodes)))
-        {
-            _signal.ItemsSource = nodes;
-            _signal.SelectedItem = nodes.Contains(cur ?? "") ? cur : nodes.FirstOrDefault(n => n == "OUT") ?? conn.NamedNodes.LastOrDefault() ?? nodes.FirstOrDefault();
-        }
     }
 
-    string? SelectedSignal => _signal.SelectedItem as string;
+    /// <summary>Courbe du graphique actif la plus proche du pointeur (distance verticale à l'écran à la même abscisse).</summary>
+    string? CourbeProche(Point pos)
+    {
+        var x = ToData(pos).X; var sc = _plot.DisplayScale;
+        string? best = null; double bd = double.PositiveInfinity;
+        foreach (var n in ActiveSignals)
+        {
+            if (CurveAt(n, x) is not { } y) continue;
+            var px = _plot.Plot.GetPixel(new ScottPlot.Coordinates(Shown == AnalyseKind.Ac ? Math.Log10(x) : x * 1e3, y));
+            var dd = Math.Abs(px.Y / sc - pos.Y);
+            if (dd < bd) { bd = dd; best = n; }
+        }
+        return best;
+    }
 
     public void StartDrawing(Limite lim)
     {
-        var n = ActiveSignals.Contains(SelectedSignal ?? "") ? SelectedSignal : ActiveSignals.FirstOrDefault();
+        var n = ActiveSignals.FirstOrDefault();   // précisé au premier clic : courbe la plus proche
         if (n == null || _banc == null) return;
         if (_last == null || !_last.Resultats.ContainsKey(Shown)) { _status.Text = "Simulez d'abord : le gabarit se dessine sur la courbe."; return; }
         _drawing = new GabaritTrace { Analyse = Shown, Noeud = n, Limite = lim };
@@ -633,9 +632,10 @@ public sealed class MainWindow : Window
         if (Banc.TracesActives.Any(g => !_last.Resultats.ContainsKey(g.Analyse))) SetVerdict(null); else SetVerdict(_last.Nombre == 0 ? null : _last.Global);
     }
 
-    (double X, double Y) ToData(PointerEventArgs e)
+    (double X, double Y) ToData(PointerEventArgs e) => ToData(e.GetPosition(_plot));
+    (double X, double Y) ToData(Point pos)
     {
-        var pos = e.GetPosition(_plot); var sc = _plot.DisplayScale;
+        var sc = _plot.DisplayScale;
         var c = _plot.Plot.GetCoordinates(new ScottPlot.Pixel((float)(pos.X * sc), (float)(pos.Y * sc)));
         return Shown == AnalyseKind.Ac ? (Math.Pow(10, c.X), c.Y) : (c.X * 1e-3, c.Y);
     }
@@ -650,6 +650,7 @@ public sealed class MainWindow : Window
             if (!left) { EndDrawing(false); return; }
             if (e.ClickCount > 1) { EndDrawing(true); return; }
             var p = ToData(e);
+            if (_drawing.Points.Count == 0 && CourbeProche(e.GetPosition(_plot)) is { } proche) _drawing.Noeud = proche;
             if (_drawing.Points.Count > 0 && p.X <= _drawing.Points[^1].X) { _drawHint.Text = "Les points se posent de gauche à droite."; return; }
             _drawing.Points.Add(p);
             RefreshPlotToolbar(); RefreshPlot(keepLimits: true);
@@ -671,7 +672,7 @@ public sealed class MainWindow : Window
             e.Handled = true; _dragCursor = hc; _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
             return;
         }
-        if (_cursorMode && (ActiveSignals.Contains(SelectedSignal ?? "") ? SelectedSignal : ActiveSignals.FirstOrDefault()) is { } sig)
+        if (_cursorMode && CourbeProche(e.GetPosition(_plot)) is { } sig)
         {
             e.Handled = true;
             var x = ToData(e).X;
@@ -963,7 +964,18 @@ public sealed class MainWindow : Window
             var kk = k; b.Click += (_, _) => ShowAnalysis(kk);
             type.Children.Add(b);
         }
-        s.Children.Add(type);
+        if (Banc.PremierStimulus is { } src)
+        {
+            // Le type est fixé par le premier stimulus : on l'affiche, sans le proposer au choix.
+            var st = Stimulus.Lire(src.Value);
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            row.Children.Add(Icones.Make(Banc.Type == AnalyseKind.Ac ? Icones.Bode : Icones.Temporel, 15, Ui.AccentBrush));
+            row.Children.Add(new TextBlock { Text = Banc.Type == AnalyseKind.Ac ? "Fréquentiel" : "Temporel", FontWeight = FontWeight.SemiBold, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(new TextBlock { Text = $"· fixé par {src.Ref} ({Stimulus.Libelle(st.Forme).ToLowerInvariant()})", FontSize = 12, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center });
+            ToolTip.SetTip(row, "Le premier stimulus posé dans le banc décide : petit signal (AC) → fréquentiel ; continu, impulsion, sinus → temporel.");
+            s.Children.Add(row);
+        }
+        else s.Children.Add(type);
         if (Banc.Type == AnalyseKind.Transitoire) { s.Children.Add(Ui.SubTitle("Transitoire (.tran)")); s.Children.Add(tran); }
         else { s.Children.Add(Ui.SubTitle("Petit signal (.ac, décade)")); s.Children.Add(ac); }
         return s;
@@ -989,6 +1001,7 @@ public sealed class MainWindow : Window
         if (c.Kind == ComponentKind.Ground) { _props.Children.Add(Ui.Hint("Nœud 0 de référence. Toutes les masses sont reliées.")); return; }
 
         var refBox = new TextBox { Text = c.Ref };
+        if (c.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource) { ProprietesStimulus(c, refBox); return; }
         Control valueEditor;
         Func<string> value;
         if (c.Kind == ComponentKind.Diode)
@@ -1020,6 +1033,51 @@ public sealed class MainWindow : Window
             ComponentKind.Diode => "Modèles génériques intégrés (indicatifs), en attendant les bibliothèques fabricant.",
             _ => "Le nœud prend ce nom dans la netlist, les courbes et les gabarits. Deux étiquettes identiques relient leurs nœuds."
         }));
+    }
+
+    /// <summary>Source : forme du stimulus et champs en clair (notation ingénieur) ; l'expression SPICE est générée.</summary>
+    void ProprietesStimulus(PlacedComponent c, TextBox refBox)
+    {
+        bool courant = c.Kind == ComponentKind.CurrentSource;
+        var st = Stimulus.Lire(c.Value);
+        void Appliquer() => _canvas.EditSelected(refBox.Text ?? c.Ref, st.VersSpice());
+        refBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) Appliquer(); }; refBox.LostFocus += (_, _) => Appliquer();
+        _props.Children.Add(Ui.Label("Référence")); _props.Children.Add(refBox);
+        var formes = Enum.GetValues<FormeStimulus>().ToList();
+        var forme = new ComboBox { ItemsSource = formes.Select(Stimulus.Libelle).ToList(), SelectedIndex = formes.IndexOf(st.Forme), HorizontalAlignment = HorizontalAlignment.Stretch };
+        forme.SelectionChanged += (_, _) =>
+        {
+            if (forme.SelectedIndex < 0 || formes[forme.SelectedIndex] == st.Forme) return;
+            var f = formes[forme.SelectedIndex];
+            st = f == FormeStimulus.Expression ? new Stimulus { Forme = f, Expression = st.VersSpice() } : Stimulus.Nouveau(f);
+            Appliquer();
+        };
+        _props.Children.Add(Ui.Label("Forme")); _props.Children.Add(forme);
+        if (st.Forme == FormeStimulus.Expression)
+        {
+            var ex = new TextBox { Text = st.Expression, FontFamily = new FontFamily("Menlo, Consolas, monospace"), FontSize = 12 };
+            void Ex() { st.Expression = ex.Text ?? ""; Appliquer(); }
+            ex.KeyDown += (_, e) => { if (e.Key == Key.Enter) Ex(); }; ex.LostFocus += (_, _) => Ex();
+            _props.Children.Add(Ui.Label("Expression SPICE")); _props.Children.Add(ex);
+            _props.Children.Add(Ui.Hint("Pour les formes non prévues (PWL, EXP…). Ex. PWL(0 0 1m 5)."));
+        }
+        else
+        {
+            var grid = new Grid { ColumnDefinitions = new("*,8,*") };
+            var champs = Stimulus.Champs(st.Forme);
+            for (int i = 0; i < champs.Count; i++)
+            {
+                var ch = champs[i]; var unite = courant && ch.Unite == "V" ? "A" : ch.Unite;
+                if (i % 2 == 0) grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                var f = Ui.Field($"{ch.Libelle} ({unite})", SpiceNumber.Format(st[ch.Cle], unite), v => { if (SpiceNumber.TryParse(v, out var x) && x != st[ch.Cle]) { st[ch.Cle] = x; Appliquer(); } });
+                f.Margin = new Thickness(0, 0, 0, 4);
+                Grid.SetRow(f, i / 2); Grid.SetColumn(f, i % 2 == 0 ? 0 : 2); grid.Children.Add(f);
+            }
+            _props.Children.Add(grid);
+            _props.Children.Add(Ui.Hint((st.Forme == FormeStimulus.PetitSignal ? "Source petit signal : le banc devient fréquentiel (Bode) si c'est son premier stimulus. "
+                : "Le banc est temporel si c'est son premier stimulus. ") + "Valeurs en notation ingénieur : 4,7k · 100n · 1meg." + (courant ? " Courant de la broche 1 vers la broche 2 dans la source." : "")));
+        }
+        _props.Children.Add(new TextBlock { Text = "SPICE : " + st.VersSpice(), FontSize = 11, Foreground = Ui.Muted, FontFamily = new FontFamily("Menlo, Consolas, monospace"), TextWrapping = TextWrapping.Wrap });
     }
 
     void ProprietesSpice(PlacedComponent c)
@@ -1152,6 +1210,7 @@ public sealed class MainWindow : Window
         bool had = _banc == null ? _results.Count > 0 : _last != null;
         if (_banc == null) _results.Clear(); else _last = null;
         if (had) { SetVerdict(null); RefreshGabarits(); RefreshPlot(); RefreshBenchBar(); if (_banc == null) RefreshSide(); }
+        if (_banc != null && _banc.Type != _typeAffiche) { _typeAffiche = _banc.Type; _cursors.Clear(); RefreshSide(); RefreshBenchBar(); RefreshPlot(); }
         RefreshPlotToolbar();
         RefreshProperties();
     }
@@ -1245,7 +1304,7 @@ public sealed class MainWindow : Window
         foreach (var n in nodes.Take(8))
         {
             var (xs, ys) = Verification.Courbe(Shown, raw, n);
-            bool dim = _modeTest && isActive && nodes.Count > 1 && SelectedSignal != null && nodes.Contains(SelectedSignal) && n != SelectedSignal;
+            bool dim = _drawing != null && isActive && nodes.Count > 1 && _drawing.Points.Count > 0 && n != _drawing.Noeud;
             var color = palette.GetColor(idx);
             var sc = p.Add.ScatterLine(xs.Select(X).ToArray(), ys);
             sc.LegendText = ac ? $"|V({n})| (dB)" : $"V({n})"; sc.LineWidth = dim ? 1.5f : 2.5f; sc.Color = dim ? color.WithAlpha(0.35) : color;

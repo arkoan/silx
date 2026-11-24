@@ -91,3 +91,11 @@ W fil · + / − / 0 zoom du schéma · ⌘R pivoter · Suppr · Échap · ⌘Z 
 7. Les éléments d'un banc se connectent au circuit par coïncidence de broches ou par étiquette de même nom ; les alimentations sont dans le banc.
 8. Une définition de composant importé est partagée par toutes ses instances : modifier son symbole les met toutes à jour.
 9. Le socle refuse un nœud relié à une seule broche, même de sous-circuit : une sortie de sous-circuit en l'air bloque la simulation.
+
+
+## Stimuli en clair
+
+Une source se règle par sa forme (continu, échelon / impulsion, sinus, petit signal AC, ou expression SPICE libre) et
+des champs en notation ingénieur ; l'expression SPICE est générée. Le **premier stimulus** posé dans un banc fixe son type :
+petit signal → fréquentiel (Bode), sinon temporel. Curseurs : en mode curseurs, un clic pose un curseur sur la courbe la plus
+proche (A puis B) ; un gabarit dessiné s'applique à la courbe la plus proche de son premier point.

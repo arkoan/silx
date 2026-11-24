@@ -482,7 +482,7 @@ public sealed class SchematicCanvas : Control
         ctx.DrawEllipse(brush, null, a, 2, 2); ctx.DrawEllipse(brush, null, b, 2, 2);
         if (opacity < 1 && !labels) return;
         var refT = Text(c.Ref, 11, brush, FontWeight.SemiBold);
-        var valT = Text(Short(c.Value), 10, Muted);
+        var valT = Text(Short(c.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource ? Stimulus.Lire(c.Value).Resume(c.Kind == ComponentKind.CurrentSource) : c.Value), 10, Muted);
         bool vertical = Math.Abs(u.Y) > 0.5;
         if (vertical)
         {

@@ -56,7 +56,16 @@ public sealed class Banc
 {
     public string Nom { get; set; } = "Banc";
     /// <summary>Nature du banc : temporel (.tran) ou fréquentiel (.ac). Seules les contraintes de ce type sont évaluées.</summary>
-    public AnalyseKind Type { get; set; } = AnalyseKind.Transitoire;
+    public AnalyseKind Type
+    {
+        // Le premier stimulus posé décide : petit signal (AC) → fréquentiel, sinon temporel. Sans source : valeur choisie.
+        get => Calque.Components.FirstOrDefault(k => k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource) is { } src
+            ? Stimulus.Lire(src.Value).Analyse : _type;
+        set => _type = value;
+    }
+    AnalyseKind _type = AnalyseKind.Transitoire;
+    /// <summary>Source qui fixe le type du banc (null s'il n'y en a pas).</summary>
+    public PlacedComponent? PremierStimulus => Calque.Components.FirstOrDefault(k => k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource);
     public IEnumerable<CritereGabarit> CriteresActifs => Gabarits.Where(g => g.Info.Analyse == Type);
     public IEnumerable<GabaritTrace> TracesActives => GabaritsTraces.Where(g => g.Analyse == Type);
     public Schematic Calque { get; set; } = new();

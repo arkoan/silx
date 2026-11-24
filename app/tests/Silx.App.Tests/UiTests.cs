@@ -216,7 +216,7 @@ public class UiTests
         w.SetCursorMode(true);
         foreach (var f in new[] { 161.0, 16100.0 })
         {
-            w.MouseDown(Ecran(f, -20), Avalonia.Input.MouseButton.Left); w.MouseUp(Ecran(f, -20), Avalonia.Input.MouseButton.Left);
+            w.MouseDown(Ecran(f, -30), Avalonia.Input.MouseButton.Left); w.MouseUp(Ecran(f, -30), Avalonia.Input.MouseButton.Left);
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         }
         var a = w.Curseurs.Single(c => c.Nom == 'A');
@@ -225,5 +225,44 @@ public class UiTests
             Assert.Equal(-Math.Atan(c.X / 160.8) * 180 / Math.PI, w.PhaseCurseur(c)!.Value, 1.0);
         Assert.InRange(w.PhaseCurseur(w.Curseurs.Single(c => c.Nom == 'B'))!.Value, -91, -85);
         Shot(w, "14-curseurs-bode-phase.png");
+    }
+
+    /// <summary>Curseur posé sur la courbe la plus proche du clic (V(IN) ou V(OUT)), sans menu de signal.</summary>
+    [AvaloniaFact]
+    public async Task Curseur_sur_la_courbe_la_plus_proche()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        w.SetModeTest(false);
+        var plot = w.PlotControl;
+        Point Ecran(double tMs, double v)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+            var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(tMs, v));
+            return plot.TranslatePoint(new Point(px.X / plot.DisplayScale, px.Y / plot.DisplayScale), w)!.Value;
+        }
+        w.SetCursorMode(true);
+        void Clic(double t, double v) { var p = Ecran(t, v); w.MouseDown(p, Avalonia.Input.MouseButton.Left); w.MouseUp(p, Avalonia.Input.MouseButton.Left); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+        Clic(1.5, 0.6);    // V(OUT) ≈ 0,63 ; V(IN) = 1
+        Clic(3.0, 1.02);   // V(IN) = 1 ; V(OUT) ≈ 0,92
+        Assert.Equal("OUT", w.Curseurs[0].Noeud);
+        Assert.Equal("IN", w.Curseurs[1].Noeud);
+        Assert.All(w.Curseurs, c => Assert.Equal('A', c.Nom));   // premier curseur de chaque courbe
+    }
+
+    /// <summary>Propriétés d'une source : champs en clair ; passer en petit signal rend le banc fréquentiel.</summary>
+    [AvaloniaFact]
+    public void Source_en_clair_et_type_du_banc()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var p = w.Canevas.TranslatePoint(w.Canevas.ScreenOf(new Silx.Etude.GridPoint(4, 10)), w)!.Value;   // milieu de V1
+        w.MouseDown(p, Avalonia.Input.MouseButton.Left); w.MouseUp(p, Avalonia.Input.MouseButton.Left);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("V1", w.Canevas.Selected?.Ref);
+        Shot(w, "23-source-en-clair.png");
+        w.Canevas.EditSelected("V1", Silx.Etude.Stimulus.Nouveau(Silx.Etude.FormeStimulus.PetitSignal).VersSpice());
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(Silx.Etude.AnalyseKind.Ac, w.BancActif!.Type);
     }
 }

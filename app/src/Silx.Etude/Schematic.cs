@@ -80,7 +80,7 @@ public sealed class Schematic
     public string DefaultValue(ComponentKind k) => k switch
     {
         ComponentKind.Resistor => "1k", ComponentKind.Capacitor => "100n", ComponentKind.Inductor => "1m",
-        ComponentKind.VoltageSource => "DC 0 AC 1 PULSE(0 1 0.5m 1u 1u 20m 40m)",
+        ComponentKind.VoltageSource => "PULSE(0 1 0.0005 1e-06 1e-06 0.02 0.04)",
         ComponentKind.CurrentSource => "DC 1m",
         ComponentKind.Diode => "1N4148",
         ComponentKind.Label => NextLabel(),
