@@ -334,4 +334,33 @@ public class UiTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    /// <summary>Lot P1 : puces de mode (schéma et courbes) et curseurs posés sans mode (touches A/B).</summary>
+    [AvaloniaFact]
+    public async Task Modes_visibles_et_curseurs_sans_mode()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        w.SetModeTest(false);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("", w.Canevas.TexteMode);
+        w.Canevas.BeginPlace(Silx.Etude.ComponentKind.Resistor);
+        Assert.Contains("résistance", w.Canevas.TexteMode);
+        w.Canevas.Tool = Silx.App.Tool.Probe;
+        Assert.StartsWith("Sonde", w.Canevas.TexteMode);
+        Shot(w, "27-puce-mode-sonde.png");
+        w.Canevas.Tool = Silx.App.Tool.Select;
+        // Curseurs : A et B posés sous la souris, sur la courbe la plus proche.
+        var plot = w.PlotControl;
+        Point P(double tMs, double v) { w.CaptureRenderedFrame(); var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(tMs, v)); return new Point(px.X / plot.DisplayScale, px.Y / plot.DisplayScale); }
+        w.PoserCurseur('A', P(1.5, 0.6));
+        w.PoserCurseur('B', P(4, 0.95));
+        w.PoserCurseur('B', P(5, 0.97));     // B déplacé, pas ajouté
+        Assert.Equal(2, w.Curseurs.Count);
+        Assert.Equal(5e-3, w.Curseurs.Single(c => c.Nom == 'B').X, 1e-4);
+        w.SetZoomWindowMode(true);
+        Assert.True(w.PuceCourbes.IsVisible);
+        w.SetZoomWindowMode(false);
+        Assert.False(w.PuceCourbes.IsVisible);
+    }
 }

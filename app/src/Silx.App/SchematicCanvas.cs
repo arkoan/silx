@@ -17,7 +17,29 @@ public sealed class SchematicCanvas : Control
     Schematic? _underlay;
     /// <summary>Texte affiché en haut à gauche du canevas.</summary>
     public string Caption { get; set; } = "";
-    public Tool Tool { get => _tool; set { _tool = value; _wireStart = null; ToolChanged?.Invoke(); InvalidateVisual(); } }
+    public Tool Tool
+    {
+        get => _tool;
+        set
+        {
+            _tool = value; _wireStart = null;
+            // Curseur de souris propre à chaque mode : on voit d'un coup d'œil ce que fera le prochain clic.
+            Cursor = value switch { Tool.Select => Cursor.Default, Tool.Probe => new Cursor(StandardCursorType.Hand), _ => new Cursor(StandardCursorType.Cross) };
+            ToolChanged?.Invoke(); InvalidateVisual();
+        }
+    }
+    /// <summary>Nom lisible du composant en cours de placement (puce de mode).</summary>
+    public string NomPlacement { get; set; } = "";
+
+    /// <summary>Texte de la puce de mode (vide en sélection).</summary>
+    public string TexteMode => _tool switch
+    {
+        Tool.Wire => "Fil — clic pour chaque coin, double-clic ou arrivée sur une broche pour finir · Échap",
+        Tool.Place => $"Placement : {NomPlacement} — Maj+clic pour en poser plusieurs · ⌘R pivoter · Échap",
+        Tool.Probe => "Sonde — cliquez un fil ou une broche pour tracer sa tension · Échap",
+        Tool.ZoomWindow => "Zoom fenêtre — tracez un rectangle · Échap",
+        _ => ""
+    };
     public ComponentKind PlaceKind { get; private set; }
     /// <summary>Le schéma a changé (topologie, valeurs).</summary>
     public event Action? Changed;
@@ -112,8 +134,14 @@ public sealed class SchematicCanvas : Control
         var merged = new Schematic { Components = AllComponents.ToList() };
         return k == ComponentKind.Spice && PlaceDefinition != null ? merged.NextRef(PlaceDefinition.Lettre) : merged.NextRef(k);
     }
-    public void BeginPlace(ComponentKind k) { PlaceKind = k; PlaceDefinition = null; Tool = Tool.Place; Focus(); }
-    public void BeginPlace(DefinitionComposant d) { PlaceKind = ComponentKind.Spice; PlaceDefinition = d; Tool = Tool.Place; Focus(); }
+    public void BeginPlace(ComponentKind k) { PlaceKind = k; PlaceDefinition = null; NomPlacement = NomDe(k); Tool = Tool.Place; Focus(); }
+    public void BeginPlace(DefinitionComposant d) { PlaceKind = ComponentKind.Spice; PlaceDefinition = d; NomPlacement = d.Nom; Tool = Tool.Place; Focus(); }
+    static string NomDe(ComponentKind k) => k switch
+    {
+        ComponentKind.Resistor => "résistance", ComponentKind.Capacitor => "condensateur", ComponentKind.Inductor => "inductance",
+        ComponentKind.VoltageSource => "source de tension", ComponentKind.CurrentSource => "source de courant", ComponentKind.Diode => "diode",
+        ComponentKind.Ground => "masse", ComponentKind.Label => "étiquette de nœud", _ => "composant"
+    };
 
     // ---- transformations ----
     Point ToScreen(GridPoint p) => new(p.X * Grid * _zoom + _pan.X, p.Y * Grid * _zoom + _pan.Y);
@@ -505,12 +533,24 @@ public sealed class SchematicCanvas : Control
             var r = new Rect(10, Bounds.Height - t.Height - 18, t.Width + 16, t.Height + 8);
             ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#b91c1c")), null, r, 4, 4); ctx.DrawText(t, new Point(r.X + 8, r.Y + 4));
         }
+        // Banc actif : cadre violet autour du canevas et nom du banc dans un coin (au lieu d'un long bandeau).
+        if (layer) ctx.DrawRectangle(null, new Pen(BenchBrush, 3), new Rect(1.5, 1.5, Bounds.Width - 3, Bounds.Height - 3));
+        double yChip = 10;
         if (Caption.Length > 0)
         {
-            var t = new FormattedText(Caption, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default), 12, layer ? BenchBrush : Muted);
-            var box = new Rect(10, 10, t.Width + 16, t.Height + 8);
+            var t = new FormattedText(Caption, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, layer ? BenchBrush : Muted);
+            var box = new Rect(10, yChip, t.Width + 16, t.Height + 8);
             ctx.DrawRectangle(new SolidColorBrush(Color.Parse(layer ? "#f3effe" : "#f3f4f6")), new Pen(layer ? BenchBrush : Line, 1), box, 4, 4);
-            ctx.DrawText(t, new Point(18, 14));
+            ctx.DrawText(t, new Point(18, yChip + 4));
+            yChip = box.Bottom + 6;
+        }
+        if (TexteMode is { Length: > 0 } mode)
+        {
+            // Puce de mode : le mode actif est toujours écrit, avec la façon d'en sortir.
+            var t = new FormattedText(mode, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, Brushes.White);
+            var box = new Rect(10, yChip, t.Width + 16, t.Height + 8);
+            ctx.DrawRectangle(Accent, null, box, 4, 4);
+            ctx.DrawText(t, new Point(18, yChip + 4));
         }
 
         if (_inside && _tool == Tool.Place)

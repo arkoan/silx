@@ -70,9 +70,22 @@ public sealed class MainWindow : Window
     readonly Border _readout = new() { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 14, 52), Background = new SolidColorBrush(Colors.White, 0.93), BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 6), IsVisible = false, IsHitTestVisible = false };
     readonly Border _zoomRect = new() { BorderBrush = Ui.AccentBrush, BorderThickness = new Thickness(1), Background = new SolidColorBrush(Color.Parse("#2563eb"), 0.08), IsVisible = false, IsHitTestVisible = false };
     public IReadOnlyList<Curseur> Curseurs => _cursors;
+    /// <summary>Pose (ou déplace) le curseur A ou B sur la courbe la plus proche du point (repère du graphique actif).</summary>
+    public void PoserCurseur(char nom, Point pos)
+    {
+        if (_banc == null || _last == null || CourbeProche(pos) is not { } sig) return;
+        var c = _cursors.FirstOrDefault(k => k.Noeud == sig && k.Nom == nom);
+        if (c == null) { c = new Curseur { Noeud = sig, Nom = nom }; _cursors.Add(c); }
+        c.X = ClampToCurve(sig, ToData(pos).X);
+        RefreshPlot(keepLimits: true);
+    }
+    bool _plotSurvol; Point _posPlot;
+    readonly Border _puceCourbes = new() { Background = Ui.AccentBrush, CornerRadius = new CornerRadius(4), Padding = new Thickness(8, 3), IsVisible = false, IsHitTestVisible = false };
+
     public void SetCursorMode(bool on) { _cursorMode = on; _zoomMode = false; RefreshPlotToolbar(); }
     public void SetZoomWindowMode(bool on) { _zoomMode = on; _cursorMode = false; RefreshPlotToolbar(); }
     public Control Readout => _readout;
+    public Border PuceCourbes => _puceCourbes;
     public double? PhaseCurseur(Curseur c) => PhaseAt(c.Noeud, c.X);
     readonly TextBlock _drawHint = new() { FontSize = 12, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center };
     GabaritTrace? _drawing;
@@ -149,6 +162,8 @@ public sealed class MainWindow : Window
             if (_drawing != null && e.Key is Key.Enter or Key.Escape) { e.Handled = true; EndDrawing(e.Key == Key.Enter); return; }
             if (e.Key == Key.F5 || (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Meta))) { e.Handled = true; await SimulateAsync(); }
             bool cmd = e.KeyModifiers.HasFlag(KeyModifiers.Meta) || e.KeyModifiers.HasFlag(KeyModifiers.Control);
+            if (!cmd && e.Key is Key.A or Key.B && _plotSurvol && _plot.IsPointerOver && FocusManager?.GetFocusedElement() is not TextBox)
+            { e.Handled = true; PoserCurseur(e.Key == Key.A ? 'A' : 'B', _posPlot); return; }
             if (cmd && e.Key == Key.N) { e.Handled = true; NouveauProjet(); }
             else if (cmd && e.Key == Key.O) { e.Handled = true; await OuvrirProjetAsync(); }
             else if (cmd && e.Key == Key.S) { e.Handled = true; await EnregistrerAsync(_projet!, e.KeyModifiers.HasFlag(KeyModifiers.Shift)); }
@@ -356,9 +371,8 @@ public sealed class MainWindow : Window
         EndDrawing(false);
         if (_banc != b) _cursors.Clear();
         _banc = b; _typeAffiche = b?.Type ?? AnalyseKind.Transitoire;
-        _canvas.Caption = b == null
-            ? "Circuit sous test — sans stimuli : les sources se branchent dans un banc de test"
-            : $"Banc « {b.Nom} » — calque en violet ; le circuit dessous se modifie dans « Circuit sous test »";
+        _canvas.Caption = b == null ? "" : $"Banc « {b.Nom} »";
+        ToolTip.SetTip(_canvas, b == null ? null : "Le banc est le calque violet ; le circuit dessous, atténué, se modifie dans « Circuit sous test ».");
         _chargement = true;   // recharger le canevas n'est pas une modification : les résultats restent valables
         try { _canvas.Load(b?.Calque ?? _etude.Schema, b == null ? null : _etude.Schema); } finally { _chargement = false; }
         if (b == null) _canvas.CalquesLies = _etude.Bancs.Select(x => x.Calque).ToList();
@@ -635,7 +649,7 @@ public sealed class MainWindow : Window
             ToolTip.SetTip(b, lim == Limite.Haute ? "Dessiner une limite haute : zone interdite au-dessus" : "Dessiner une limite basse : zone interdite en dessous");
             var l = lim; b.Click += (_, _) => StartDrawing(l);
         }
-        _testTools.Children.Add(_drawHigh); _testTools.Children.Add(_drawLow); _testTools.Children.Add(_drawHint);
+        _testTools.Children.Add(_drawHigh); _testTools.Children.Add(_drawLow); _drawHint.IsVisible = false; _testTools.Children.Add(_drawHint);   // remplacé par la puce de mode
 
         var zoom = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
         zoom.Children.Add(Icones.Button(Icones.ZoomPlus, "Courbes : zoom avant", () => { _plot.Plot.Axes.Zoom(1.25, 1.25); _plot.Refresh(); }, 17));
@@ -645,8 +659,8 @@ public sealed class MainWindow : Window
         zoom.Children.Add(_zoomWinBtn);
         var curs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
         _cursorBtn = Icones.Button(Icones.Curseurs, "Curseurs : cliquer sur le graphique pour poser A puis B sur le signal choisi ; glisser un curseur pour le déplacer", () => { _cursorMode = !_cursorMode; _zoomMode = false; RefreshPlotToolbar(); }, 17);
-        curs.Children.Add(_cursorBtn);
-        curs.Children.Add(Icones.Button(Icones.Croix, "Retirer tous les curseurs", () => { _cursors.Clear(); RefreshPlot(keepLimits: true); }, 14));
+        // Plus de mode curseurs : double-clic sur une courbe, ou touches A et B sous la souris.
+        curs.Children.Add(Icones.Button(Icones.Croix, "Curseurs : double-clic sur une courbe, ou touches A et B avec la souris sur le graphique ; glisser pour déplacer. Cette croix les retire tous.", () => { _cursors.Clear(); RefreshPlot(keepLimits: true); }, 14));
 
         var probes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
         _probeBtn = Icones.Button(Icones.Sonde, "Sonde (P) : survolez le schéma pour voir l'équipotentiel, cliquez pour l'ajouter au graphique actif ; Échap pour finir", () => _canvas.Tool = _canvas.Tool == Tool.Probe ? Tool.Select : Tool.Probe, 17);
@@ -660,6 +674,7 @@ public sealed class MainWindow : Window
 
         var dock = new DockPanel();
         _overlay.Children.Add(_zoomRect);
+        Canvas.SetLeft(_puceCourbes, 8); Canvas.SetTop(_puceCourbes, 6); _overlay.Children.Add(_puceCourbes);
         DockPanel.SetDock(bar, Dock.Top); dock.Children.Add(bar); dock.Children.Add(_panesGrid);
         RefreshPlotToolbar();
         return dock;
@@ -751,6 +766,12 @@ public sealed class MainWindow : Window
     {
         Ui.SetActive(_modeSim, !_modeTest); Ui.SetActive(_modeTestBtn, _modeTest);
         if (_cursorBtn != null) { Ui.SetActive(_cursorBtn, _cursorMode); Ui.SetActive(_zoomWinBtn, _zoomMode); }
+        // Puce de mode des courbes : zoom fenêtre ou tracé de gabarit, avec la façon d'en sortir.
+        var mode = _zoomMode ? "Zoom fenêtre — tracez un rectangle" : _drawing == null ? null
+            : _drawing.Points.Count == 0 ? $"Limite {(_drawing.Limite == Limite.Haute ? "haute" : "basse")} — cliquez près de la courbe · Échap"
+            : "Clic : point suivant · double-clic ou Entrée : terminer · Échap : annuler";
+        _puceCourbes.IsVisible = mode != null;
+        _puceCourbes.Child = new TextBlock { Text = mode ?? "", Foreground = Brushes.White, FontSize = 12, FontWeight = FontWeight.SemiBold };
         if (_viewTran != null)
         {
             // La vue suit le type du banc : l'autre est grisée.
@@ -854,7 +875,8 @@ public sealed class MainWindow : Window
             e.Handled = true; _dragCursor = hc; _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
             return;
         }
-        if (_cursorMode && CourbeProche(e.GetPosition(_plot)) is { } sig)
+        // Curseurs sans mode : double-clic sur la courbe (ou mode curseurs, gardé pour les tests).
+        if ((_cursorMode || e.ClickCount >= 2) && CourbeProche(e.GetPosition(_plot)) is { } sig)
         {
             e.Handled = true;
             var x = ToData(e).X;
@@ -871,6 +893,7 @@ public sealed class MainWindow : Window
     void OnPlotMoved(object? sender, PointerEventArgs e)
     {
         if (sender is AvaPlot ap && ap != _plot) return;
+        _plotSurvol = true; _posPlot = e.GetPosition(_plot);
         if (_drawing != null)
         {
             if (_drawing.Points.Count == 0) return;
