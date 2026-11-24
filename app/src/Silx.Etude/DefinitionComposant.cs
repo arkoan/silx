@@ -49,7 +49,9 @@ public sealed class BrocheSymbole
     public string? BrocheModele { get; set; }
     /// <summary>Rôle de la broche dans un gabarit de dessin (D, G, S, B, C, E, A, K) ; null pour une boîte.</summary>
     public string? Role { get; set; }
-    public BrocheSymbole Clone() => new() { X = X, Y = Y, BrocheModele = BrocheModele, Role = Role };
+    /// <summary>Nom affiché sur le symbole, choisi par l'utilisateur (ex. « IN+ ») ; null = nom de la broche du modèle.</summary>
+    public string? Nom { get; set; }
+    public BrocheSymbole Clone() => new() { X = X, Y = Y, BrocheModele = BrocheModele, Role = Role, Nom = Nom };
 }
 
 /// <summary>Gabarit de dessin d'un symbole.</summary>
@@ -114,6 +116,10 @@ public sealed class DefinitionComposant
     /// </summary>
     public Dictionary<string, string> BrochesCachees { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Symbole Symbole { get; set; } = new();
+
+    /// <summary>Nom d'une broche du symbole : celui donné par l'utilisateur, sinon le libellé du fichier, sinon la broche du modèle.</summary>
+    public string NomBroche(BrocheSymbole b) => !string.IsNullOrWhiteSpace(b.Nom) ? b.Nom.Trim()
+        : b.BrocheModele is { } m ? (Libelles.TryGetValue(m, out var l) ? l : m) : "?";
 
     /// <summary>Nom affiché d'une broche du modèle : « 20 (DRAIN) » si un libellé est connu.</summary>
     public string NomAffiche(string broche) => Libelles.TryGetValue(broche, out var l) && !string.Equals(l, broche, StringComparison.OrdinalIgnoreCase) ? $"{broche} ({l})" : broche;

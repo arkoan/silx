@@ -156,7 +156,8 @@ public static class Symboles
                 double ex = Math.Clamp(b.X, c[0], c[2]), ey = Math.Clamp(b.Y, c[1], c[3]);
                 bool dedans = b.X > c[0] && b.X < c[2] && b.Y > c[1] && b.Y < c[3];
                 if (!dedans) ctx.DrawLine(pen, map(b.X, b.Y), map(ex, ey));
-                if (b.BrocheModele is not { } nom || nomsBroches) continue;
+                if (nomsBroches || (b.BrocheModele == null && string.IsNullOrWhiteSpace(b.Nom))) continue;
+                var nom = !string.IsNullOrWhiteSpace(b.Nom) ? b.Nom.Trim() : b.BrocheModele!;
                 var ft = text(nom, 8.5, brush, FontWeight.Normal);
                 var pe = map(ex, ey);
                 double cx = (c[0] + c[2]) / 2, cy = (c[1] + c[3]) / 2;

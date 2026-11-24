@@ -166,4 +166,22 @@ public class UiSpiceTests
         ed.ChoisirOutil(OutilDessin.Selection);
         Shot(ed, "22-symbole-personnalise.png");
     }
+
+    [AvaloniaFact]
+    public void Renommer_une_broche_du_symbole()
+    {
+        var d = DefinitionComposant.Depuis(ModelesSpice.Analyser(ModelesFabricantTests.Fichier).Modeles.First());
+        var ed = new EditeurSymbole(d); ed.Show();
+        int g = ed.Definition.Symbole.Broches.FindIndex(b => b.BrocheModele == "10");
+        ed.ChoisirBrocheSymbole(g);
+        ed.RenommerBroche("Grille");
+        Assert.Equal("Grille", ed.Definition.Symbole.Broches[g].Nom);
+        Assert.Equal("10", ed.Definition.Symbole.Broches[g].BrocheModele);          // la liaison au modèle ne change pas
+        Assert.Equal("Grille", ed.Definition.NomBroche(ed.Definition.Symbole.Broches[g]));
+        Assert.Equal("Grille", DefinitionComposant.DepuisJson(ed.Definition.VersJson()).Symbole.Broches[g].Nom);
+        Shot(ed, "25-broche-renommee.png");
+        ed.RenommerBroche("");
+        Assert.Null(ed.Definition.Symbole.Broches[g].Nom);
+        Assert.Equal("GATE", ed.Definition.NomBroche(ed.Definition.Symbole.Broches[g]));
+    }
 }

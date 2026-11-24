@@ -30,6 +30,8 @@ public sealed class EditeurSymbole : Window
     readonly Button _ok;
     readonly Button _ajouter, _supprimer;
     readonly ComboBox _gabarit;
+    readonly TextBox _nomBroche = new() { FontSize = 12, PlaceholderText = "ex. IN+, VCC, OUT" };
+    readonly StackPanel _blocNom = new() { Spacing = 3, Margin = new Thickness(0, 8, 0, 0) };
     readonly CheckBox _diode = new() { Content = "Diode de corps", FontSize = 12, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
     readonly Vue _vue;
     /// <summary>Broche du modèle choisie dans la liste, en attente d'une broche du symbole.</summary>
@@ -62,6 +64,13 @@ public sealed class EditeurSymbole : Window
         }
         gauche.Children.Add(Ui.Section("Broches du modèle"));
         gauche.Children.Add(_liste);
+        // Nom de la broche du symbole sélectionnée.
+        _nomBroche.KeyDown += (_, e) => { if (e.Key == Key.Enter) RenommerBroche(_nomBroche.Text ?? ""); };
+        _nomBroche.LostFocus += (_, _) => RenommerBroche(_nomBroche.Text ?? "");
+        _blocNom.Children.Add(Ui.Section("Broche du symbole sélectionnée"));
+        _blocNom.Children.Add(Ui.Labeled("Nom affiché", _nomBroche));
+        _blocNom.Children.Add(Ui.Hint("Vide : nom du modèle. Le nom n'est que graphique ; la liaison au modèle ne change pas."));
+        gauche.Children.Add(_blocNom);
         gauche.Children.Add(Ui.Hint("Cliquez une broche du modèle, puis la broche du symbole qui la représente. Recliquer une broche reliée la délie."));
         var left = new Border { Width = 270, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 1, 0), Child = new ScrollViewer { Content = gauche } };
 
@@ -251,6 +260,15 @@ public sealed class EditeurSymbole : Window
         Rafraichir();
     }
 
+    /// <summary>Renomme la broche du symbole sélectionnée (vide = nom du modèle).</summary>
+    public void RenommerBroche(string nom)
+    {
+        if (BrocheSymboleChoisie is not { } i || i >= Definition.Symbole.Broches.Count) return;
+        var b = Definition.Symbole.Broches[i]; var n = string.IsNullOrWhiteSpace(nom) ? null : nom.Trim();
+        if (b.Nom == n) return;
+        Memo(); b.Nom = n; Rafraichir();
+    }
+
     public void DeplacerBroche(int i, int x, int y)
     {
         var b = Definition.Symbole.Broches[i];
@@ -326,6 +344,12 @@ public sealed class EditeurSymbole : Window
         foreach (var (o, b) in _boutonsOutils) Ui.SetActive(b, Outil == o);
         _diode.IsChecked = Definition.Symbole.DiodeCorps;
         _supprimer.IsEnabled = BrocheSymboleChoisie != null;
+        _blocNom.IsVisible = BrocheSymboleChoisie is { } bi && bi < Definition.Symbole.Broches.Count;
+        if (_blocNom.IsVisible && !_nomBroche.IsFocused)
+        {
+            var bs = Definition.Symbole.Broches[BrocheSymboleChoisie!.Value];
+            _nomBroche.Text = bs.Nom ?? ""; _nomBroche.PlaceholderText = bs.BrocheModele != null ? Definition.NomBroche(new BrocheSymbole { BrocheModele = bs.BrocheModele }) : "ex. IN+, VCC, OUT";
+        }
         _vue.InvalidateVisual();
     }
 
@@ -425,7 +449,8 @@ public sealed class EditeurSymbole : Window
                 var col = sel ? Ui.AccentBrush : lie ? new SolidColorBrush(Color.Parse("#1f6f43")) : Ui.FailBrush;
                 var r = d * (sel || hov ? .32 : .24);
                 ctx.DrawEllipse(sel ? new SolidColorBrush(Color.Parse("#dbe6fe")) : Brushes.White, new Pen(col, 2), p, r, r);
-                var t = new FormattedText($"{i + 1}" + (lie ? " · " + _e.Definition.NomAffiche(b.BrocheModele!) : " · ?"), System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 11.5, col);
+                var etiquette = !string.IsNullOrWhiteSpace(b.Nom) ? b.Nom.Trim() + (lie ? $" ({b.BrocheModele})" : " · ?") : lie ? _e.Definition.NomAffiche(b.BrocheModele!) : "?";
+                var t = new FormattedText($"{i + 1} · {etiquette}", System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 11.5, col);
                 // Étiquette du côté extérieur du symbole.
                 var (x0, y0, x1, y1) = S.Encombrement(); double cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
                 double dx = b.X - cx, dy = b.Y - cy;
