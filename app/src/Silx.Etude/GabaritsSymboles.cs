@@ -85,16 +85,19 @@ public static class GabaritsSymboles
                 else t.Add(Primitive.Trait(3, 0, 3, 1));
                 if (s.DiodeCorps)
                 {
-                    // Diode de corps : anode côté source pour un canal N (cathode au drain), l'inverse pour un canal P.
-                    t.Add(Primitive.Trait(3, -2, 4.6, -2)); t.Add(Primitive.Trait(4.6, -2, 4.6, -0.35));
-                    t.Add(Primitive.Trait(3, 2, 4.6, 2)); t.Add(Primitive.Trait(4.6, 2, 4.6, 0.35));
-                    if (canalN) { t.Add(Primitive.Poly(true, 4.2, 0.35, 5.0, 0.35, 4.6, -0.35)); t.Add(Primitive.Trait(4.2, -0.35, 5.0, -0.35)); }
-                    else { t.Add(Primitive.Poly(true, 4.2, -0.35, 5.0, -0.35, 4.6, 0.35)); t.Add(Primitive.Trait(4.2, 0.35, 5.0, 0.35)); }
+                    // Diode de corps (petite) : anode côté source pour un canal N (cathode au drain), l'inverse pour un canal P.
+                    const double xd = 4.1, h = 0.2;
+                    t.Add(Primitive.Trait(3, -2, xd, -2)); t.Add(Primitive.Trait(xd, -2, xd, -h));
+                    t.Add(Primitive.Trait(3, 2, xd, 2)); t.Add(Primitive.Trait(xd, 2, xd, h));
+                    if (canalN) { t.Add(Primitive.Poly(true, xd - h, h, xd + h, h, xd, -h)); t.Add(Primitive.Trait(xd - h, -h, xd + h, -h)); }
+                    else { t.Add(Primitive.Poly(true, xd - h, -h, xd + h, -h, xd, h)); t.Add(Primitive.Trait(xd - h, h, xd + h, h)); }
                 }
                 t.Add(Primitive.Trait(0, 0, 1, 0)); t.Add(Primitive.Trait(1, -1.2, 1, 1.2));
                 foreach (var y in new[] { -1.0, 0.0, 1.0 }) t.Add(Primitive.Trait(1.5, y - 0.35, 1.5, y + 0.35));
                 t.Add(Primitive.Trait(1.5, -1, 3, -1)); t.Add(Primitive.Trait(3, -1, 3, -3));
                 t.Add(Primitive.Trait(1.5, 1, 3, 1)); t.Add(Primitive.Trait(3, 1, 3, 3));
+                // MOS discret (3 broches) : cercle du boîtier.
+                if (trois) t.Add(s.DiodeCorps ? Primitive.Cercle(2.65, 0, 2.3) : Primitive.Cercle(2.2, 0, 2.05));
                 t.Add(canalN ? Primitive.Fleche(3, 0, 1.5, 0) : Primitive.Fleche(1.5, 0, 3, 0));
                 break;
             }
