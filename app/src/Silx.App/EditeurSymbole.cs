@@ -20,6 +20,7 @@ public sealed class EditeurSymbole : Window
     readonly Button _ok;
     readonly Button _ajouter, _supprimer;
     readonly ComboBox _gabarit;
+    readonly CheckBox _diode = new() { Content = "Diode de corps", FontSize = 12, Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
     readonly Vue _vue;
     /// <summary>Broche du modèle choisie dans la liste, en attente d'une broche du symbole.</summary>
     public string? BrocheModeleChoisie { get; private set; }
@@ -59,6 +60,9 @@ public sealed class EditeurSymbole : Window
         _gabarit.SelectionChanged += (_, _) => { if (_gabarit.SelectedIndex >= 0 && _gabarit.SelectedIndex != (int)Definition.Symbole.Gabarit) ChoisirGabarit((GabaritSymbole)_gabarit.SelectedIndex); };
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(8, 4) };
         bar.Children.Add(Icones.Make(Icones.Symbole, 16, Ui.Muted)); bar.Children.Add(_gabarit);
+        _diode.IsCheckedChanged += (_, _) => DiodeDeCorps(_diode.IsChecked == true);
+        ToolTip.SetTip(_diode, "Dessiner la diode de corps entre drain et source (le modèle SPICE n'est pas modifié)");
+        bar.Children.Add(_diode);
         bar.Children.Add(Ui.Separator());
         bar.Children.Add(Icones.Button(Icones.Relier, "Relier automatiquement par nom les broches encore libres", () => { Definition.RelierAutomatiquement(); Rafraichir(); }));
         _ajouter = Icones.Button(Icones.AjouterBroche, "Ajouter une broche au symbole (boîte)", () => { BrocheSymboleChoisie = Definition.Symbole.Broches.IndexOf(GabaritsSymboles.AjouterBroche(Definition.Symbole)); Lier(); Rafraichir(); });
@@ -91,9 +95,15 @@ public sealed class EditeurSymbole : Window
     // ── actions (publiques pour les tests) ──
     public void ChoisirGabarit(GabaritSymbole g)
     {
-        Definition.Symbole = GabaritsSymboles.Creer(g, Definition.BrochesModele);
-        if (g == GabaritSymbole.Boite) Definition.RelierAutomatiquement();
+        Definition.AppliquerGabarit(g, Definition.Symbole.DiodeCorps);
         BrocheSymboleChoisie = null; _gabarit.SelectedIndex = (int)g; Rafraichir();
+    }
+
+    /// <summary>MOS 3 broches : afficher ou masquer la diode de corps (dessin seulement : le modèle ne change pas).</summary>
+    public void DiodeDeCorps(bool oui)
+    {
+        if (Definition.Symbole.Gabarit is not (GabaritSymbole.Nmos3 or GabaritSymbole.Pmos3) || Definition.Symbole.DiodeCorps == oui) return;
+        Definition.AppliquerGabarit(Definition.Symbole.Gabarit, oui); Rafraichir();
     }
 
     public void ChoisirBrocheModele(string? n)
@@ -196,6 +206,8 @@ public sealed class EditeurSymbole : Window
         _etat.Foreground = BrocheModeleChoisie != null ? Ui.AccentBrush : err != null ? Ui.FailBrush : pb.Count > 0 ? Ui.WarnBrush : Ui.PassBrush;
         _ok.IsEnabled = err == null;
         _ajouter.IsVisible = Definition.Symbole.Gabarit == GabaritSymbole.Boite;
+        _diode.IsVisible = Definition.Symbole.Gabarit is GabaritSymbole.Nmos3 or GabaritSymbole.Pmos3;
+        _diode.IsChecked = Definition.Symbole.DiodeCorps;
         _supprimer.IsEnabled = BrocheSymboleChoisie != null;
         _vue.InvalidateVisual();
     }

@@ -53,8 +53,9 @@ public class ModelesFabricantTests
     public void Sous_circuit_reconnu_prend_le_symbole_mos_et_raccorde_la_broche_thermique()
     {
         var d = DefinitionComposant.Depuis(Modele("DEMO138"));
-        Assert.Equal(GabaritSymbole.Nmos, d.Symbole.Gabarit);
-        Assert.Equal(3, d.Symbole.Broches.Count);                       // G, D, S : pas de broche de substrat
+        Assert.Equal(GabaritSymbole.Nmos3, d.Symbole.Gabarit);          // G, D, S : substrat relié à la source
+        Assert.Equal(3, d.Symbole.Broches.Count);
+        Assert.True(d.Symbole.DiodeCorps);                                // Dbody dans le modèle
         string Sur(int x, int y) => d.Symbole.Broches.Single(b => b.X == x && b.Y == y).BrocheModele!;
         Assert.Equal("10", Sur(0, 0)); Assert.Equal("20", Sur(3, -3)); Assert.Equal("30", Sur(3, 3));
         Assert.Equal("DC 25", d.BrochesCachees["50"]);
@@ -97,5 +98,20 @@ public class ModelesFabricantTests
         var r = await Verification.RunAsync(e, banc, [], TestContext.Current.CancellationToken);
         Assert.True(r.Erreur == null, r.Erreur + "\n" + r.Journal);
         Assert.InRange(r.Resultats[AnalyseKind.Transitoire].Vector("v(out)")[^1], 0, 0.1);
+    }
+
+    [Fact]
+    public void Passer_en_4_broches_garde_les_roles_et_demande_le_substrat()
+    {
+        var d = DefinitionComposant.Depuis(Modele("DEMO138"));
+        d.AppliquerGabarit(GabaritSymbole.Nmos, false);
+        Assert.Equal(4, d.Symbole.Broches.Count);
+        Assert.Equal("10", d.Symbole.Broches.Single(b => b.Role == "G").BrocheModele);
+        Assert.Equal("20", d.Symbole.Broches.Single(b => b.Role == "D").BrocheModele);
+        Assert.Null(d.Symbole.Broches.Single(b => b.Role == "B").BrocheModele);   // le modèle n'a pas de broche de substrat
+        d.AppliquerGabarit(GabaritSymbole.Nmos3, true);
+        Assert.Equal(3, d.Symbole.Broches.Count); Assert.True(d.Symbole.DiodeCorps);
+        Assert.Equal("30", d.Symbole.Broches.Single(b => b.Role == "S").BrocheModele);
+        Assert.DoesNotContain(d.Verifier(), p => p.Severity == Severity.Error);
     }
 }

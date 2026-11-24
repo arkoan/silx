@@ -15,13 +15,15 @@ public static class GabaritsSymboles
     public static string Libelle(GabaritSymbole g) => g switch
     {
         GabaritSymbole.Boite => "Boîte", GabaritSymbole.Diode => "Diode", GabaritSymbole.Npn => "NPN", GabaritSymbole.Pnp => "PNP",
-        GabaritSymbole.Nmos => "MOS canal N", GabaritSymbole.Pmos => "MOS canal P", GabaritSymbole.Njf => "JFET canal N", _ => "JFET canal P"
+        GabaritSymbole.Nmos => "MOS canal N, 4 broches", GabaritSymbole.Pmos => "MOS canal P, 4 broches",
+        GabaritSymbole.Nmos3 => "MOS canal N, 3 broches", GabaritSymbole.Pmos3 => "MOS canal P, 3 broches",
+        GabaritSymbole.Njf => "JFET canal N", _ => "JFET canal P"
     };
 
     /// <summary>Crée le symbole d'un gabarit ; les broches du gabarit sont reliées aux broches du modèle de même nom (sinon laissées libres).</summary>
     public static Symbole Creer(GabaritSymbole g, IReadOnlyList<string> brochesModele)
     {
-        var s = g == GabaritSymbole.Boite ? Boite(brochesModele) : Dessin(g);
+        var s = g == GabaritSymbole.Boite ? Boite(brochesModele) : Dessin(g, false);
         if (g != GabaritSymbole.Boite)
             foreach (var b in s.Broches)
                 b.BrocheModele = brochesModele.FirstOrDefault(n => string.Equals(n, b.BrocheModele, StringComparison.OrdinalIgnoreCase));
@@ -45,11 +47,12 @@ public static class GabaritsSymboles
         return s;
     }
 
-    static BrocheSymbole B(int x, int y, string nom) => new() { X = x, Y = y, BrocheModele = nom };
+    static BrocheSymbole B(int x, int y, string nom) => new() { X = x, Y = y, BrocheModele = nom, Role = nom };
 
-    static Symbole Dessin(GabaritSymbole g)
+    /// <summary>Gabarit dessiné ; broches nommées par rôle (D, G, S…). <paramref name="diodeCorps"/> : MOS 3 broches seulement.</summary>
+    public static Symbole Dessin(GabaritSymbole g, bool diodeCorps)
     {
-        var s = new Symbole { Gabarit = g };
+        var s = new Symbole { Gabarit = g, DiodeCorps = diodeCorps && g is GabaritSymbole.Nmos3 or GabaritSymbole.Pmos3 };
         var t = s.Traits;
         switch (g)
         {
@@ -72,14 +75,29 @@ public static class GabaritsSymboles
                 break;
             case GabaritSymbole.Nmos:
             case GabaritSymbole.Pmos:
-                // G à gauche, D en haut, S en bas, substrat B à droite.
-                s.Broches.AddRange([B(0, 0, "G"), B(3, -3, "D"), B(3, 3, "S"), B(3, 0, "B")]);
+            case GabaritSymbole.Nmos3:
+            case GabaritSymbole.Pmos3:
+            {
+                // G à gauche, D en haut, S en bas ; substrat B à droite (4 broches) ou relié à la source (3 broches).
+                bool canalN = g is GabaritSymbole.Nmos or GabaritSymbole.Nmos3, trois = g is GabaritSymbole.Nmos3 or GabaritSymbole.Pmos3;
+                s.Broches.AddRange([B(0, 0, "G"), B(3, -3, "D"), B(3, 3, "S")]);
+                if (!trois) s.Broches.Add(B(3, 0, "B"));
+                else t.Add(Primitive.Trait(3, 0, 3, 1));
+                if (s.DiodeCorps)
+                {
+                    // Diode de corps : anode côté source pour un canal N (cathode au drain), l'inverse pour un canal P.
+                    t.Add(Primitive.Trait(3, -2, 4.6, -2)); t.Add(Primitive.Trait(4.6, -2, 4.6, -0.35));
+                    t.Add(Primitive.Trait(3, 2, 4.6, 2)); t.Add(Primitive.Trait(4.6, 2, 4.6, 0.35));
+                    if (canalN) { t.Add(Primitive.Poly(true, 4.2, 0.35, 5.0, 0.35, 4.6, -0.35)); t.Add(Primitive.Trait(4.2, -0.35, 5.0, -0.35)); }
+                    else { t.Add(Primitive.Poly(true, 4.2, -0.35, 5.0, -0.35, 4.6, 0.35)); t.Add(Primitive.Trait(4.2, 0.35, 5.0, 0.35)); }
+                }
                 t.Add(Primitive.Trait(0, 0, 1, 0)); t.Add(Primitive.Trait(1, -1.2, 1, 1.2));
                 foreach (var y in new[] { -1.0, 0.0, 1.0 }) t.Add(Primitive.Trait(1.5, y - 0.35, 1.5, y + 0.35));
                 t.Add(Primitive.Trait(1.5, -1, 3, -1)); t.Add(Primitive.Trait(3, -1, 3, -3));
                 t.Add(Primitive.Trait(1.5, 1, 3, 1)); t.Add(Primitive.Trait(3, 1, 3, 3));
-                t.Add(g == GabaritSymbole.Nmos ? Primitive.Fleche(3, 0, 1.5, 0) : Primitive.Fleche(1.5, 0, 3, 0));
+                t.Add(canalN ? Primitive.Fleche(3, 0, 1.5, 0) : Primitive.Fleche(1.5, 0, 3, 0));
                 break;
+            }
             case GabaritSymbole.Njf:
             case GabaritSymbole.Pjf:
                 s.Broches.AddRange([B(0, 0, "G"), B(3, -3, "D"), B(3, 3, "S")]);

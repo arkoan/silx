@@ -36,20 +36,25 @@ public sealed class BrocheSymbole
     public int Y { get; set; }
     /// <summary>Nom de la broche du modèle reliée (null = non reliée).</summary>
     public string? BrocheModele { get; set; }
-    public BrocheSymbole Clone() => new() { X = X, Y = Y, BrocheModele = BrocheModele };
+    /// <summary>Rôle de la broche dans un gabarit de dessin (D, G, S, B, C, E, A, K) ; null pour une boîte.</summary>
+    public string? Role { get; set; }
+    public BrocheSymbole Clone() => new() { X = X, Y = Y, BrocheModele = BrocheModele, Role = Role };
 }
 
 /// <summary>Gabarit de dessin d'un symbole.</summary>
-public enum GabaritSymbole { Boite, Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf }
+/// <summary>Gabarit de dessin d'un symbole. Nmos/Pmos : 4 broches (substrat B) ; Nmos3/Pmos3 : substrat relié à la source.</summary>
+public enum GabaritSymbole { Boite, Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf, Nmos3, Pmos3 }
 
 public sealed class Symbole
 {
     public GabaritSymbole Gabarit { get; set; } = GabaritSymbole.Boite;
+    /// <summary>MOS 3 broches : dessiner la diode de corps entre drain et source.</summary>
+    public bool DiodeCorps { get; set; }
     /// <summary>Corps rectangulaire (gabarit Boîte) : les broches hors du corps y sont reliées par un trait, et leur nom est écrit à l'intérieur.</summary>
     public double[]? Corps { get; set; }
     public List<Primitive> Traits { get; set; } = new();
     public List<BrocheSymbole> Broches { get; set; } = new();
-    public Symbole Clone() => new() { Gabarit = Gabarit, Corps = Corps?.ToArray(), Traits = Traits.Select(t => t.Clone()).ToList(), Broches = Broches.Select(b => b.Clone()).ToList() };
+    public Symbole Clone() => new() { Gabarit = Gabarit, DiodeCorps = DiodeCorps, Corps = Corps?.ToArray(), Traits = Traits.Select(t => t.Clone()).ToList(), Broches = Broches.Select(b => b.Clone()).ToList() };
 
     /// <summary>Encombrement en pas de grille : (xmin, ymin, xmax, ymax), broches et dessin compris.</summary>
     public (double X0, double Y0, double X1, double Y1) Encombrement()
@@ -125,12 +130,13 @@ public sealed class DefinitionComposant
         {
             // Sous-circuit reconnu (ex. MOSFET fabricant) : symbole du composant, broches reliées par rôle.
             d.Description = ModelesSpice.Libelle(nat) + " (sous-circuit)";
-            var s = GabaritsSymboles.PourType(nat, ModelesSpice.BrochesStandard(nat));   // broches nommées par rôle (D, G, S…)
-            foreach (var b in s.Broches)
-                b.BrocheModele = infos.Roles.FirstOrDefault(r => r.Value == b.BrocheModele).Key;
-            if (s.Broches.RemoveAll(b => b.BrocheModele == null) > 0 && nat is TypeModele.Nmos or TypeModele.Pmos)
-                s.Traits.Add(Primitive.Trait(3, 0, 3, 1));          // sans broche de substrat : substrat relié à la source (symbole 3 pattes)
-            d.Symbole = s;
+            var g = GabaritsSymboles.PourType(nat);
+            bool sansSubstrat = nat is TypeModele.Nmos or TypeModele.Pmos && !infos.Roles.Values.Contains("B");
+            if (sansSubstrat) g = nat == TypeModele.Nmos ? GabaritSymbole.Nmos3 : GabaritSymbole.Pmos3;
+            // Diode de corps dessinée si le modèle en contient une (élément ou modèle nommé « BODY »), sinon s'il contient des diodes.
+            bool diode = sansSubstrat && (System.Text.RegularExpressions.Regex.IsMatch(m.Texte, @"^\s*D\w*BODY|\.model\s+\w*BODY", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Multiline)
+                                          || infos.Composition.Contains("diode"));
+            d.AppliquerGabarit(g, diode, infos.Roles);
             foreach (var b in d.BrochesModele.Where(b => !infos.Roles.ContainsKey(b)))
                 if (d.Libelles.TryGetValue(b, out var l) && l.Contains("TEMP", StringComparison.OrdinalIgnoreCase))
                     d.BrochesCachees[b] = "DC 25";   // HYPOTHÈSE : broche thermique = température en °C (25 = ambiante)
@@ -139,6 +145,33 @@ public sealed class DefinitionComposant
         d.Symbole = GabaritsSymboles.PourType(m.Type, d.BrochesModele);
         d.RelierAutomatiquement();
         return d;
+    }
+
+    /// <summary>Rôle connu de chaque broche du modèle : rôle déjà porté par le symbole, libellé du fichier, ou nom de la broche.</summary>
+    public Dictionary<string, string> RolesConnus()
+    {
+        var r = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var b in Symbole.Broches.Where(b => b.Role != null && b.BrocheModele != null)) r.TryAdd(b.Role!, b.BrocheModele!);
+        foreach (var p in BrochesModele)
+            if (ModelesSpice.Role(Libelles.GetValueOrDefault(p, p)) is { } role) r.TryAdd(role, p);
+        return r;
+    }
+
+    /// <summary>
+    /// Remplace le symbole par un gabarit, en reliant chaque broche du gabarit à la broche du modèle de même rôle.
+    /// Une broche du modèle qui revient sur le symbole n'est plus raccordée d'office.
+    /// </summary>
+    public void AppliquerGabarit(GabaritSymbole g, bool diodeCorps = false, IReadOnlyDictionary<string, string>? rolesParBroche = null)
+    {
+        var parRole = RolesConnus();
+        if (rolesParBroche != null) foreach (var (p, role) in rolesParBroche) parRole[role] = p;
+        var visibles = BrochesModele.Where(n => !BrochesCachees.ContainsKey(n)).ToList();
+        Symbole = g == GabaritSymbole.Boite ? GabaritsSymboles.Boite(visibles) : GabaritsSymboles.Dessin(g, diodeCorps);
+        if (g != GabaritSymbole.Boite)
+            foreach (var b in Symbole.Broches)
+                b.BrocheModele = b.Role != null && parRole.TryGetValue(b.Role, out var p) ? p : BrochesModele.FirstOrDefault(n => string.Equals(n, b.Role, StringComparison.OrdinalIgnoreCase));
+        else RelierAutomatiquement();
+        foreach (var b in Symbole.Broches.Where(b => b.BrocheModele != null)) BrochesCachees.Remove(b.BrocheModele!);
     }
 
     /// <summary>Relie par nom les broches du symbole encore libres (casse ignorée), puis dans l'ordre pour celles qui restent.</summary>
