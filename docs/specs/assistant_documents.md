@@ -318,32 +318,49 @@ valeur **typique**, et une valeur tabulée prime sur une valeur lue sur figure.
   gabarit de l'utilisateur prime (c'est son exigence), mais le conflit est
   signalé.
 
-## 8. Confidentialité des documents
+## 8. Choix des IA par l'utilisateur et gestion des données
 
-Les ingénieurs de bureau d'étude manipulent des documents sous NDA
-(datasheets préliminaires, AN privées, notes internes). La confidentialité
-est une exigence, pas une option.
+Décision (24/11/2026) : pas d'exigence de confidentialité particulière sur
+les documents. En revanche, **l'utilisateur garde la main sur les IA qu'il
+connecte** à Silx.
 
-- **Stockage local uniquement** : documents, texte extrait, index et
-  embeddings restent sur le poste, dans le dossier du projet ou de la
-  bibliothèque utilisateur. Aucun envoi à un service Silx ; aucune
-  télémétrie de contenu.
-- **Niveau de confidentialité par document** : `public`, `interne`,
-  `confidentiel`. Un document `confidentiel` n'est utilisable qu'avec un
-  modèle **local** (Ollama, LM Studio ou équivalent) ; aucun passage n'en
-  est envoyé à un modèle distant. Par défaut, un document importé est
-  `interne`. **[H6]**
-- **Modèle distant (Claude, Mistral API)** : seuls les passages retournés par
-  les outils sont transmis, jamais le PDF. Avant le premier envoi d'un
-  document `interne` vers un modèle distant, confirmation explicite ;
-  ensuite, un indicateur permanent montre qu'un modèle distant est actif.
-- **Journal des envois** : liste consultable des passages transmis à un
-  modèle distant (document, page, horodatage).
-- Les métadonnées du document (nom, référence) sont elles aussi
-  confidentielles pour un document `confidentiel` : elles ne figurent pas
-  dans les requêtes distantes.
-- Export de projet : option d'inclure ou non les documents ; un document
-  `confidentiel` n'est jamais inclus sans confirmation.
+### 8.1 Connexion de ses propres IA
+
+- **Fournisseurs configurables** : l'utilisateur déclare un ou plusieurs
+  modèles, chacun par un profil (nom, type, adresse, clé d'API, modèle) :
+  - API compatibles OpenAI (couvre la plupart des fournisseurs et des
+    serveurs locaux : Ollama, LM Studio, vLLM, llama.cpp) ;
+  - API Anthropic (Claude) et API Mistral ;
+  - adresse personnalisée (serveur d'entreprise, passerelle interne).
+- **Clients MCP externes** : le serveur MCP de Silx est accessible à un client
+  MCP choisi par l'utilisateur (Claude Desktop, Claude Code, autre agent),
+  qui pilote alors Silx avec les mêmes outils que le prompt intégré. Le
+  prompt intégré n'est qu'un client parmi d'autres. **[H6]**
+- **Choix par usage** : un modèle par défaut, modifiable par conversation ; en
+  option, un modèle différent par rôle (ex. : modèle local rapide pour la
+  recherche, modèle plus puissant pour l'explication).
+- **Aucun modèle imposé ni fourni par Silx** : Silx fonctionne sans IA
+  (toutes les fonctions documentaires de lecture, recherche, paramètres,
+  calculs et règles restent utilisables à la main) ; l'IA est un mode de
+  pilotage, pas une dépendance.
+- **Capacités détectées** : à la connexion, Silx teste le modèle (appel
+  d'outils, taille de contexte, vision) et adapte ce qu'il lui confie. Un
+  modèle sans appel d'outils fiable est refusé pour les calculs et les
+  règles, puisque tout passe par des outils.
+- **Clés d'API** stockées dans le trousseau du système (Keychain macOS,
+  gestionnaire d'identifiants Windows), jamais dans le projet.
+
+### 8.2 Données transmises
+
+- Documents, texte extrait et index restent stockés localement dans le
+  projet ou la bibliothèque utilisateur ; Silx n'a pas de service en ligne.
+- Seuls les passages retournés par les outils sont transmis au modèle, jamais
+  le PDF entier (pour la précision et la taille de contexte, pas pour la
+  confidentialité).
+- L'interface indique quel modèle est actif et où il tourne (local ou
+  distant), pour que l'utilisateur sache à qui il envoie ses données.
+- En option, un journal des échanges avec le modèle (passages envoyés,
+  appels d'outils, réponses), utile aussi pour comprendre une réponse.
 
 ## 9. Limites et risques d'hallucination
 
@@ -426,19 +443,29 @@ dans l'interface, comme `apply_and_test`.
 
 ### 10.4 Interface
 
-- Panneau **Documents** (liste, statut d'extraction, confidentialité,
-  rattachements).
+- Panneau **Documents** (liste, statut d'extraction, rattachements).
 - **Visualiseur PDF** intégré avec surlignage des citations.
 - Vue **paramètres extraits** côte à côte avec la page source, pour
   validation rapide.
 - Dans le prompt : les trois catégories de contenu (sourcé, calculé, non
-  sourcé) visuellement distinctes ; indicateur modèle local / distant.
+  sourcé) visuellement distinctes ; indicateur du modèle actif (local ou distant).
+- Écran **Modèles IA** : profils de fournisseurs, test de capacités,
+  modèle par défaut et par rôle.
 
-### 10.5 Couche Mistral
+### 10.5 Couche d'accès aux modèles (multi-fournisseurs)
 
 La couche d'adaptation function-calling ↔ MCP prévue au §4 de la spec
-technique doit couvrir les nouveaux outils ; pas d'exigence nouvelle, mais
-le volume d'outils augmente, ce qui pèse sur les petits modèles locaux
+technique pour Mistral est généralisée en **couche fournisseurs** : une
+interface commune (conversation, appel d'outils, flux de réponse) et un
+adaptateur par famille d'API (compatible OpenAI, Anthropic, Mistral).
+L'adaptateur compatible OpenAI couvre à lui seul la plupart des serveurs
+locaux. Candidat : abstraction `Microsoft.Extensions.AI` (IChatClient),
+qui s'intègre au SDK MCP .NET retenu. **[H8]**
+
+En parallèle, le serveur MCP est exposé en transport local (stdio, ou HTTP
+sur la boucle locale) pour les clients MCP externes de l'utilisateur.
+
+Le volume d'outils augmente, ce qui pèse sur les petits modèles locaux
 (choix d'outil). Piste : exposer les outils par groupes selon le contexte.
 
 ### 10.6 Tests et qualité
@@ -459,6 +486,8 @@ le volume d'outils augmente, ce qui pèse sur les petits modèles locaux
   formats autres que PDF, vérification des pratiques de placement.
 - Spec fonctionnelle §5 (critères de succès) : « aucune valeur issue d'un
   document affichée sans citation vérifiée ou marquage non sourcé ».
+- Spec technique §4 : remplacer la couche Mistral par la couche
+  fournisseurs (§10.5) et ajouter l'exposition MCP aux clients externes.
 - Spec technique §9 (décisions ouvertes) : extraction de tableaux maison vs
   bibliothèque, évaluateur de formules, embeddings locaux oui/non.
 
@@ -476,8 +505,8 @@ le volume d'outils augmente, ce qui pèse sur les petits modèles locaux
   sémantique est un plus optionnel.
 - **[H5]** L'ordre de priorité des sources du §7.2 correspond à la pratique
   des bureaux d'étude ; à valider avec Régis.
-- **[H6]** Trois niveaux de confidentialité suffisent, et `interne` est un
-  bon défaut.
+- **[H6]** Exposer le serveur MCP à des clients externes (transport local,
+  sur la machine de l'utilisateur) est souhaité, en plus du prompt intégré.
 - **[H7]** L'extraction des tableaux en paramètres est faite par du code
   déterministe ; l'IA peut aider à nommer ou rapprocher les paramètres,
   mais pas produire les valeurs.
@@ -492,7 +521,7 @@ le volume d'outils augmente, ce qui pèse sur les petits modèles locaux
 | Jalon | Contenu | Critère de sortie |
 |---|---|---|
 | **J0. Faisabilité extraction** | Corpus de référence (§10.6) ; prototype d'extraction texte + tableaux sur PdfPig ; rendu de page | Taux de paramètres correctement extraits mesuré sur le corpus ; décision go / ajustement sur l'approche tableaux |
-| **J1. Questions sourcées** | Import, métadonnées, confidentialité, index FTS, `doc_search`, `doc_get_passage`, `verify_citation`, visualiseur avec surlignage | CU1 et CU6 fonctionnels avec modèle local ; 100 % des affirmations affichées avec citation vérifiée ou marquées non sourcées |
+| **J1. Questions sourcées** | Import, métadonnées, profils de modèles IA, index FTS, `doc_search`, `doc_get_passage`, `verify_citation`, visualiseur avec surlignage | CU1 et CU6 fonctionnels avec modèle local ; 100 % des affirmations affichées avec citation vérifiée ou marquées non sourcées |
 | **J2. Paramètres typés** | Tableaux → paramètres (min/typ/max, conditions, variantes), statut extrait/validé, vue de validation côte à côte | Paramètres principaux du corpus extraits et validables en moins de 5 min par datasheet **[H9]** |
 | **J3. Calculs outillés** | Évaluateur avec unités, `solve_formula`, `worst_case`, séries E, transcription de formule validée, boucle de confirmation par simulation | CU2 de bout en bout (LM317 → valeurs E96 → simulation confirmant Vout) |
 | **J4. Règles de conception** | Règles structurelles et comportementales, liste de contrôle manuelle, `check_design_rules` | CU3 sur un étage buck de référence |
@@ -503,10 +532,8 @@ J5, selon les retours.
 
 ## 13. Questions ouvertes pour validation
 
-1. Le mode « confidentiel = modèle local uniquement » convient-il, ou
-   faut-il permettre une exception explicite par document ?
-2. L'ordre de priorité des sources (§7.2) est-il conforme à vos pratiques ?
-3. La numérisation assistée de courbes est-elle utile dès la v1, ou la
+1. L'ordre de priorité des sources (§7.2) est-il conforme à vos pratiques ?
+2. La numérisation assistée de courbes est-elle utile dès la v1, ou la
    citation visuelle de la figure suffit-elle ?
-4. Faut-il gérer dès la v1 une bibliothèque documentaire partagée en équipe,
+3. Faut-il gérer dès la v1 une bibliothèque documentaire partagée en équipe,
    ou seulement locale à l'utilisateur ?
