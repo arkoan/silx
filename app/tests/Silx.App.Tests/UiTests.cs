@@ -491,4 +491,22 @@ public class UiTests
         await w.SimulateAsync();
         Assert.Equal(Silx.Mesures.Gabarits.Verdict.Fail, w.Resultats!.Global);   // tau doublé : montée hors gabarit
     }
+
+    /// <summary>B3 : une seule série de loupes ; elle agit sur la zone active (dernier clic : schéma ou courbes).</summary>
+    [AvaloniaFact]
+    public async Task Loupes_sur_la_zone_active()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(MainWindow.Zone.Schema, w.ZoneActive);
+        var plot = w.PlotControl;
+        var centre = plot.TranslatePoint(new Point(plot.Bounds.Width / 2, plot.Bounds.Height / 2), w)!.Value;
+        w.MouseDown(centre, Avalonia.Input.MouseButton.Left); w.MouseUp(centre, Avalonia.Input.MouseButton.Left);
+        Assert.Equal(MainWindow.Zone.Courbes, w.ZoneActive);
+        var avant = plot.Plot.Axes.GetLimits();
+        w.ZoomerZoneActive(2);
+        var apres = plot.Plot.Axes.GetLimits();
+        Assert.True(apres.Rect.Width < avant.Rect.Width * 0.6);
+    }
 }

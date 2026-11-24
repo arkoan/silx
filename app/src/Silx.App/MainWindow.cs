@@ -191,6 +191,7 @@ public sealed class MainWindow : Window
 
         OuvrirDansOnglet(EtudeModel.Demo(), "Exemple RC", null);
         Disposer(Disposition.Mixte);
+        ActiverZone(Zone.Schema);
         _status.Text = "Clic : placer / sélectionner · glisser : déplacer · clic droit ou molette : vue · ⌘R : pivoter · W : fil · Suppr · ⌘Z / ⇧⌘Z";
     }
 
@@ -485,10 +486,12 @@ public sealed class MainWindow : Window
         bar.Children.Add(Icones.Button(Icones.Annuler, "Annuler (⌘Z)", () => _canvas.Undo()));
         bar.Children.Add(Icones.Button(Icones.Retablir, "Rétablir (⇧⌘Z)", () => _canvas.Redo()));
         bar.Children.Add(Ui.Separator());
-        bar.Children.Add(Icones.Button(Icones.ZoomPlus, "Schéma : zoom avant (+)", () => _canvas.ZoomBy(1.25)));
-        bar.Children.Add(Icones.Button(Icones.ZoomMoins, "Schéma : zoom arrière (−)", () => _canvas.ZoomBy(1 / 1.25)));
-        bar.Children.Add(Icones.Button(Icones.ToutVoir, "Schéma : tout voir (0)", () => _canvas.FitAll()));
-        bar.Children.Add(Icones.Button(Icones.ZoomFenetre, "Schéma : zoom sur une fenêtre (tracer un rectangle)", () => _canvas.Tool = Tool.ZoomWindow));
+        // Loupes uniques : elles agissent sur la zone active (schéma ou courbes), signalée par un liseré bleu.
+        bar.Children.Add(Icones.Button(Icones.ZoomPlus, "Zoom avant sur la zone active (+)", () => Zoomer(1.25)));
+        bar.Children.Add(Icones.Button(Icones.ZoomMoins, "Zoom arrière sur la zone active (−)", () => Zoomer(1 / 1.25)));
+        bar.Children.Add(Icones.Button(Icones.ToutVoir, "Tout voir dans la zone active (0)", ToutVoir));
+        _zoomWinBtn = Icones.Button(Icones.ZoomFenetre, "Zoom sur une fenêtre de la zone active (tracer un rectangle)", ZoomFenetre);
+        bar.Children.Add(_zoomWinBtn);
         bar.Children.Add(Ui.Separator());
         foreach (var (d, ic, tip) in new[] { (Disposition.Schema, Icones.VueSchema, "Schéma seul (F1)"), (Disposition.Mixte, Icones.VueMixte, "Schéma et courbes (F2)"), (Disposition.Courbes, Icones.VueCourbes, "Courbes seules (F3)") })
         {
@@ -630,7 +633,8 @@ public sealed class MainWindow : Window
         var tabs = new TabControl { Padding = new Thickness(0) };
         var schemaDock = new DockPanel();
         var barBorder = new Border { Child = new ScrollViewer { Content = _benchBar, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled }, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 1) };
-        DockPanel.SetDock(barBorder, Dock.Top); schemaDock.Children.Add(barBorder); schemaDock.Children.Add(_canvas);
+        DockPanel.SetDock(barBorder, Dock.Top); schemaDock.Children.Add(barBorder); _cadreSchema.Child = _canvas; schemaDock.Children.Add(_cadreSchema);
+        _canvas.AddHandler(PointerPressedEvent, (_, _) => ActiverZone(Zone.Schema), Avalonia.Interactivity.RoutingStrategies.Tunnel);
         tabs.Items.Add(new TabItem { FontSize = 13, MinHeight = 30, Header = "Schéma", Content = schemaDock });
         tabs.Items.Add(new TabItem { FontSize = 13, MinHeight = 30, Header = "Netlist", Content = _netlist });
 
@@ -650,6 +654,32 @@ public sealed class MainWindow : Window
         return g;
     }
 
+    // ───────────────────────── zone active (cible des loupes) ─────────────────────────
+    public enum Zone { Schema, Courbes }
+    Zone _zoneActive = Zone.Schema;
+    public Zone ZoneActive => _zoneActive;
+    public void ZoomerZoneActive(double f) => Zoomer(f);
+    readonly Border _cadreSchema = new() { BorderThickness = new Thickness(0, 2, 0, 0) };
+
+    public void ActiverZone(Zone z)
+    {
+        _zoneActive = z;
+        _cadreSchema.BorderBrush = z == Zone.Schema ? Ui.AccentBrush : Brushes.Transparent;
+        if (_zoneBas is Border bas) { bas.BorderThickness = new Thickness(0, 2, 0, 0); bas.BorderBrush = z == Zone.Courbes ? Ui.AccentBrush : Brushes.Transparent; }
+    }
+
+    void Zoomer(double f)
+    {
+        if (_zoneActive == Zone.Courbes && _zoneBas.IsVisible) { _plot.Plot.Axes.Zoom(f, f); _plot.Refresh(); }
+        else _canvas.ZoomBy(f);
+    }
+    void ToutVoir() { if (_zoneActive == Zone.Courbes && _zoneBas.IsVisible) RefreshPlot(); else _canvas.FitAll(); }
+    void ZoomFenetre()
+    {
+        if (_zoneActive == Zone.Courbes && _zoneBas.IsVisible) { _zoomMode = !_zoomMode; _cursorMode = false; RefreshPlotToolbar(); }
+        else _canvas.Tool = Tool.ZoomWindow;
+    }
+
     // ───────────────────────── dispositions d'écran ─────────────────────────
     public enum Disposition { Schema, Mixte, Courbes }
     Disposition _disposition = Disposition.Mixte;
@@ -667,7 +697,8 @@ public sealed class MainWindow : Window
         _centre.RowDefinitions[1].Height = d == Disposition.Mixte ? new GridLength(5) : new GridLength(0);
         _centre.RowDefinitions[2].Height = d == Disposition.Schema ? new GridLength(0) : new GridLength(d == Disposition.Courbes ? 1 : 2, GridUnitType.Star);
         foreach (var (k, b) in _boutonsDisposition) Ui.SetActive(b, k == d);
-        if (d == Disposition.Courbes) _bottomTabs.SelectedIndex = 0;
+        if (d == Disposition.Courbes) { _bottomTabs.SelectedIndex = 0; ActiverZone(Zone.Courbes); }
+        else if (d == Disposition.Schema) ActiverZone(Zone.Schema);
     }
 
     // ───────────────────────── zone des courbes ─────────────────────────
@@ -697,12 +728,7 @@ public sealed class MainWindow : Window
         }
         _testTools.Children.Add(_drawHigh); _testTools.Children.Add(_drawLow); _drawHint.IsVisible = false; _testTools.Children.Add(_drawHint);   // remplacé par la puce de mode
 
-        var zoom = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
-        zoom.Children.Add(Icones.Button(Icones.ZoomPlus, "Courbes : zoom avant", () => { _plot.Plot.Axes.Zoom(1.25, 1.25); _plot.Refresh(); }, 17));
-        zoom.Children.Add(Icones.Button(Icones.ZoomMoins, "Courbes : zoom arrière", () => { _plot.Plot.Axes.Zoom(0.8, 0.8); _plot.Refresh(); }, 17));
-        zoom.Children.Add(Icones.Button(Icones.ToutVoir, "Courbes : tout voir", () => RefreshPlot(), 17));
-        _zoomWinBtn = Icones.Button(Icones.ZoomFenetre, "Courbes : zoom sur une fenêtre (tracer un rectangle)", () => { _zoomMode = !_zoomMode; _cursorMode = false; RefreshPlotToolbar(); }, 17);
-        zoom.Children.Add(_zoomWinBtn);
+
         var curs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
         _cursorBtn = Icones.Button(Icones.Curseurs, "Curseurs : cliquer sur le graphique pour poser A puis B sur le signal choisi ; glisser un curseur pour le déplacer", () => { _cursorMode = !_cursorMode; _zoomMode = false; RefreshPlotToolbar(); }, 17);
         // Plus de mode curseurs : double-clic sur une courbe, ou touches A et B sous la souris.
@@ -716,7 +742,7 @@ public sealed class MainWindow : Window
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(6, 2) };
         bar.Children.Add(probes); bar.Children.Add(Ui.Separator());
         bar.Children.Add(seg); bar.Children.Add(Ui.Separator()); bar.Children.Add(view); bar.Children.Add(Ui.Separator());
-        bar.Children.Add(zoom); bar.Children.Add(Ui.Separator()); bar.Children.Add(curs); bar.Children.Add(Ui.Separator()); bar.Children.Add(_testTools);
+        bar.Children.Add(curs); bar.Children.Add(Ui.Separator()); bar.Children.Add(_testTools);
 
         var dock = new DockPanel();
         _overlay.Children.Add(_zoomRect);
@@ -811,7 +837,7 @@ public sealed class MainWindow : Window
     void RefreshPlotToolbar()
     {
         Ui.SetActive(_modeSim, !_modeTest); Ui.SetActive(_modeTestBtn, _modeTest);
-        if (_cursorBtn != null) { Ui.SetActive(_cursorBtn, _cursorMode); Ui.SetActive(_zoomWinBtn, _zoomMode); }
+        if (_cursorBtn != null) { Ui.SetActive(_cursorBtn, _cursorMode); Ui.SetActive(_zoomWinBtn, _zoomMode || _canvas.Tool == Tool.ZoomWindow); }
         // Puce de mode des courbes : zoom fenêtre ou tracé de gabarit, avec la façon d'en sortir.
         var mode = _zoomMode ? "Zoom fenêtre — tracez un rectangle" : _drawing == null ? null
             : _drawing.Points.Count == 0 ? $"Limite {(_drawing.Limite == Limite.Haute ? "haute" : "basse")} — cliquez près de la courbe · Échap"
@@ -891,6 +917,7 @@ public sealed class MainWindow : Window
 
     void OnPlotPressed(object? sender, PointerPressedEventArgs e)
     {
+        ActiverZone(Zone.Courbes);
         if (sender is AvaPlot ap && ap != _plot && _panes.FirstOrDefault(p => p.Plot == ap) is { } pp) { Activate(pp); RefreshPlot(keepLimits: true); }
         var left = e.GetCurrentPoint(_plot).Properties.IsLeftButtonPressed;
         if (_drawing != null)
