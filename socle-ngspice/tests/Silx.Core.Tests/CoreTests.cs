@@ -94,6 +94,21 @@ public class CoreTests
         Assert.Contains(all, p => !p.Success && p.Index == 1);
     }
 
+    [Fact] public void Threads_OpenMP_repartis_entre_les_runs_simultanes()
+    {
+        int n = Environment.ProcessorCount;
+        Assert.Equal(1, new ParallelSimulator(new NgspiceRunner(), n).ThreadsPerRun);
+        Assert.Equal(1, new ParallelSimulator(new NgspiceRunner(), 2 * n).ThreadsPerRun);
+        Assert.Equal(n, new ParallelSimulator(new NgspiceRunner(), 1).ThreadsPerRun);
+        Assert.Equal(3, new ParallelSimulator(new NgspiceRunner { NumThreads = 3 }, n).ThreadsPerRun);
+    }
+
+    [Fact] public async Task Run_avec_threads_fixes_reste_correct()
+    {
+        var r = await new NgspiceRunner { NumThreads = 2 }.RunAsync(Divider());
+        Assert.Equal(5.0, r.Raw.Vector("v(out)")[0], 9);
+    }
+
     [Fact] public void Raw_ascii_reel_et_tronque()
     {
         string s = "Title: t\nPlotname: DC\nFlags: real\nNo. Variables: 2\nNo. Points: 2\nVariables:\n\t0\tv-sweep\tvoltage\n\t1\tv(a)\tvoltage\nValues:\n 0\t0\n\t0\n 1\t1\n\t2\n";
