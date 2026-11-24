@@ -20,8 +20,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Silx.Core\Silx.Core.csproj" />
-    <ProjectReference Include="..\..\src\Silx.Editor\Silx.Editor.csproj" />
+    <ProjectReference Include="..\..\src\Silx.Etude\Silx.Etude.csproj" />
+    <ProjectReference Include="..\..\src\Silx.App\Silx.App.csproj" />
   </ItemGroup>
 
 </Project>

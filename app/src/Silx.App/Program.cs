@@ -1,5 +1,5 @@
 using Avalonia;
-namespace Silx.Editor;
+namespace Silx.App;
 static class Program
 {
     [STAThread] public static void Main(string[] args) => BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);

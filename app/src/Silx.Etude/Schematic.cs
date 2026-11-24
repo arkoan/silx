@@ -1,9 +1,9 @@
-namespace Silx.Core;
+namespace Silx.Etude;
 
 /// <summary>Point sur la grille (coordonnées entières, 1 unité = 1 pas de grille).</summary>
 public readonly record struct GridPoint(int X, int Y);
 
-public enum ComponentKind { Resistor, Capacitor, Inductor, VoltageSource, Ground }
+public enum ComponentKind { Resistor, Capacitor, Inductor, VoltageSource, CurrentSource, Diode, Ground, Label }
 
 /// <summary>Composant placé. Les broches sont définies par le type, la rotation (0..3 quarts de tour) et la position.</summary>
 public sealed class PlacedComponent
@@ -12,17 +12,20 @@ public sealed class PlacedComponent
     public required ComponentKind Kind { get; init; }
     public GridPoint Position { get; set; }
     public int Rotation { get; set; }
-    /// <summary>Valeur SPICE brute (ex. "10k", "100n", "SIN(0 1 1k)"). Vide pour GND.</summary>
+    /// <summary>Valeur SPICE brute (ex. "10k", "SIN(0 1 1k)"), nom de modèle pour une diode, nom de nœud pour une étiquette. Vide pour GND.</summary>
     public string Value { get; set; } = "";
 
-    // HYPOTHÈSE : composants 2 broches, broche 1 en (0,0), broche 2 à 4 pas (axe X avant rotation). GND : 1 broche en (0,0).
+    /// <summary>Vrai si le composant produit une ligne de netlist (ni masse, ni étiquette).</summary>
+    public bool IsElectrical => Kind is not (ComponentKind.Ground or ComponentKind.Label);
+
+    // HYPOTHÈSE : composants 2 broches, broche 1 en (0,0), broche 2 à 4 pas (axe X avant rotation). GND et étiquette : 1 broche en (0,0).
     public IReadOnlyList<GridPoint> Pins
     {
         get
         {
-            var local = Kind == ComponentKind.Ground
-                ? new[] { new GridPoint(0, 0) }
-                : new[] { new GridPoint(0, 0), new GridPoint(4, 0) };
+            var local = IsElectrical
+                ? new[] { new GridPoint(0, 0), new GridPoint(4, 0) }
+                : new[] { new GridPoint(0, 0) };
             return local.Select(p => Rotate(p, Rotation)).Select(p => new GridPoint(p.X + Position.X, p.Y + Position.Y)).ToArray();
         }
     }
@@ -36,7 +39,7 @@ public sealed class PlacedComponent
     public PlacedComponent Clone() => new() { Ref = Ref, Kind = Kind, Position = Position, Rotation = Rotation, Value = Value };
 }
 
-/// <summary>Fil : segment orthogonal ou quelconque entre deux points de grille.</summary>
+/// <summary>Fil : segment entre deux points de grille.</summary>
 public sealed record Wire(GridPoint A, GridPoint B);
 
 public sealed class Schematic
@@ -53,20 +56,32 @@ public sealed class Schematic
     public static string Prefix(ComponentKind k) => k switch
     {
         ComponentKind.Resistor => "R", ComponentKind.Capacitor => "C", ComponentKind.Inductor => "L",
-        ComponentKind.VoltageSource => "V", _ => "GND"
+        ComponentKind.VoltageSource => "V", ComponentKind.CurrentSource => "I", ComponentKind.Diode => "D",
+        ComponentKind.Label => "NET", _ => "GND"
     };
 
     /// <summary>Numérotation automatique R1, R2... (premier numéro libre).</summary>
     public string NextRef(ComponentKind k)
     {
         var p = Prefix(k);
-        var used = Components.Select(c => c.Ref).ToHashSet();
+        var used = Components.Select(c => c.Ref).ToHashSet(StringComparer.OrdinalIgnoreCase);
         for (int i = 1; ; i++) if (!used.Contains(p + i)) return p + i;
     }
 
-    public static string DefaultValue(ComponentKind k) => k switch
+    public string DefaultValue(ComponentKind k) => k switch
     {
         ComponentKind.Resistor => "1k", ComponentKind.Capacitor => "100n", ComponentKind.Inductor => "1m",
-        ComponentKind.VoltageSource => "PULSE(0 1 0 1n 1n 5m 10m)", _ => ""
+        ComponentKind.VoltageSource => "DC 0 AC 1 PULSE(0 1 0.5m 1u 1u 20m 40m)",
+        ComponentKind.CurrentSource => "DC 1m",
+        ComponentKind.Diode => "1N4148",
+        ComponentKind.Label => NextLabel(),
+        _ => ""
     };
+
+    string NextLabel()
+    {
+        var used = Components.Where(c => c.Kind == ComponentKind.Label).Select(c => c.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (!used.Contains("OUT")) return "OUT";
+        for (int i = 1; ; i++) if (!used.Contains("N" + i)) return "N" + i;
+    }
 }

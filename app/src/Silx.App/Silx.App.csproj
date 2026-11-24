@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\Silx.Core\Silx.Core.csproj" />
+    <ProjectReference Include="..\Silx.Etude\Silx.Etude.csproj" />
   </ItemGroup>
 
   <ItemGroup>
