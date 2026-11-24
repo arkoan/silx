@@ -42,6 +42,18 @@ public sealed class MainWindow : Window
     Button _viewTran = null!, _viewAc = null!;
     // Édition des points d'un gabarit : survol (grossit) puis glisser.
     (GabaritTrace G, int I)? _hoverVertex, _dragVertex;
+    // Curseurs de mesure : deux au plus par courbe (A, B), ils suivent la courbe.
+    public sealed class Curseur { public required string Noeud { get; init; } public required char Nom { get; init; } public double X { get; set; } }
+    readonly List<Curseur> _cursors = new();
+    Curseur? _dragCursor, _hoverCursor;
+    bool _cursorMode, _zoomMode; Point? _zoomStart;
+    Button _cursorBtn = null!, _zoomWinBtn = null!;
+    readonly Border _readout = new() { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 14, 52), Background = new SolidColorBrush(Colors.White, 0.93), BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 6), IsVisible = false, IsHitTestVisible = false };
+    readonly Border _zoomRect = new() { BorderBrush = Ui.AccentBrush, BorderThickness = new Thickness(1), Background = new SolidColorBrush(Color.Parse("#2563eb"), 0.08), IsVisible = false, IsHitTestVisible = false };
+    public IReadOnlyList<Curseur> Curseurs => _cursors;
+    public void SetCursorMode(bool on) { _cursorMode = on; _zoomMode = false; RefreshPlotToolbar(); }
+    public void SetZoomWindowMode(bool on) { _zoomMode = on; _cursorMode = false; RefreshPlotToolbar(); }
+    public Control Readout => _readout;
     readonly TextBlock _drawHint = new() { FontSize = 12, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center };
     GabaritTrace? _drawing;
     (double X, double Y)? _hover;
@@ -139,11 +151,13 @@ public sealed class MainWindow : Window
     public void SelectBanc(Banc? b)
     {
         EndDrawing(false);
+        if (_banc != b) _cursors.Clear();
         _banc = b;
         _canvas.Caption = b == null
             ? "Circuit sous test — sans stimuli : les sources se branchent dans un banc de test"
             : $"Banc « {b.Nom} » — calque en violet ; le circuit dessous se modifie dans « Circuit sous test »";
         _canvas.Load(b?.Calque ?? _etude.Schema, b == null ? null : _etude.Schema);
+        _canvas.FitAll();
         foreach (var sb in _sourceButtons) { sb.IsEnabled = b != null; sb.Opacity = b != null ? 1 : 0.35; }
         RefreshSide(); RefreshBenchBar(); RefreshPlotToolbar(); RefreshPlot();
         SetVerdict(b == null ? GlobalVerdict() : _last is { Erreur: null } r && r.Nombre > 0 ? r.Global : null);
@@ -226,6 +240,11 @@ public sealed class MainWindow : Window
         bar.Children.Add(Ui.Separator());
         bar.Children.Add(Icones.Button(Icones.Annuler, "Annuler (⌘Z)", () => _canvas.Undo()));
         bar.Children.Add(Icones.Button(Icones.Retablir, "Rétablir (⇧⌘Z)", () => _canvas.Redo()));
+        bar.Children.Add(Ui.Separator());
+        bar.Children.Add(Icones.Button(Icones.ZoomPlus, "Schéma : zoom avant (+)", () => _canvas.ZoomBy(1.25)));
+        bar.Children.Add(Icones.Button(Icones.ZoomMoins, "Schéma : zoom arrière (−)", () => _canvas.ZoomBy(1 / 1.25)));
+        bar.Children.Add(Icones.Button(Icones.ToutVoir, "Schéma : tout voir (0)", () => _canvas.FitAll()));
+        bar.Children.Add(Icones.Button(Icones.ZoomFenetre, "Schéma : zoom sur une fenêtre (tracer un rectangle)", () => _canvas.Tool = Tool.ZoomWindow));
         bar.Children.Add(Ui.Separator());
         bar.Children.Add(Icones.Button(Icones.PanneauGauche, "Afficher / masquer la palette de composants", () => { _left.IsVisible = !_left.IsVisible; }));
         bar.Children.Add(Icones.Button(Icones.PanneauDroit, "Afficher / masquer le panneau de propriétés et de gabarits", () => { _right.IsVisible = !_right.IsVisible; }));
@@ -326,16 +345,30 @@ public sealed class MainWindow : Window
         _signal.SelectionChanged += (_, _) => { if (_drawing == null) RefreshPlot(keepLimits: true); };
         ToolTip.SetTip(_signal, "Signal auquel s'applique le gabarit dessiné");
         _signal.MinHeight = 28; _signal.Padding = new Thickness(8, 2);
-        _testTools.Children.Add(_signal); _testTools.Children.Add(_drawHigh); _testTools.Children.Add(_drawLow); _testTools.Children.Add(_drawHint);
+        _testTools.Children.Add(_drawHigh); _testTools.Children.Add(_drawLow); _testTools.Children.Add(_drawHint);
+
+        var zoom = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
+        zoom.Children.Add(Icones.Button(Icones.ZoomPlus, "Courbes : zoom avant", () => { _plot.Plot.Axes.Zoom(1.25, 1.25); _plot.Refresh(); }, 17));
+        zoom.Children.Add(Icones.Button(Icones.ZoomMoins, "Courbes : zoom arrière", () => { _plot.Plot.Axes.Zoom(0.8, 0.8); _plot.Refresh(); }, 17));
+        zoom.Children.Add(Icones.Button(Icones.ToutVoir, "Courbes : tout voir", () => RefreshPlot(), 17));
+        _zoomWinBtn = Icones.Button(Icones.ZoomFenetre, "Courbes : zoom sur une fenêtre (tracer un rectangle)", () => { _zoomMode = !_zoomMode; _cursorMode = false; RefreshPlotToolbar(); }, 17);
+        zoom.Children.Add(_zoomWinBtn);
+        var curs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
+        _cursorBtn = Icones.Button(Icones.Curseurs, "Curseurs : cliquer sur le graphique pour poser A puis B sur le signal choisi ; glisser un curseur pour le déplacer", () => { _cursorMode = !_cursorMode; _zoomMode = false; RefreshPlotToolbar(); }, 17);
+        curs.Children.Add(_cursorBtn);
+        curs.Children.Add(Icones.Button(Icones.Croix, "Retirer tous les curseurs", () => { _cursors.Clear(); RefreshPlot(keepLimits: true); }, 14));
 
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(6, 2) };
-        bar.Children.Add(seg); bar.Children.Add(Ui.Separator()); bar.Children.Add(view); bar.Children.Add(Ui.Separator()); bar.Children.Add(_testTools);
+        bar.Children.Add(seg); bar.Children.Add(Ui.Separator()); bar.Children.Add(view); bar.Children.Add(Ui.Separator());
+        bar.Children.Add(zoom); bar.Children.Add(Ui.Separator()); bar.Children.Add(_signal); bar.Children.Add(curs); bar.Children.Add(Ui.Separator()); bar.Children.Add(_testTools);
 
         _plot.AddHandler(PointerPressedEvent, OnPlotPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         _plot.AddHandler(PointerMovedEvent, OnPlotMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         _plot.AddHandler(PointerReleasedEvent, OnPlotReleased, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         var dock = new DockPanel();
-        DockPanel.SetDock(bar, Dock.Top); dock.Children.Add(bar); dock.Children.Add(_plot);
+        var overlay = new Canvas { IsHitTestVisible = false }; overlay.Children.Add(_zoomRect);
+        var plotHost = new Grid(); plotHost.Children.Add(_plot); plotHost.Children.Add(overlay); plotHost.Children.Add(_readout);
+        DockPanel.SetDock(bar, Dock.Top); dock.Children.Add(bar); dock.Children.Add(plotHost);
         RefreshPlotToolbar();
         return dock;
     }
@@ -343,6 +376,8 @@ public sealed class MainWindow : Window
     void RefreshPlotToolbar()
     {
         Ui.SetActive(_modeSim, !_modeTest); Ui.SetActive(_modeTestBtn, _modeTest);
+        if (_cursorBtn != null) { Ui.SetActive(_cursorBtn, _cursorMode); Ui.SetActive(_zoomWinBtn, _zoomMode); }
+        _signal.IsVisible = _banc != null;
         if (_viewTran != null)
         {
             // La vue suit le type du banc : l'autre est grisée.
@@ -409,22 +444,46 @@ public sealed class MainWindow : Window
 
     void OnPlotPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (_drawing == null)
+        var left = e.GetCurrentPoint(_plot).Properties.IsLeftButtonPressed;
+        if (_drawing != null)
         {
-            if (_hoverVertex is { } hv && e.GetCurrentPoint(_plot).Properties.IsLeftButtonPressed)
-            {
-                e.Handled = true; _dragVertex = hv; _plot.UserInputProcessor.Disable();
-                e.Pointer.Capture(_plot);
-            }
+            e.Handled = true;
+            if (!left) { EndDrawing(false); return; }
+            if (e.ClickCount > 1) { EndDrawing(true); return; }
+            var p = ToData(e);
+            if (_drawing.Points.Count > 0 && p.X <= _drawing.Points[^1].X) { _drawHint.Text = "Les points se posent de gauche à droite."; return; }
+            _drawing.Points.Add(p);
+            RefreshPlotToolbar(); RefreshPlot(keepLimits: true);
             return;
         }
-        e.Handled = true;
-        if (!e.GetCurrentPoint(_plot).Properties.IsLeftButtonPressed) { EndDrawing(false); return; }
-        if (e.ClickCount > 1) { EndDrawing(true); return; }
-        var p = ToData(e);
-        if (_drawing.Points.Count > 0 && p.X <= _drawing.Points[^1].X) { _drawHint.Text = "Les points se posent de gauche à droite."; return; }
-        _drawing.Points.Add(p);
-        RefreshPlotToolbar(); RefreshPlot(keepLimits: true);
+        if (!left || _banc == null || _last == null) return;
+        if (_zoomMode)
+        {
+            e.Handled = true; _zoomStart = e.GetPosition(_plot); _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
+            return;
+        }
+        if (_hoverVertex is { } hv)
+        {
+            e.Handled = true; _dragVertex = hv; _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
+            return;
+        }
+        if (CursorAt(e.GetPosition(_plot)) is { } hc)
+        {
+            e.Handled = true; _dragCursor = hc; _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
+            return;
+        }
+        if (_cursorMode && SelectedSignal is { } sig)
+        {
+            e.Handled = true;
+            var x = ToData(e).X;
+            var mine = _cursors.Where(c => c.Noeud == sig).ToList();
+            Curseur c;
+            if (mine.Count < 2) { c = new Curseur { Noeud = sig, Nom = mine.Any(m => m.Nom == 'A') ? 'B' : 'A' }; _cursors.Add(c); }
+            else c = mine.OrderBy(m => Math.Abs(m.X - x)).First();
+            c.X = ClampToCurve(c.Noeud, x);
+            _dragCursor = c; _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
+            RefreshPlot(keepLimits: true);
+        }
     }
 
     void OnPlotMoved(object? sender, PointerEventArgs e)
@@ -433,6 +492,17 @@ public sealed class MainWindow : Window
         {
             if (_drawing.Points.Count == 0) return;
             _hover = ToData(e); RefreshPlot(keepLimits: true); return;
+        }
+        if (_zoomStart is { } z0)
+        {
+            var z1 = e.GetPosition(_plot); var r = new Rect(z0, z1).Normalize();
+            Canvas.SetLeft(_zoomRect, r.X); Canvas.SetTop(_zoomRect, r.Y); _zoomRect.Width = r.Width; _zoomRect.Height = r.Height; _zoomRect.IsVisible = true;
+            e.Handled = true; return;
+        }
+        if (_dragCursor is { } dc)
+        {
+            dc.X = ClampToCurve(dc.Noeud, ToData(e).X);
+            RefreshPlot(keepLimits: true); e.Handled = true; return;
         }
         if (_dragVertex is { } dv)
         {
@@ -449,22 +519,118 @@ public sealed class MainWindow : Window
             ReevaluateTraces(); RefreshPlot(keepLimits: true);
             e.Handled = true; return;
         }
-        if (!_modeTest || _banc == null || _last == null) return;
-        var hit = VertexAt(e.GetPosition(_plot));
-        if (!Nullable.Equals(hit, _hoverVertex))
+        if (_banc == null || _last == null) return;
+        var pos = e.GetPosition(_plot);
+        var hit = _modeTest ? VertexAt(pos) : null;
+        var hc = hit == null ? CursorAt(pos) : null;
+        if (!Nullable.Equals(hit, _hoverVertex) || hc != _hoverCursor)
         {
-            _hoverVertex = hit;
-            _plot.Cursor = hit != null ? new Cursor(StandardCursorType.SizeAll) : Cursor.Default;
+            _hoverVertex = hit; _hoverCursor = hc;
+            _plot.Cursor = hit != null ? new Cursor(StandardCursorType.SizeAll) : hc != null ? new Cursor(StandardCursorType.SizeWestEast) : _cursorMode || _zoomMode ? new Cursor(StandardCursorType.Cross) : Cursor.Default;
             RefreshPlot(keepLimits: true);
         }
+        else if (_cursorMode || _zoomMode) _plot.Cursor = new Cursor(StandardCursorType.Cross);
     }
 
     void OnPlotReleased(object? sender, PointerReleasedEventArgs e)
     {
+        if (_zoomStart is { } z0)
+        {
+            var z1 = e.GetPosition(_plot); _zoomStart = null; _zoomRect.IsVisible = false;
+            e.Pointer.Capture(null); e.Handled = true; _plot.UserInputProcessor.Enable();
+            if (Math.Abs(z1.X - z0.X) > 6 && Math.Abs(z1.Y - z0.Y) > 6)
+            {
+                var sc = _plot.DisplayScale;
+                var a = _plot.Plot.GetCoordinates(new ScottPlot.Pixel((float)(z0.X * sc), (float)(z0.Y * sc)));
+                var b = _plot.Plot.GetCoordinates(new ScottPlot.Pixel((float)(z1.X * sc), (float)(z1.Y * sc)));
+                _plot.Plot.Axes.SetLimits(Math.Min(a.X, b.X), Math.Max(a.X, b.X), Math.Min(a.Y, b.Y), Math.Max(a.Y, b.Y));
+                _plot.Refresh();
+            }
+            _zoomMode = false; RefreshPlotToolbar();
+            return;
+        }
+        if (_dragCursor != null)
+        {
+            _dragCursor = null; e.Pointer.Capture(null); e.Handled = true; _plot.UserInputProcessor.Enable();
+            return;
+        }
         if (_dragVertex == null) return;
         _dragVertex = null; e.Pointer.Capture(null); e.Handled = true;
         _plot.UserInputProcessor.Enable();
         RefreshGabarits(); RefreshBenchBar();
+    }
+
+    double ClampToCurve(string noeud, double x)
+    {
+        if (_last == null || !_last.Resultats.TryGetValue(Shown, out var raw)) return x;
+        var (xs, _) = Verification.Courbe(Shown, raw, noeud);
+        return Math.Clamp(x, xs[0], xs[^1]);
+    }
+
+    /// <summary>Valeur de la courbe en x (interpolation linéaire, en log f pour Bode).</summary>
+    double? CurveAt(string noeud, double x)
+    {
+        if (_last == null || !_last.Resultats.TryGetValue(Shown, out var raw)) return null;
+        if (!raw.Variables.Any(v => string.Equals(v.Name, $"v({noeud})", StringComparison.OrdinalIgnoreCase))) return null;
+        var (xs, ys) = Verification.Courbe(Shown, raw, noeud);
+        if (x <= xs[0]) return ys[0];
+        if (x >= xs[^1]) return ys[^1];
+        int i = Array.BinarySearch(xs, x); if (i >= 0) return ys[i];
+        i = ~i; bool log = Shown == AnalyseKind.Ac;
+        double t = log ? Math.Log(x / xs[i - 1]) / Math.Log(xs[i] / xs[i - 1]) : (x - xs[i - 1]) / (xs[i] - xs[i - 1]);
+        return ys[i - 1] + t * (ys[i] - ys[i - 1]);
+    }
+
+    /// <summary>Curseur dont la ligne verticale passe sous le pointeur (à 6 px près).</summary>
+    Curseur? CursorAt(Point pos)
+    {
+        var sc = _plot.DisplayScale;
+        foreach (var c in _cursors)
+        {
+            var px = _plot.Plot.GetPixel(new ScottPlot.Coordinates(Shown == AnalyseKind.Ac ? Math.Log10(c.X) : c.X * 1e3, 0));
+            if (Math.Abs(px.X / sc - pos.X) < 6) return c;
+        }
+        return null;
+    }
+
+    /// <summary>Tableau des curseurs en bas à droite : valeurs en A et B, écarts Δ (et 1/Δt en temporel).</summary>
+    void RefreshReadout(Func<string, ScottPlot.Color> colorOf)
+    {
+        var bySignal = _cursors.GroupBy(c => c.Noeud).ToList();
+        _readout.IsVisible = bySignal.Count > 0 && _banc != null && _last != null;
+        if (!_readout.IsVisible) return;
+        bool ac = Shown == AnalyseKind.Ac;
+        string ux = ac ? "Hz" : "s", uy = ac ? "dB" : "V";
+        var g = new Grid { ColumnDefinitions = new("Auto,14,Auto,14,Auto,14,Auto") };
+        int row = 0;
+        void Cell(string t, int col, IBrush? b = null, bool bold = false, bool right = true)
+        {
+            var tb = new TextBlock { Text = t, FontSize = 11.5, Foreground = b ?? Ui.Ink, FontWeight = bold ? FontWeight.SemiBold : FontWeight.Normal, HorizontalAlignment = right ? HorizontalAlignment.Right : HorizontalAlignment.Left, FontFamily = new FontFamily("Menlo, Consolas, monospace") };
+            Grid.SetRow(tb, row); Grid.SetColumn(tb, col); g.Children.Add(tb);
+        }
+        void NewRow() { g.RowDefinitions.Add(new RowDefinition(GridLength.Auto)); }
+        NewRow(); Cell("", 0); Cell(ac ? "f" : "t", 2, Ui.Muted); Cell(ac ? "gain" : "tension", 4, Ui.Muted); Cell(ac ? "" : "1/Δt", 6, Ui.Muted); row++;
+        foreach (var grp in bySignal)
+        {
+            var col = colorOf(grp.Key); var brush = new SolidColorBrush(Color.FromArgb(255, col.R, col.G, col.B));
+            NewRow(); Cell(ac ? $"|V({grp.Key})|" : $"V({grp.Key})", 0, brush, bold: true, right: false); row++;
+            foreach (var c in grp.OrderBy(c => c.Nom))
+            {
+                NewRow(); Cell($"  {c.Nom}", 0, brush, right: false); Cell(SpiceNumber.Format(c.X, ux), 2);
+                Cell(CurveAt(c.Noeud, c.X) is { } y ? SpiceNumber.Format(y, uy) : "—", 4); row++;
+            }
+            var ab = grp.OrderBy(c => c.Nom).ToList();
+            if (ab.Count == 2 && CurveAt(ab[0].Noeud, ab[0].X) is { } ya && CurveAt(ab[1].Noeud, ab[1].X) is { } yb)
+            {
+                double dx = ab[1].X - ab[0].X, dy = yb - ya;
+                NewRow(); Cell("  Δ B−A", 0, Ui.AccentBrush, bold: true, right: false);
+                Cell(ac ? $"×{ab[1].X / ab[0].X:0.###}" : SpiceNumber.Format(dx, ux), 2, Ui.AccentBrush, bold: true);
+                Cell(SpiceNumber.Format(dy, uy), 4, Ui.AccentBrush, bold: true);
+                Cell(ac ? (Math.Abs(Math.Log10(ab[1].X / ab[0].X)) > 1e-9 ? $"{dy / Math.Log10(ab[1].X / ab[0].X):0.#} dB/déc" : "") : Math.Abs(dx) > 0 ? SpiceNumber.Format(1 / Math.Abs(dx), "Hz") : "—", 6, Ui.AccentBrush, bold: true);
+                row++;
+            }
+        }
+        _readout.Child = g;
     }
 
     /// <summary>Point de gabarit sous le pointeur (à 9 px près), dans la vue affichée.</summary>
@@ -805,6 +971,7 @@ public sealed class MainWindow : Window
             p.Title(""); p.Axes.Bottom.Label.Text = ""; p.Axes.Left.Label.Text = "";
             var t = p.Add.Text(_banc == null ? "Sélectionnez un banc de test pour voir ses courbes" : _last == null ? "Lancez « Simuler et vérifier » pour tracer les courbes" : "Cette analyse n'a pas été simulée : relancez la simulation", 0, 0);
             t.LabelFontSize = 14; t.LabelFontColor = ScottPlot.Color.FromHex("#5b6170"); t.LabelAlignment = ScottPlot.Alignment.MiddleCenter;
+            _readout.IsVisible = false;
             p.Axes.SetLimits(-1, 1, -1, 1); p.HideGrid(); p.Axes.Left.IsVisible = p.Axes.Bottom.IsVisible = p.Axes.Top.IsVisible = false; _plot.Refresh(); return;
         }
         p.ShowGrid(); p.Axes.Left.IsVisible = p.Axes.Bottom.IsVisible = p.Axes.Top.IsVisible = true;
@@ -896,7 +1063,23 @@ public sealed class MainWindow : Window
                 vl.LegendText = $"fc −3 dB = {SpiceNumber.Format(rc.Resultat.Valeur!.Value, "Hz")}";
             }
         }
-        p.Title(""); p.ShowLegend(ac ? ScottPlot.Alignment.LowerLeft : ScottPlot.Alignment.LowerRight);
+        // Curseurs : ligne verticale, point sur la courbe, lettre.
+        var colorOf = new Dictionary<string, ScottPlot.Color>();
+        { int k = 0; foreach (var n in nodes.Take(8)) colorOf[n] = palette.GetColor(k++); }
+        ScottPlot.Color ColorOf(string n) => colorOf.TryGetValue(n, out var c) ? c : ScottPlot.Colors.Gray;
+        foreach (var c in _cursors)
+        {
+            if (CurveAt(c.Noeud, c.X) is not { } yc) continue;
+            var col = ColorOf(c.Noeud); bool hot = c == _hoverCursor || c == _dragCursor;
+            var vl = p.Add.VerticalLine(X(c.X)); vl.Color = col.WithAlpha(hot ? 1 : 0.8); vl.LineWidth = hot ? 2 : 1.2f; vl.LinePattern = ScottPlot.LinePattern.Dashed;
+            var mk = p.Add.Marker(X(c.X), yc); mk.Color = col; mk.Size = hot ? 12 : 9; mk.Shape = ScottPlot.MarkerShape.FilledCircle;
+            var mk2 = p.Add.Marker(X(c.X), yc); mk2.Color = ScottPlot.Colors.White; mk2.Size = hot ? 5 : 4; mk2.Shape = ScottPlot.MarkerShape.FilledCircle;
+            var lt = p.Add.Text(c.Nom.ToString(), X(c.X), yc); lt.LabelFontColor = ScottPlot.Colors.White; lt.LabelBackgroundColor = col; lt.LabelBold = true; lt.LabelFontSize = 11;
+            bool haut = yc > yMin + 0.7 * (yMax - yMin);   // près du haut : étiquette sous le point
+            lt.LabelAlignment = haut ? ScottPlot.Alignment.UpperRight : ScottPlot.Alignment.LowerRight; lt.LabelOffsetX = -6; lt.LabelOffsetY = haut ? 6 : -6; lt.LabelPadding = 3;
+        }
+        RefreshReadout(ColorOf);
+        p.Title(""); p.ShowLegend(_cursors.Count > 0 || ac ? ScottPlot.Alignment.LowerLeft : ScottPlot.Alignment.LowerRight);
         if (keepLimits && limits.Rect.Width > 0 && limits.Left != -1) p.Axes.SetLimits(limits);
         else
         {

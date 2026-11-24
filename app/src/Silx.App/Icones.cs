@@ -27,6 +27,11 @@ static class Icones
     public const string LimiteBasse = "M3 11h6l4 4h8 M6 11l-3 3 M10 12l-3 3 M14 15l-3 3 M19 15l-3 3";
     public const string Croix = "M7 7l10 10 M17 7L7 17";
     public const string Plus = "M12 5v14 M5 12h14";
+    public const string ZoomPlus = "M3 10.5a7.5 7.5 0 1 0 15 0a7.5 7.5 0 1 0-15 0 M16 16l5 5 M10.5 7.5v6 M7.5 10.5h6";
+    public const string ZoomMoins = "M3 10.5a7.5 7.5 0 1 0 15 0a7.5 7.5 0 1 0-15 0 M16 16l5 5 M7.5 10.5h6";
+    public const string ToutVoir = "M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5 M9 12h6 M12 9v6";
+    public const string ZoomFenetre = "M3 13V3h10 M3 7v0 M12.5 15a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0 M18.5 17.5l3 3 M3 17v1 M3 21h1 M7 21h1 M17 3h1 M21 3v1 M21 7v1";
+    public const string Curseurs = "M8 3v18 M16 3v18 M8 9a1.8 1.8 0 1 0 0.01 0 M16 15a1.8 1.8 0 1 0 0.01 0";
 
     public static Control Make(string data, double size = 18, IBrush? brush = null, bool filled = false) => new Avalonia.Controls.Shapes.Path
     {

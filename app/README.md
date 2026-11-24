@@ -8,7 +8,7 @@
 ```bash
 brew install ngspice                      # moteur de simulation
 dotnet run --project src/Silx.App         # .NET 10 requis
-dotnet test                               # 22 tests, dont simulations ngspice réelles
+dotnet test                               # 23 tests, dont simulations ngspice réelles
 ```
 
 ngspice est cherché dans `SILX_NGSPICE`, puis `/opt/homebrew/bin`, `/usr/local/bin`, puis le PATH.
@@ -45,10 +45,16 @@ En mode Test, choisir le signal, cliquer « Limite haute » ou « Limite basse �
 puis double-clic ou Entrée (Échap annule). Pour modifier un gabarit, survoler un point (il grossit) et le glisser : la marge est recalculée en direct. Le gabarit est évalué aussitôt sur les résultats déjà simulés : verdict, et marge
 (plus petite distance verticale à la limite) avec le point où elle est atteinte. Calcul dans `mesures/` (`GabaritGraphique`).
 
+## Loupes et curseurs
+
+Schéma (barre du haut) et courbes (barre des courbes) : zoom +, zoom −, tout voir, zoom sur une fenêtre (tracer un rectangle).
+Curseurs : activer l'icône curseurs, choisir le signal, cliquer pour poser A puis B (deux par courbe) ; ils suivent la courbe
+et se glissent. Le tableau en bas à droite donne t/f et la valeur en A et B, et B−A (Δt, ΔV, 1/Δt ; en Bode rapport de fréquences et pente dB/déc).
+
 ## Raccourcis
 
 R résistance · C condensateur · L inductance · V source de tension · I source de courant · D diode · G masse · N étiquette ·
-W fil · ⌘R pivoter · Suppr · Échap · ⌘Z / ⇧⌘Z · Maj+clic pour poser plusieurs composants · clic droit ou bouton du milieu pour déplacer la vue.
+W fil · + / − / 0 zoom du schéma · ⌘R pivoter · Suppr · Échap · ⌘Z / ⇧⌘Z · Maj+clic pour poser plusieurs composants · clic droit ou bouton du milieu pour déplacer la vue.
 
 ## HYPOTHÈSES (à valider)
 

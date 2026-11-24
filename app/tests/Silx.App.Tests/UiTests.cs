@@ -122,4 +122,47 @@ public class UiTests
         var r = Silx.Etude.Verification.EvaluerTrace(basse, w.Resultats!.Resultats[Silx.Etude.AnalyseKind.Transitoire]);
         Assert.Equal(Silx.Mesures.Gabarits.Verdict.Pass, r.Verdict);
     }
+
+    /// <summary>Deux curseurs posés sur V(OUT) : ils suivent la courbe et le tableau donne Δt, ΔV et 1/Δt.</summary>
+    [AvaloniaFact]
+    public async Task Curseurs_A_et_B_et_ecarts()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        w.SetModeTest(false);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var plot = w.PlotControl;
+        Point Ecran(double tMs, double v)
+        {
+            var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(tMs, v));
+            return plot.TranslatePoint(new Point(px.X / plot.DisplayScale, px.Y / plot.DisplayScale), w)!.Value;
+        }
+        w.SetCursorMode(true);
+        foreach (var t in new[] { 1.5, 3.7 })
+        {
+            w.MouseDown(Ecran(t, 0.3), Avalonia.Input.MouseButton.Left); w.MouseUp(Ecran(t, 0.3), Avalonia.Input.MouseButton.Left);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+        Assert.Equal(2, w.Curseurs.Count);
+        Assert.All(w.Curseurs, c => Assert.Equal("OUT", c.Noeud));
+        Assert.Equal(2.2e-3, w.Curseurs[1].X - w.Curseurs[0].X, 1e-4);
+        Assert.True(w.Readout.IsVisible);
+        // Glisser B vers 6 ms
+        w.SetCursorMode(false);
+        w.MouseMove(Ecran(3.7, 0.5)); Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        w.MouseDown(Ecran(3.7, 0.5), Avalonia.Input.MouseButton.Left);
+        w.MouseMove(Ecran(6, 0.5)); w.MouseUp(Ecran(6, 0.5), Avalonia.Input.MouseButton.Left);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(6e-3, w.Curseurs.Single(c => c.Nom == 'B').X, 1e-4);
+        Shot(w, "10-curseurs.png");
+
+        // Zoom fenêtre sur 1..4 ms
+        w.SetZoomWindowMode(true);
+        w.MouseDown(Ecran(1, 0.9), Avalonia.Input.MouseButton.Left);
+        w.MouseMove(Ecran(4, 0.1)); w.MouseUp(Ecran(4, 0.1), Avalonia.Input.MouseButton.Left);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var lim = plot.Plot.Axes.GetLimits();
+        Assert.Equal(1, lim.Left, 0.1); Assert.Equal(4, lim.Right, 0.1);
+        Shot(w, "11-zoom-fenetre.png");
+    }
 }

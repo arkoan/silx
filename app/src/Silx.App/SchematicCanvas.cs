@@ -5,7 +5,7 @@ using Avalonia.Media;
 using Silx.Etude;
 namespace Silx.App;
 
-public enum Tool { Select, Wire, Place }
+public enum Tool { Select, Wire, Place, ZoomWindow }
 
 /// <summary>Canevas de schéma : grille, snap, zoom/pan, placement avec aperçu, fils, rotation, suppression, undo/redo.</summary>
 public sealed class SchematicCanvas : Control
@@ -47,6 +47,30 @@ public sealed class SchematicCanvas : Control
         Schematic = s; _underlay = underlay; _undo.Clear(); _redo.Clear(); _wireStart = null; Select(null); Changed?.Invoke(); InvalidateVisual();
     }
     public bool IsLayer => _underlay != null;
+
+    // ---- loupes ----
+    public void ZoomBy(double f) => ZoomAt(new Point(Bounds.Width / 2, Bounds.Height / 2), f);
+    void ZoomAt(Point pos, double f)
+    {
+        var before = (pos - _pan) / _zoom;
+        _zoom = Math.Clamp(_zoom * f, 0.4, 8);
+        _pan = pos - before * _zoom; InvalidateVisual();
+    }
+    /// <summary>Cadre le schéma entier (circuit et calque) dans la vue.</summary>
+    public void FitAll()
+    {
+        var pts = AllComponents.SelectMany(c => c.Pins).Concat(AllWires.SelectMany(w => new[] { w.A, w.B })).ToList();
+        if (pts.Count == 0 || Bounds.Width < 10) return;
+        FitGrid(pts.Min(p => p.X) - 3, pts.Min(p => p.Y) - 4, pts.Max(p => p.X) + 5, pts.Max(p => p.Y) + 3, 3.2);
+    }
+    void FitGrid(double x0, double y0, double x1, double y1, double maxZoom)
+    {
+        double w = Math.Max(x1 - x0, 1) * Grid, h = Math.Max(y1 - y0, 1) * Grid;
+        _zoom = Math.Clamp(Math.Min(Bounds.Width / w, Bounds.Height / h), 0.4, maxZoom);
+        _pan = new Point((Bounds.Width - (x0 + x1) * Grid * _zoom) / 2, (Bounds.Height - (y0 + y1) * Grid * _zoom) / 2);
+        InvalidateVisual();
+    }
+    Point? _zoomStart; Point _lastPos;
     IEnumerable<PlacedComponent> AllComponents => _underlay == null ? Schematic.Components : _underlay.Components.Concat(Schematic.Components);
     IEnumerable<Wire> AllWires => _underlay == null ? Schematic.Wires : _underlay.Wires.Concat(Schematic.Wires);
     string NextRef(ComponentKind k)
@@ -104,6 +128,8 @@ public sealed class SchematicCanvas : Control
         }
         switch (_tool)
         {
+            case Tool.ZoomWindow:
+                _zoomStart = pos; break;
             case Tool.Wire:
                 if (_wireStart is null) _wireStart = g;
                 else
@@ -145,7 +171,7 @@ public sealed class SchematicCanvas : Control
 
     protected override void OnPointerMoved(PointerEventArgs e)
     {
-        var pos = e.GetPosition(this); _inside = true;
+        var pos = e.GetPosition(this); _inside = true; _lastPos = pos;
         if (_panning) { _pan += pos - _panLast; _panLast = pos; }
         _cursor = Snap(pos);
         if (_dragging != null)
@@ -159,18 +185,24 @@ public sealed class SchematicCanvas : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         _panning = false;
+        if (_zoomStart is { } z0)
+        {
+            var z1 = e.GetPosition(this); _zoomStart = null;
+            if (Math.Abs(z1.X - z0.X) > 8 && Math.Abs(z1.Y - z0.Y) > 8)
+            {
+                double gx(double x) => (x - _pan.X) / (Grid * _zoom);
+                double gy(double y) => (y - _pan.Y) / (Grid * _zoom);
+                FitGrid(gx(Math.Min(z0.X, z1.X)), gy(Math.Min(z0.Y, z1.Y)), gx(Math.Max(z0.X, z1.X)), gy(Math.Max(z0.Y, z1.Y)), 8);
+            }
+            Tool = Tool.Select; return;
+        }
         if (_dragging != null)
         {
             if (!_dragMoved) _undo.Pop(); // simple clic : pas d'entrée d'historique
             _dragging = null; Done();
         }
     }
-    protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
-    {
-        var pos = e.GetPosition(this); var before = (pos - _pan) / _zoom;
-        _zoom = Math.Clamp(_zoom * (e.Delta.Y > 0 ? 1.12 : 1 / 1.12), 0.4, 6);
-        _pan = pos - before * _zoom; InvalidateVisual();
-    }
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e) => ZoomAt(e.GetPosition(this), e.Delta.Y > 0 ? 1.12 : 1 / 1.12);
     protected override void OnKeyDown(KeyEventArgs e)
     {
         bool cmd = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
@@ -181,6 +213,9 @@ public sealed class SchematicCanvas : Control
         else if (e.Key is Key.Delete or Key.Back) DeleteSelected();
         else if (e.Key == Key.Escape) { if (_wireStart != null) _wireStart = null; else Tool = Tool.Select; }
         else if (e.Key == Key.W) Tool = Tool.Wire;
+        else if (e.Key is Key.OemPlus or Key.Add) ZoomBy(1.25);
+        else if (e.Key is Key.OemMinus or Key.Subtract) ZoomBy(1 / 1.25);
+        else if (e.Key is Key.D0 or Key.NumPad0 or Key.F) FitAll();
         else if (Shortcut(e.Key) is { } k) BeginPlace(k);
         else return;
         e.Handled = true; InvalidateVisual();
@@ -267,7 +302,12 @@ public sealed class SchematicCanvas : Control
             if (a.X != g.X && a.Y != g.Y) { var m = new GridPoint(g.X, a.Y); ctx.DrawLine(dash, ToScreen(a), ToScreen(m)); ctx.DrawLine(dash, ToScreen(m), ToScreen(g)); }
             else ctx.DrawLine(dash, ToScreen(a), ToScreen(g));
         }
-        if (_inside && _tool != Tool.Select)
+        if (_zoomStart is { } zs && _inside)
+        {
+            var r = new Rect(zs, _lastPos).Normalize();
+            ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#2563eb"), 0.08), new Pen(Accent, 1, new DashStyle([4, 3], 0)), r);
+        }
+        if (_inside && _tool != Tool.Select && _tool != Tool.ZoomWindow)
         {
             var c = ToScreen(_cursor); var pen = new Pen(Accent, 1);
             ctx.DrawLine(pen, new(c.X - 6, c.Y), new(c.X + 6, c.Y)); ctx.DrawLine(pen, new(c.X, c.Y - 6), new(c.X, c.Y + 6));
