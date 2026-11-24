@@ -131,6 +131,12 @@ public static class Symboles
                         ctx.DrawGeometry(brush, null, geo); break;
                     }
                 case FormePrimitive.Cercle: ctx.DrawEllipse(null, pen, map(t.X1, t.Y1), t.X2 * d, t.X2 * d); break;
+                case FormePrimitive.Arc:
+                    {
+                        var pts = t.PointsArc().Select(q => map(q.X, q.Y)).ToList();
+                        for (int i = 1; i < pts.Count; i++) ctx.DrawLine(pen, pts[i - 1], pts[i]);
+                        break;
+                    }
                 case FormePrimitive.Rectangle: ctx.DrawRectangle(null, pen, new Rect(map(t.X1, t.Y1), map(t.X2, t.Y2)).Normalize()); break;
                 case FormePrimitive.Polygone when t.Points is { Count: > 1 } pts:
                     {

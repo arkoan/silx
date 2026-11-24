@@ -27,6 +27,14 @@ static class Icones
     public const string LimiteBasse = "M3 11h6l4 4h8 M6 11l-3 3 M10 12l-3 3 M14 15l-3 3 M19 15l-3 3";
     public const string Croix = "M7 7l10 10 M17 7L7 17";
     public const string Plus = "M12 5v14 M5 12h14";
+    public const string OutilBroche = "M3 12h9 M14 12a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0";
+    public const string OutilLigne = "M5 19L19 5";
+    public const string OutilRectangle = "M4 6h16v12H4z";
+    public const string OutilTriangle = "M6 4v16l13-8z";
+    public const string OutilCercle = "M4 12a8 8 0 1 0 16 0a8 8 0 1 0-16 0";
+    public const string OutilArc = "M4 17a8 8 0 0 1 16 0";
+    public const string TexteModele = "M6 3h9l4 4v14H6z M9 10h7 M9 13h7 M9 16h5";
+    public const string Crayon = "M4 20l4-1 11-11-3-3L5 16z M14 7l3 3";
     public const string Sonde = "M3 21l5-5 M8 16l2 2 6-6-4-4-6 6z M14 6l3-3 4 4-3 3";
     public const string Graphique = "M3 4h18v7H3z M3 13h18v7H3z M6 9l3-3 3 2 4-3 M6 18l3-2 3 1 4-3";
     public const string ZoomPlus = "M3 10.5a7.5 7.5 0 1 0 15 0a7.5 7.5 0 1 0-15 0 M16 16l5 5 M10.5 7.5v6 M7.5 10.5h6";

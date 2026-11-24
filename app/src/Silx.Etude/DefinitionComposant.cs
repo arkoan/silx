@@ -2,11 +2,12 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 namespace Silx.Etude;
 
-public enum FormePrimitive { Trait, Rectangle, Cercle, Polygone, Fleche, Texte }
+public enum FormePrimitive { Trait, Rectangle, Cercle, Polygone, Fleche, Texte, Arc }
 
 /// <summary>
 /// Élément graphique d'un symbole, en pas de grille (réels), dans le repère du symbole (origine = point d'accroche).
-/// Trait/Rectangle/Flèche : (X1,Y1)→(X2,Y2) ; Cercle : centre (X1,Y1), rayon X2 ; Polygone : Points ; Texte : (X1,Y1).
+/// Trait/Rectangle/Flèche : (X1,Y1)→(X2,Y2) ; Cercle : centre (X1,Y1), rayon X2 ; Polygone : Points ; Texte : (X1,Y1) ;
+/// Arc : demi-cercle de diamètre (X1,Y1)→(X2,Y2), bombé à gauche du sens de tracé.
 /// </summary>
 public sealed class Primitive
 {
@@ -24,6 +25,16 @@ public sealed class Primitive
     public static Primitive Cercle(double cx, double cy, double r) => new() { Forme = FormePrimitive.Cercle, X1 = cx, Y1 = cy, X2 = r };
     public static Primitive Rect(double x1, double y1, double x2, double y2) => new() { Forme = FormePrimitive.Rectangle, X1 = x1, Y1 = y1, X2 = x2, Y2 = y2 };
     public static Primitive Poly(bool plein, params double[] xy) => new() { Forme = FormePrimitive.Polygone, Plein = plein, Points = Enumerable.Range(0, xy.Length / 2).Select(i => new[] { xy[2 * i], xy[2 * i + 1] }).ToList() };
+    public static Primitive ArcDe(double x1, double y1, double x2, double y2) => new() { Forme = FormePrimitive.Arc, X1 = x1, Y1 = y1, X2 = x2, Y2 = y2 };
+
+    /// <summary>Points d'un arc (demi-cercle), pour le dessin et l'encombrement.</summary>
+    public IEnumerable<(double X, double Y)> PointsArc(int n = 20)
+    {
+        double cx = (X1 + X2) / 2, cy = (Y1 + Y2) / 2, r = Math.Sqrt((X2 - X1) * (X2 - X1) + (Y2 - Y1) * (Y2 - Y1)) / 2;
+        double a0 = Math.Atan2(Y1 - cy, X1 - cx);
+        for (int i = 0; i <= n; i++) { var a = a0 - Math.PI * i / n; yield return (cx + r * Math.Cos(a), cy + r * Math.Sin(a)); }
+    }
+
     public static Primitive Txt(double x, double y, string t) => new() { Forme = FormePrimitive.Texte, X1 = x, Y1 = y, Texte = t };
 
     public Primitive Clone() => new() { Forme = Forme, X1 = X1, Y1 = Y1, X2 = X2, Y2 = Y2, Plein = Plein, Texte = Texte, Points = Points?.Select(p => p.ToArray()).ToList() };
@@ -43,7 +54,7 @@ public sealed class BrocheSymbole
 
 /// <summary>Gabarit de dessin d'un symbole.</summary>
 /// <summary>Gabarit de dessin d'un symbole. Nmos/Pmos : 4 broches (substrat B) ; Nmos3/Pmos3 : substrat relié à la source.</summary>
-public enum GabaritSymbole { Boite, Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf, Nmos3, Pmos3 }
+public enum GabaritSymbole { Boite, Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf, Nmos3, Pmos3, Personnalise }
 
 public sealed class Symbole
 {
@@ -68,6 +79,7 @@ public sealed class Symbole
                 case FormePrimitive.Cercle: xs.Add(t.X1 - t.X2); xs.Add(t.X1 + t.X2); ys.Add(t.Y1 - t.X2); ys.Add(t.Y1 + t.X2); break;
                 case FormePrimitive.Polygone: foreach (var p in t.Points ?? []) { xs.Add(p[0]); ys.Add(p[1]); } break;
                 case FormePrimitive.Texte: xs.Add(t.X1); ys.Add(t.Y1); break;
+                case FormePrimitive.Arc: foreach (var (x, y) in t.PointsArc(8)) { xs.Add(x); ys.Add(y); } break;
                 default: xs.Add(t.X1); xs.Add(t.X2); ys.Add(t.Y1); ys.Add(t.Y2); break;
             }
         if (xs.Count == 0) return (0, 0, 1, 1);
@@ -163,6 +175,22 @@ public sealed class DefinitionComposant
     /// </summary>
     public void AppliquerGabarit(GabaritSymbole g, bool diodeCorps = false, IReadOnlyDictionary<string, string>? rolesParBroche = null)
     {
+        if (g == GabaritSymbole.Personnalise)
+        {
+            // Dessin libre : on part du symbole actuel, dont le corps de boîte devient des éléments modifiables.
+            var s = Symbole.Clone(); s.Gabarit = g;
+            if (s.Corps is { } c)
+            {
+                s.Traits.Add(Primitive.Rect(c[0], c[1], c[2], c[3]));
+                foreach (var b in s.Broches)
+                {
+                    double ex = Math.Clamp(b.X, c[0], c[2]), ey = Math.Clamp(b.Y, c[1], c[3]);
+                    if (ex != b.X || ey != b.Y) s.Traits.Add(Primitive.Trait(b.X, b.Y, ex, ey));
+                }
+                s.Corps = null;
+            }
+            Symbole = s; return;
+        }
         var parRole = RolesConnus();
         if (rolesParBroche != null) foreach (var (p, role) in rolesParBroche) parRole[role] = p;
         var visibles = BrochesModele.Where(n => !BrochesCachees.ContainsKey(n)).ToList();

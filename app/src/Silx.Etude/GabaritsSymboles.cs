@@ -17,7 +17,7 @@ public static class GabaritsSymboles
         GabaritSymbole.Boite => "Boîte", GabaritSymbole.Diode => "Diode", GabaritSymbole.Npn => "NPN", GabaritSymbole.Pnp => "PNP",
         GabaritSymbole.Nmos => "MOS canal N, 4 broches", GabaritSymbole.Pmos => "MOS canal P, 4 broches",
         GabaritSymbole.Nmos3 => "MOS canal N, 3 broches", GabaritSymbole.Pmos3 => "MOS canal P, 3 broches",
-        GabaritSymbole.Njf => "JFET canal N", _ => "JFET canal P"
+        GabaritSymbole.Njf => "JFET canal N", GabaritSymbole.Pjf => "JFET canal P", _ => "Personnalisé (dessin libre)"
     };
 
     /// <summary>Crée le symbole d'un gabarit ; les broches du gabarit sont reliées aux broches du modèle de même nom (sinon laissées libres).</summary>

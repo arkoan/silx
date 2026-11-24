@@ -146,3 +146,12 @@ Retour sur un modèle de MOSFET fabricant (BSS138) : broches numérotées `20 10
 - **Compatibilité PSpice** : dès qu'un composant importé est présent, ngspice tourne avec `ngbehavior=psa` (TEMP, accolades
   imbriquées des modèles PSpice) ; les circuits sans modèle importé ne changent pas.
 - L'éditeur affiche ces infos, le nom des broches « 20 (DRAIN) », et un bouton « Voir le texte SPICE ».
+
+
+## 6. Texte du modèle et symbole personnalisé (ajout)
+
+- Le texte SPICE du modèle est affiché en permanence dans un panneau à droite de l'éditeur (masquable).
+- Gabarit **Personnalisé (dessin libre)** : il part du dessin actuel (le corps d'une boîte devient un rectangle et des
+  traits modifiables). Palette : sélection, broche, ligne, rectangle, triangle, cercle, arc ; tracé au demi-pas de grille,
+  broches sur les points entiers. Triangle : base au point de départ, pointe à l'arrivée. Arc : demi-cercle de diamètre
+  départ→arrivée, bombé à gauche du tracé. Sélection au clic sur le trait, déplacement au glisser, Suppr, ⌘Z / ⇧⌘Z.

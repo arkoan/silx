@@ -130,4 +130,40 @@ public class UiSpiceTests
         ed.RaccorderCachee("50", 2, "25");
         Assert.Equal("DC 25", ed.Definition.BrochesCachees["50"]);
     }
+
+    /// <summary>Symbole personnalisé : palette de dessin (rectangle, triangle, arc, cercle, broche), sélection, annulation.</summary>
+    [AvaloniaFact]
+    public void Dessiner_un_symbole_personnalise()
+    {
+        var d = DefinitionComposant.Depuis(ModelesSpice.Analyser(ModelesFabricantTests.Fichier).Modeles.First());
+        var ed = new EditeurSymbole(d) { Width = 1200, Height = 620 }; ed.Show();
+        int avant = ed.Definition.Symbole.Traits.Count;
+        ed.ChoisirOutil(OutilDessin.Rectangle);
+        Assert.Equal(GabaritSymbole.Personnalise, ed.Definition.Symbole.Gabarit);
+        Assert.Equal(avant, ed.Definition.Symbole.Traits.Count);            // le dessin du MOS est conservé, modifiable
+        ed.Tracer(OutilDessin.Rectangle, -1, -4, 6, 4);
+        ed.Tracer(OutilDessin.Triangle, 6.5, -1, 8.5, -1);
+        ed.Tracer(OutilDessin.Arc, -1, -2, -1, 2);
+        ed.Tracer(OutilDessin.Cercle, 7.5, 2, 8, 2);
+        Assert.Equal(avant + 4, ed.Definition.Symbole.Traits.Count);
+        Assert.Equal(FormePrimitive.Arc, ed.Definition.Symbole.Traits[avant + 2].Forme);
+        // Sélection au clic : le bord du rectangle
+        Assert.Equal(avant, ed.PrimitiveEn(2.5, -4.1));
+        ed.PrimitiveChoisie = avant; ed.SupprimerSelection();
+        Assert.Equal(avant + 3, ed.Definition.Symbole.Traits.Count);
+        ed.Annuler();
+        Assert.Equal(avant + 4, ed.Definition.Symbole.Traits.Count);
+        // Nouvelle broche, reliée à la broche thermique du modèle
+        ed.ChoisirOutil(OutilDessin.Broche);
+        ed.AjouterBrocheEn(-3, 4);
+        ed.ChoisirBrocheModele("50");
+        ed.ChoisirBrocheSymbole(ed.Definition.Symbole.Broches.Count - 1);
+        Assert.Equal("50", ed.Definition.Symbole.Broches[^1].BrocheModele);
+        Assert.False(ed.Definition.BrochesCachees.ContainsKey("50"));
+        Assert.DoesNotContain(ed.Definition.Verifier(), p => p.Severity == Severity.Error);
+        // Aller-retour JSON avec un arc
+        Assert.Equal(FormePrimitive.Arc, DefinitionComposant.DepuisJson(ed.Definition.VersJson()).Symbole.Traits[avant + 2].Forme);
+        ed.ChoisirOutil(OutilDessin.Selection);
+        Shot(ed, "22-symbole-personnalise.png");
+    }
 }
