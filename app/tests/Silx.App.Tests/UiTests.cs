@@ -78,6 +78,7 @@ public class UiTests
         var plot = w.PlotControl;
         Point Ecran(double tMs, double v)
         {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();   // mise en page du graphique à jour avant de convertir
             var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(tMs, v));
             return plot.TranslatePoint(new Point(px.X / plot.DisplayScale, px.Y / plot.DisplayScale), w)!.Value;
         }
@@ -103,6 +104,7 @@ public class UiTests
         var plot = w.PlotControl;
         Point Ecran(double tMs, double v)
         {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();   // mise en page du graphique à jour avant de convertir
             var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(tMs, v));
             return plot.TranslatePoint(new Point(px.X / plot.DisplayScale, px.Y / plot.DisplayScale), w)!.Value;
         }
@@ -134,6 +136,7 @@ public class UiTests
         var plot = w.PlotControl;
         Point Ecran(double tMs, double v)
         {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();   // mise en page du graphique à jour avant de convertir
             var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(tMs, v));
             return plot.TranslatePoint(new Point(px.X / plot.DisplayScale, px.Y / plot.DisplayScale), w)!.Value;
         }
@@ -206,6 +209,7 @@ public class UiTests
         var plot = w.PlotControl;
         Point Ecran(double f, double db)
         {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
             var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(Math.Log10(f), db));
             return plot.TranslatePoint(new Point(px.X / plot.DisplayScale, px.Y / plot.DisplayScale), w)!.Value;
         }
