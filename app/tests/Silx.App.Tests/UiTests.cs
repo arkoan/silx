@@ -92,4 +92,34 @@ public class UiTests
         Assert.Equal(0.97, basse.Points[1].Y, 0.02);
         Shot(w, "9-point-deplace.png");
     }
+
+    /// <summary>Régression : déplacer le premier ou le dernier point (un seul voisin) ne doit pas produire d'abscisse infinie.</summary>
+    [AvaloniaFact]
+    public async Task Deplacer_le_premier_et_le_dernier_point()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var plot = w.PlotControl;
+        Point Ecran(double tMs, double v)
+        {
+            var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(tMs, v));
+            return plot.TranslatePoint(new Point(px.X / plot.DisplayScale, px.Y / plot.DisplayScale), w)!.Value;
+        }
+        var basse = w.BancActif!.GabaritsTraces.Single(g => g.Limite == Silx.Mesures.Gabarits.Limite.Basse);
+        void Glisser(double t0, double v0, double t1, double v1)
+        {
+            w.MouseMove(Ecran(t0, v0)); Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            w.MouseDown(Ecran(t0, v0), Avalonia.Input.MouseButton.Left);
+            w.MouseMove(Ecran(t1, v1)); Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            w.MouseUp(Ecran(t1, v1), Avalonia.Input.MouseButton.Left); Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+        Glisser(2, 0, 1.5, 0.1);      // premier point
+        Glisser(10, 0.95, 9.5, 0.9);  // dernier point
+        Assert.Equal(1.5e-3, basse.Points[0].X, 1e-4);
+        Assert.Equal(9.5e-3, basse.Points[^1].X, 1e-4);
+        Assert.All(basse.Points, q => Assert.True(double.IsFinite(q.X) && double.IsFinite(q.Y)));
+        var r = Silx.Etude.Verification.EvaluerTrace(basse, w.Resultats!.Resultats[Silx.Etude.AnalyseKind.Transitoire]);
+        Assert.Equal(Silx.Mesures.Gabarits.Verdict.Pass, r.Verdict);
+    }
 }

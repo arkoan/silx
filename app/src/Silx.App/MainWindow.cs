@@ -147,6 +147,7 @@ public sealed class MainWindow : Window
     }
 
     public Banc? BancActif => _banc;
+    public ResultatEtude? Resultats => _last;
 
     Verdict? GlobalVerdict()
     {
@@ -428,11 +429,13 @@ public sealed class MainWindow : Window
         {
             // Déplacement d'un point : l'abscisse reste entre celles de ses voisins.
             var (x, y) = ToData(e); var pts = dv.G.Points;
-            double lo = dv.I > 0 ? pts[dv.I - 1].X : double.NegativeInfinity, hi = dv.I < pts.Count - 1 ? pts[dv.I + 1].X : double.PositiveInfinity;
-            double eps = dv.G.Analyse == AnalyseKind.Ac ? 1e-6 : 1e-12;
-            if (dv.G.Analyse == AnalyseKind.Ac) x = Math.Clamp(x, lo * (1 + 1e-3), hi * (1 - 1e-3));
-            else x = Math.Clamp(x, lo + eps + (hi - lo) * 1e-4, hi - eps - (hi - lo) * 1e-4);
-            if (double.IsNaN(x)) return;
+            // Bornes finies seulement : le premier et le dernier point n'ont qu'un voisin.
+            double? lo = dv.I > 0 ? pts[dv.I - 1].X : null, hi = dv.I < pts.Count - 1 ? pts[dv.I + 1].X : null;
+            bool ac = dv.G.Analyse == AnalyseKind.Ac;
+            if (lo is { } l) x = Math.Max(x, ac ? l * 1.001 : l + Math.Max(Math.Abs(l), 1e-9) * 1e-4);
+            if (hi is { } h) x = Math.Min(x, ac ? h * 0.999 : h - Math.Max(Math.Abs(h), 1e-9) * 1e-4);
+            if (ac) x = Math.Max(x, 1e-3);
+            if (!double.IsFinite(x) || !double.IsFinite(y) || (lo is { } l2 && x <= l2) || (hi is { } h2 && x >= h2)) return;
             pts[dv.I] = (x, y);
             ReevaluateTraces(); RefreshPlot(keepLimits: true);
             e.Handled = true; return;
