@@ -8,7 +8,7 @@
 ```bash
 brew install ngspice                      # moteur de simulation
 dotnet run --project src/Silx.App         # .NET 10 requis
-dotnet test                               # 20 tests, dont simulations ngspice réelles
+dotnet test                               # 22 tests, dont simulations ngspice réelles
 ```
 
 ngspice est cherché dans `SILX_NGSPICE`, puis `/opt/homebrew/bin`, `/usr/local/bin`, puis le PATH.

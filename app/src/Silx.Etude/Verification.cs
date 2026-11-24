@@ -53,8 +53,8 @@ public static class Verification
         if (erc.Any(i => i.Severity == Severity.Error))
             return new(new Dictionary<AnalyseKind, RawFile>(), [], [], erc, "", "Simulation bloquée : corriger les erreurs de vérification du schéma.");
 
-        var kinds = toujours.Concat(etude.Gabarits.Select(g => g.Info.Analyse)).Concat(etude.GabaritsTraces.Select(g => g.Analyse)).Distinct().ToList();
-        if (kinds.Count == 0) kinds.Add(AnalyseKind.Transitoire);
+        // Un banc = un type d'analyse (temporel ou fréquentiel).
+        var kinds = new List<AnalyseKind> { etude.Type };
         var runner = new NgspiceRunner { Executable = NgspiceExecutable() };
         var raws = new Dictionary<AnalyseKind, RawFile>();
         var journal = new System.Text.StringBuilder();
@@ -75,8 +75,8 @@ public static class Verification
         catch (NgspiceException ex) { return new(raws, [], [], erc, ex.Log, ex.Message); }
         catch (Exception ex) { return new(raws, [], [], erc, journal.ToString(), ex.Message); }
 
-        var criteres = etude.Gabarits.Select(g => new ResultatCritere(g, Evaluer(g, raws[g.Info.Analyse]))).ToList();
-        var traces = etude.GabaritsTraces.Select(g => new ResultatTrace(g, EvaluerTrace(g, raws[g.Analyse]))).ToList();
+        var criteres = etude.CriteresActifs.Select(g => new ResultatCritere(g, Evaluer(g, raws[g.Info.Analyse]))).ToList();
+        var traces = etude.TracesActives.Select(g => new ResultatTrace(g, EvaluerTrace(g, raws[g.Analyse]))).ToList();
         return new(raws, criteres, traces, erc, journal.ToString(), null);
     }
 

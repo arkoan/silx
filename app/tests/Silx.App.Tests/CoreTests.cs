@@ -126,6 +126,17 @@ public class CoreTests
     }
 
     [Fact]
+    public async Task Un_banc_frequentiel_ne_lance_que_l_analyse_ac()
+    {
+        var e = Silx.Etude.Etude.Demo(); var b = Banc(e, "Réponse");
+        b.Gabarits.Add(new() { Mesure = TypeMesure.TempsDeMontee, Noeud = "OUT", Max = 1e-9 });   // critère temporel : ignoré
+        var r = await Verification.RunAsync(e, b, []);
+        Assert.Equal([AnalyseKind.Ac], r.Resultats.Keys);
+        Assert.DoesNotContain(r.Criteres, c => c.Critere.Mesure == TypeMesure.TempsDeMontee);
+        Assert.Equal(Verdict.Pass, r.Global);
+    }
+
+    [Fact]
     public async Task Gabarit_dessine_franchi_echoue()
     {
         var e = Silx.Etude.Etude.Demo(); var b = Banc(e, "Échelon");

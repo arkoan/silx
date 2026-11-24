@@ -31,8 +31,6 @@ public sealed class MainWindow : Window
     readonly TabControl _bottomTabs = new();
     readonly TabItem _ercTab = new();
     readonly Button _simulate;
-    readonly RadioButton _showTran = new() { Content = "Transitoire", GroupName = "aff", IsChecked = true };
-    readonly RadioButton _showAc = new() { Content = "AC (Bode)", GroupName = "aff" };
     readonly Dictionary<ComponentKind, Button> _paletteButtons = new();
     Button _toolSelect = null!, _toolWire = null!;
     // Courbes : mode Simulation (courbes seules) / Test (gabarits visibles et dessinables).
@@ -69,7 +67,8 @@ public sealed class MainWindow : Window
         set { if (_banc == null) return; if (value == null) _results.Remove(_banc); else _results[_banc] = value; }
     }
 
-    AnalyseKind Shown => _showAc.IsChecked == true ? AnalyseKind.Ac : AnalyseKind.Transitoire;
+    /// <summary>Vue des courbes : imposée par le type du banc actif.</summary>
+    AnalyseKind Shown => _banc?.Type ?? AnalyseKind.Transitoire;
 
     public MainWindow()
     {
@@ -108,8 +107,6 @@ public sealed class MainWindow : Window
             if (_drawing != null && e.Key is Key.Enter or Key.Escape) { e.Handled = true; EndDrawing(e.Key == Key.Enter); return; }
             if (e.Key == Key.F5 || (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Meta))) { e.Handled = true; await SimulateAsync(); }
         };
-        _showTran.IsCheckedChanged += (_, _) => { if (_showTran.IsChecked == true) RefreshPlot(); };
-        _showAc.IsCheckedChanged += (_, _) => { if (_showAc.IsChecked == true) RefreshPlot(); };
 
         LoadEtude(EtudeModel.Demo());
         _status.Text = "Clic : placer / sélectionner · glisser : déplacer · clic droit ou molette : vue · ⌘R : pivoter · W : fil · Suppr · ⌘Z / ⇧⌘Z";
@@ -126,7 +123,13 @@ public sealed class MainWindow : Window
     public EtudeModel EtudeCourante => _etude;
     public AvaPlot PlotControl => _plot;
     public void SetModeTest(bool test) { _modeTest = test; RefreshPlotToolbar(); RefreshPlot(); }
-    public void ShowAnalysis(AnalyseKind k) { (k == AnalyseKind.Ac ? _showAc : _showTran).IsChecked = true; RefreshPlotToolbar(); RefreshPlot(); }
+    /// <summary>Change le type du banc actif (temporel / fréquentiel).</summary>
+    public void ShowAnalysis(AnalyseKind k)
+    {
+        if (_banc == null || _banc.Type == k) return;
+        EndDrawing(false); _banc.Type = k; _last = null; SetVerdict(null);
+        RefreshSide(); RefreshBenchBar(); RefreshPlotToolbar(); RefreshPlot(); OnSchemaChanged();
+    }
 
     void LoadEtude(EtudeModel e)
     {
@@ -308,8 +311,8 @@ public sealed class MainWindow : Window
         var seg = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
         seg.Children.Add(_modeSim); seg.Children.Add(_modeTestBtn);
 
-        _viewTran = Icones.Button(Icones.Temporel, "Vue temporelle (.tran)", () => ShowAnalysis(AnalyseKind.Transitoire), 17);
-        _viewAc = Icones.Button(Icones.Bode, "Vue fréquentielle : Bode (.ac)", () => ShowAnalysis(AnalyseKind.Ac), 17);
+        _viewTran = Icones.Button(Icones.Temporel, "Vue temporelle : suit le type du banc (réglable dans le panneau du banc)", () => { }, 17);
+        _viewAc = Icones.Button(Icones.Bode, "Vue Bode : suit le type du banc (réglable dans le panneau du banc)", () => { }, 17);
         var view = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
         view.Children.Add(_viewTran); view.Children.Add(_viewAc);
 
@@ -340,7 +343,13 @@ public sealed class MainWindow : Window
     void RefreshPlotToolbar()
     {
         Ui.SetActive(_modeSim, !_modeTest); Ui.SetActive(_modeTestBtn, _modeTest);
-        if (_viewTran != null) { Ui.SetActive(_viewTran, Shown == AnalyseKind.Transitoire); Ui.SetActive(_viewAc, Shown == AnalyseKind.Ac); }
+        if (_viewTran != null)
+        {
+            // La vue suit le type du banc : l'autre est grisée.
+            Ui.SetActive(_viewTran, _banc != null && Shown == AnalyseKind.Transitoire); Ui.SetActive(_viewAc, _banc != null && Shown == AnalyseKind.Ac);
+            _viewTran.IsEnabled = _banc?.Type == AnalyseKind.Transitoire; _viewAc.IsEnabled = _banc?.Type == AnalyseKind.Ac;
+            _viewTran.Opacity = _viewTran.IsEnabled ? 1 : 0.3; _viewAc.Opacity = _viewAc.IsEnabled ? 1 : 0.3;
+        }
         _testTools.IsVisible = _modeTest && _banc != null;
         Ui.SetActive(_drawHigh, _drawing?.Limite == Limite.Haute); Ui.SetActive(_drawLow, _drawing?.Limite == Limite.Basse);
         _drawHint.Text = _drawing == null ? "" : _drawing.Points.Count == 0
@@ -384,11 +393,11 @@ public sealed class MainWindow : Window
     void ReevaluateTraces()
     {
         if (_banc == null || _last == null || _last.Erreur != null) return;
-        var traces = Banc.GabaritsTraces.Where(g => _last.Resultats.ContainsKey(g.Analyse))
+        var traces = Banc.TracesActives.Where(g => _last.Resultats.ContainsKey(g.Analyse))
             .Select(g => new ResultatTrace(g, Verification.EvaluerTrace(g, _last.Resultats[g.Analyse]))).ToList();
         _last = _last with { Traces = traces };
         _status.Text = $"« {Banc.Nom} » : gabarit modifié · {_last.Respectes}/{_last.Nombre} contrainte(s) respectée(s)";
-        if (Banc.GabaritsTraces.Any(g => !_last.Resultats.ContainsKey(g.Analyse))) SetVerdict(null); else SetVerdict(_last.Nombre == 0 ? null : _last.Global);
+        if (Banc.TracesActives.Any(g => !_last.Resultats.ContainsKey(g.Analyse))) SetVerdict(null); else SetVerdict(_last.Nombre == 0 ? null : _last.Global);
     }
 
     (double X, double Y) ToData(PointerEventArgs e)
@@ -502,7 +511,7 @@ public sealed class MainWindow : Window
                 var detail = new TextBlock
                 {
                     FontSize = 11.5, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center,
-                    Text = r == null ? $"{b.Gabarits.Count + b.GabaritsTraces.Count} contrainte(s)" : r.Erreur != null ? "erreur" : $"{r.Respectes}/{r.Nombre} respectée(s)"
+                    Text = r == null ? $"{b.CriteresActifs.Count() + b.TracesActives.Count()} contrainte(s) · {(b.Type == AnalyseKind.Ac ? "fréquentiel" : "temporel")}" : r.Erreur != null ? "erreur" : $"{r.Respectes}/{r.Nombre} respectée(s)"
                 };
                 Grid.SetColumn(detail, 2); row.Children.Add(detail);
                 var bb = b;
@@ -534,7 +543,7 @@ public sealed class MainWindow : Window
         var add = Ui.ToolButton("+ Critère", "Ajouter un critère pass/fail", () =>
         {
             var n = Connectivity.Build(SchemaCourant).NamedNodes.FirstOrDefault() ?? "OUT";
-            Banc.Gabarits.Add(new CritereGabarit { Mesure = TypeMesure.BandePassante3dB, Noeud = n }); RefreshGabarits();
+            Banc.Gabarits.Add(new CritereGabarit { Mesure = Banc.Type == AnalyseKind.Ac ? TypeMesure.BandePassante3dB : TypeMesure.TempsDeMontee, Noeud = n }); RefreshGabarits();
         });
         Grid.SetColumn(add, 1); gh.Children.Add(add);
         _benchPanel.Children.Add(gh); _benchPanel.Children.Add(_gabarits);
@@ -557,8 +566,19 @@ public sealed class MainWindow : Window
         var pts = Ui.Field("Pts/déc.", Banc.Ac.PointsParDecade.ToString(), v => { if (int.TryParse(v, out var x) && x > 0) Banc.Ac.PointsParDecade = x; });
         Grid.SetColumn(pts, 4); ac.Children.Add(pts);
 
-        s.Children.Add(Ui.SubTitle("Transitoire (.tran)")); s.Children.Add(tran);
-        s.Children.Add(Ui.SubTitle("Petit signal (.ac, décade)")); s.Children.Add(ac);
+        var type = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        foreach (var (k, icon, label) in new[] { (AnalyseKind.Transitoire, Icones.Temporel, "Temporel"), (AnalyseKind.Ac, Icones.Bode, "Fréquentiel") })
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            row.Children.Add(Icones.Make(icon, 15, Banc.Type == k ? Ui.AccentBrush : Ui.Muted)); row.Children.Add(new TextBlock { Text = label, FontSize = 12.5, VerticalAlignment = VerticalAlignment.Center });
+            var b = new Button { Content = row, Padding = new Thickness(10, 4), CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), BorderBrush = Banc.Type == k ? Ui.AccentBrush : Ui.Line, Background = Banc.Type == k ? Ui.ActiveBg : Brushes.White };
+            ToolTip.SetTip(b, k == AnalyseKind.Ac ? "Banc fréquentiel : analyse .ac, courbes en Bode" : "Banc temporel : analyse .tran, courbes en fonction du temps");
+            var kk = k; b.Click += (_, _) => ShowAnalysis(kk);
+            type.Children.Add(b);
+        }
+        s.Children.Add(type);
+        if (Banc.Type == AnalyseKind.Transitoire) { s.Children.Add(Ui.SubTitle("Transitoire (.tran)")); s.Children.Add(tran); }
+        else { s.Children.Add(Ui.SubTitle("Petit signal (.ac, décade)")); s.Children.Add(ac); }
         return s;
     }
 
@@ -620,16 +640,17 @@ public sealed class MainWindow : Window
         _gabarits.Children.Clear(); _traces.Children.Clear();
         if (_banc == null) return;
         RefreshTraces();
-        if (Banc.Gabarits.Count == 0)
+        if (!Banc.CriteresActifs.Any())
             _gabarits.Children.Add(Ui.Hint("Aucun critère. Ajoutez par exemple « Bande passante −3 dB ≥ 1 kHz sur OUT »."));
         var nodes = Connectivity.Build(SchemaCourant).AllNodes.ToList();
-        foreach (var g in Banc.Gabarits.ToList())
+        foreach (var g in Banc.CriteresActifs.ToList())
         {
             var res = _last?.Criteres.FirstOrDefault(r => r.Critere == g)?.Resultat;
             var card = new StackPanel { Spacing = 6 };
             var head = new Grid { ColumnDefinitions = new("*,Auto") };
-            var mesure = new ComboBox { ItemsSource = TypesMesure.Tous.Select(i => i.Nom).ToList(), SelectedIndex = TypesMesure.Tous.ToList().FindIndex(i => i.Type == g.Mesure), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
-            mesure.SelectionChanged += (_, _) => { if (mesure.SelectedIndex >= 0 && TypesMesure.Tous[mesure.SelectedIndex].Type != g.Mesure) { g.Mesure = TypesMesure.Tous[mesure.SelectedIndex].Type; Invalidate(); } };
+            var choix = TypesMesure.Tous.Where(i => i.Analyse == Banc.Type).ToList();
+            var mesure = new ComboBox { ItemsSource = choix.Select(i => i.Nom).ToList(), SelectedIndex = choix.FindIndex(i => i.Type == g.Mesure), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+            mesure.SelectionChanged += (_, _) => { if (mesure.SelectedIndex >= 0 && choix[mesure.SelectedIndex].Type != g.Mesure) { g.Mesure = choix[mesure.SelectedIndex].Type; Invalidate(); } };
             var del = new Button { Content = "✕", Background = Brushes.Transparent, Foreground = Ui.Muted, Padding = new Thickness(6, 2), Margin = new Thickness(4, 0, 0, 0) };
             ToolTip.SetTip(del, "Retirer ce critère");
             del.Click += (_, _) => { Banc.Gabarits.Remove(g); Invalidate(); };
@@ -666,9 +687,9 @@ public sealed class MainWindow : Window
     void RefreshTraces()
     {
         _traces.Children.Clear();
-        if (Banc.GabaritsTraces.Count == 0)
+        if (!Banc.TracesActives.Any())
             _traces.Children.Add(Ui.Hint("Aucun. En mode Test, sous les courbes : choisissez un signal puis « Limite haute » ou « Limite basse » et cliquez sur le graphique."));
-        foreach (var g in Banc.GabaritsTraces.ToList())
+        foreach (var g in Banc.TracesActives.ToList())
         {
             var res = _last?.Traces.FirstOrDefault(t => t.Gabarit == g)?.Resultat;
             var card = new StackPanel { Spacing = 4 };
@@ -744,7 +765,7 @@ public sealed class MainWindow : Window
                 return;
             }
             _status.Text = "Simulation ngspice en cours…";
-            var res = await Verification.RunAsync(_etude, Banc, [Shown], _cts.Token);
+            var res = await Verification.RunAsync(_etude, Banc, [], _cts.Token);
             _last = res;
             _journal.Text = res.Journal;
             if (res.Erreur != null)

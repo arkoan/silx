@@ -55,6 +55,10 @@ public sealed class GabaritTrace
 public sealed class Banc
 {
     public string Nom { get; set; } = "Banc";
+    /// <summary>Nature du banc : temporel (.tran) ou fréquentiel (.ac). Seules les contraintes de ce type sont évaluées.</summary>
+    public AnalyseKind Type { get; set; } = AnalyseKind.Transitoire;
+    public IEnumerable<CritereGabarit> CriteresActifs => Gabarits.Where(g => g.Info.Analyse == Type);
+    public IEnumerable<GabaritTrace> TracesActives => GabaritsTraces.Where(g => g.Analyse == Type);
     public Schematic Calque { get; set; } = new();
     public ReglagesTransitoire Transitoire { get; } = new();
     public ReglagesAc Ac { get; } = new();
@@ -96,7 +100,7 @@ public sealed class Etude
         echelon.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Basse, Points = [(2e-3, 0), (3e-3, 0.8), (6e-3, 0.95), (10e-3, 0.95)] });
         e.Bancs.Add(echelon);
 
-        var bode = new Banc { Nom = "Réponse en fréquence" };
+        var bode = new Banc { Nom = "Réponse en fréquence", Type = AnalyseKind.Ac };
         bode.Calque.Components.Add(new() { Ref = "V1", Kind = ComponentKind.VoltageSource, Position = new(4, 8), Rotation = 1, Value = "AC 1" });
         bode.Calque.Components.Add(new() { Ref = "RL", Kind = ComponentKind.Resistor, Position = new(16, 8), Rotation = 1, Value = "100k" });
         bode.Calque.Wires.Add(new(new(12, 8), new(16, 8)));
