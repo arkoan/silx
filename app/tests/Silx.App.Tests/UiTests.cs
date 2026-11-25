@@ -603,4 +603,21 @@ public class UiTests
         Assert.NotNull(w.Resultats);
         Shot(w, "34-banc-depuis-modele.png");
     }
+
+    /// <summary>C2 : palette de commandes (recherche sans accents, exécution) et aide-mémoire.</summary>
+    [AvaloniaFact]
+    public void Palette_de_commandes_et_aide()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        Assert.Contains(w.ChercherCommandes("bode"), c => c.Nom.StartsWith("Nouveau banc"));
+        var placer = w.ChercherCommandes("placer resistance");
+        Assert.Equal("Placer : résistance", placer[0].Nom);
+        placer[0].Executer();
+        Assert.Equal(Silx.App.Tool.Place, w.Canevas.Tool);
+        Assert.Contains(w.ChercherCommandes("courbes seules"), c => c.Raccourci == "F3");
+        w.OuvrirPaletteCommandes(); Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(w.PaletteOuverte);
+        w.AfficherAide(); Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(w.AideOuverte);
+    }
 }

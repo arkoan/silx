@@ -17,7 +17,7 @@ namespace Silx.App;
 /// Fenêtre principale. Organisation : palette de composants (gauche), schéma / netlist (centre),
 /// propriétés + analyse + gabarits (droite), courbes / vérifications / journal (bas).
 /// </summary>
-public sealed class MainWindow : Window
+public sealed partial class MainWindow : Window
 {
     EtudeModel _etude = EtudeModel.Demo();
     readonly SchematicCanvas _canvas = new();
@@ -170,6 +170,8 @@ public sealed class MainWindow : Window
             if (_drawing != null && e.Key is Key.Enter or Key.Escape) { e.Handled = true; EndDrawing(e.Key == Key.Enter); return; }
             if (e.Key == Key.F5 || (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Meta))) { e.Handled = true; await SimulateAsync(); }
             bool cmd = e.KeyModifiers.HasFlag(KeyModifiers.Meta) || e.KeyModifiers.HasFlag(KeyModifiers.Control);
+            if (cmd0(e) && e.Key == Key.K) { e.Handled = true; OuvrirPaletteCommandes(); return; }
+            if (!cmd0(e) && FocusManager?.GetFocusedElement() is not TextBox && (e.KeySymbol == "?" || (e.Key == Key.OemComma && e.KeyModifiers.HasFlag(KeyModifiers.Shift)))) { e.Handled = true; AfficherAide(); return; }
             if (e.Key is Key.F1 or Key.F2 or Key.F3) { e.Handled = true; Disposer(e.Key == Key.F1 ? Disposition.Schema : e.Key == Key.F2 ? Disposition.Mixte : Disposition.Courbes); return; }
             if (!cmd && e.Key is Key.A or Key.B && _plotSurvol && _plot.IsPointerOver && FocusManager?.GetFocusedElement() is not TextBox)
             { e.Handled = true; PoserCurseur(e.Key == Key.A ? 'A' : 'B', _posPlot); return; }
@@ -196,6 +198,8 @@ public sealed class MainWindow : Window
         ActiverZone(Zone.Schema);
         _status.Text = "Clic : placer / sélectionner · glisser : déplacer · clic droit ou molette : vue · ⌘R : pivoter · W : fil · Suppr · ⌘Z / ⇧⌘Z";
     }
+
+    static bool cmd0(KeyEventArgs e) => e.KeyModifiers.HasFlag(KeyModifiers.Meta) || e.KeyModifiers.HasFlag(KeyModifiers.Control);
 
     static Control SimContent()
     {
@@ -496,6 +500,9 @@ public sealed class MainWindow : Window
         {
             var dd = d; var b = Icones.Button(ic, tip, () => Disposer(dd)); _boutonsDisposition[d] = b; bar.Children.Add(b);
         }
+        bar.Children.Add(Ui.Separator());
+        bar.Children.Add(Icones.Button(Icones.Chercher, "Chercher une commande ou un composant (⌘K)", OuvrirPaletteCommandes));
+        bar.Children.Add(Icones.Button(Icones.Aide, "Aide-mémoire des gestes et raccourcis (?)", AfficherAide));
         bar.Children.Add(Ui.Separator());
         bar.Children.Add(Icones.Button(Icones.PanneauGauche, "Afficher / masquer la palette de composants", () => { _left.IsVisible = !_left.IsVisible; }));
         bar.Children.Add(Icones.Button(Icones.PanneauDroit, "Afficher / masquer le panneau de propriétés et de gabarits", () => { _right.IsVisible = !_right.IsVisible; }));
