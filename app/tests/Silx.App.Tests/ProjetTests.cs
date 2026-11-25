@@ -38,13 +38,13 @@ public class ProjetTests
         var e = new Silx.Etude.Etude(); var banc = new Banc { Nom = "Interrupteur" }; e.Bancs.Add(banc);
         var def = DefinitionComposant.Depuis(ModelesSpice.Analyser(ModelesFabricantTests.Fichier).Modeles.First());
         e.Schema.Components.Add(new() { Ref = "X1", Kind = ComponentKind.Spice, Definition = def, Position = new(0, 0) });
-        e.Schema.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(3, 3) });
-        e.Schema.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(3, -3), Value = "OUT" });
+        e.Schema.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(2, 2) });
+        e.Schema.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(2, -2), Value = "OUT" });
         banc.Calque.Components.Add(new() { Ref = "VG", Kind = ComponentKind.VoltageSource, Position = new(0, 0), Rotation = 1, Value = "DC 5" });
         banc.Calque.Components.Add(new() { Ref = "GND2", Kind = ComponentKind.Ground, Position = new(0, 4) });
-        banc.Calque.Components.Add(new() { Ref = "RL", Kind = ComponentKind.Resistor, Position = new(3, -3), Rotation = 3, Value = "1k" });
-        banc.Calque.Components.Add(new() { Ref = "VDD", Kind = ComponentKind.VoltageSource, Position = new(3, -7), Rotation = 3, Value = "DC 5" });
-        banc.Calque.Components.Add(new() { Ref = "GND3", Kind = ComponentKind.Ground, Position = new(3, -11) });
+        banc.Calque.Components.Add(new() { Ref = "RL", Kind = ComponentKind.Resistor, Position = new(2, -2), Rotation = 3, Value = "1k" });
+        banc.Calque.Components.Add(new() { Ref = "VDD", Kind = ComponentKind.VoltageSource, Position = new(2, -6), Rotation = 3, Value = "DC 5" });
+        banc.Calque.Components.Add(new() { Ref = "GND3", Kind = ComponentKind.Ground, Position = new(2, -10) });
         banc.Transitoire.Duree = 1e-4; banc.Transitoire.Pas = 1e-6;
 
         var dir = Directory.CreateTempSubdirectory("silx-projet").FullName;

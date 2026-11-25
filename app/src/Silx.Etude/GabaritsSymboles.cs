@@ -38,7 +38,7 @@ public static class GabaritsSymboles
     {
         int n = Math.Max(broches.Count, 1), gauche = (n + 1) / 2, droite = n - gauche;
         int lignes = Math.Max(gauche, Math.Max(droite, 1));
-        var s = new Symbole { Gabarit = GabaritSymbole.Boite, Corps = [1, -1, 7, 2 * lignes - 1] };
+        var s = new Symbole { Gabarit = GabaritSymbole.Boite, Version = Symbole.VersionCourante, Corps = [1, -1, 7, 2 * lignes - 1] };
         for (int i = 0; i < broches.Count; i++)
         {
             bool g = i < gauche; int r = g ? i : i - gauche;
@@ -111,7 +111,39 @@ public static class GabaritsSymboles
                 t.Add(Primitive.Trait(1.5, 0.8, 3, 0.8)); t.Add(Primitive.Trait(3, 0.8, 3, 3));
                 break;
         }
+        // Transistors dessinés sur la grille fine (quart de pas) : broches à 2 pas au lieu de 3, symbole réduit d'un tiers.
+        if (g is not (GabaritSymbole.Diode or GabaritSymbole.Boite or GabaritSymbole.Personnalise)) Reduire(s, 2.0 / 3);
+        s.Version = Symbole.VersionCourante;
         return s;
+    }
+
+    /// <summary>Met le dessin à l'échelle <paramref name="k"/> autour de l'origine ; broches arrondies à la grille du schéma.</summary>
+    public static void Reduire(Symbole s, double k)
+    {
+        foreach (var b in s.Broches) { b.X = (int)Math.Round(b.X * k); b.Y = (int)Math.Round(b.Y * k); }
+        foreach (var t in s.Traits)
+        {
+            t.X1 *= k; t.Y1 *= k; t.Y2 *= k; t.X2 *= k;   // pour un cercle, X2 est le rayon : même échelle
+            if (t.Points != null) foreach (var p in t.Points) { p[0] *= k; p[1] *= k; }
+        }
+        if (s.Corps is { } c) for (int i = 0; i < c.Length; i++) c[i] *= k;
+    }
+
+    /// <summary>
+    /// Symbole d'une bibliothèque antérieure à la grille fine : un gabarit non retouché est redessiné à la nouvelle taille,
+    /// en gardant la liaison et le nom de chaque broche (repérées par leur rôle). Renvoie vrai s'il a changé.
+    /// </summary>
+    public static bool MettreAJour(Symbole s)
+    {
+        if (s.Version >= Symbole.VersionCourante) return false;
+        s.Version = Symbole.VersionCourante;
+        if (s.Gabarit is GabaritSymbole.Boite or GabaritSymbole.Personnalise or GabaritSymbole.Diode) return false;
+        var neuf = Dessin(s.Gabarit, s.DiodeCorps);
+        foreach (var b in neuf.Broches)
+            if (s.Broches.FirstOrDefault(a => a.Role == b.Role) is { } ancien) { b.BrocheModele = ancien.BrocheModele; b.Nom = ancien.Nom; }
+            else b.BrocheModele = null;
+        s.Traits = neuf.Traits; s.Broches = neuf.Broches;
+        return true;
     }
 
     /// <summary>Ajoute une broche libre sur une boîte : premier emplacement libre à droite, sinon à gauche ; agrandit le corps.</summary>

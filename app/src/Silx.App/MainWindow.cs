@@ -181,6 +181,7 @@ public sealed partial class MainWindow : Window
             if (e.Key is Key.F1 or Key.F2 or Key.F3) { e.Handled = true; Disposer(e.Key == Key.F1 ? Disposition.Schema : e.Key == Key.F2 ? Disposition.Mixte : Disposition.Courbes); return; }
             if (!cmd && e.Key is Key.A or Key.B && _plotSurvol && _plot.IsPointerOver && FocusManager?.GetFocusedElement() is not TextBox)
             { e.Handled = true; PoserCurseur(e.Key == Key.A ? 'A' : 'B', _posPlot); return; }
+            if (cmd && e.Key == Key.OemComma) { e.Handled = true; OuvrirParametres(); return; }
             if (cmd && e.Key == Key.N) { e.Handled = true; NouveauProjet(); }
             else if (cmd && e.Key == Key.O) { e.Handled = true; await OuvrirProjetAsync(); }
             else if (cmd && e.Key == Key.S) { e.Handled = true; await EnregistrerAsync(_projet!, e.KeyModifiers.HasFlag(KeyModifiers.Shift)); }
@@ -517,12 +518,35 @@ public sealed partial class MainWindow : Window
         bar.Children.Add(Icones.Button(Icones.PanneauDroit, "Afficher / masquer le panneau de propriétés et de gabarits", () => { _right.IsVisible = !_right.IsVisible; }));
 
         var rightSide = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(8, 3), HorizontalAlignment = HorizontalAlignment.Right };
-        _auto.IsCheckedChanged += (_, _) => { _simAuto = _auto.IsChecked == true; MajEtatResultats(); };
+        _auto.IsChecked = Parametres.Courant.SimulationAuto;
+        _auto.IsCheckedChanged += (_, _) =>
+        {
+            _simAuto = _auto.IsChecked == true; MajEtatResultats();
+            if (Parametres.Courant.SimulationAuto != _simAuto) { Parametres.Courant.SimulationAuto = _simAuto; Parametres.Courant.Enregistrer(); }
+        };
         ToolTip.SetTip(_auto, "Simulation automatique : relancée seule après chaque modification quand le calcul dure moins d'une seconde");
         rightSide.Children.Add(_etat); rightSide.Children.Add(_verdict); rightSide.Children.Add(_auto); rightSide.Children.Add(_simulate);
+        rightSide.Children.Add(Icones.Button(Icones.Reglages, "Paramètres de Silx (⌘,) : général, affichage (couleur des tests…), composants", () => OuvrirParametres()));
         var g = new Grid { ColumnDefinitions = new("*,Auto") };
         g.Children.Add(bar); g.Children.Add(rightSide); Grid.SetColumn(rightSide, 1);
         return new Border { Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 0, 1), Child = g };
+    }
+
+    FenetreParametres? _parametres;
+    public FenetreParametres? FenetreParametres => _parametres;
+    /// <summary>Ouvre la fenêtre Paramètres (une seule à la fois) ; chaque réglage s'applique aussitôt.</summary>
+    public FenetreParametres OuvrirParametres()
+    {
+        if (_parametres != null) { _parametres.Activate(); return _parametres; }
+        _parametres = new FenetreParametres(AppliquerParametres, _bib.Dossier ?? BibliothequeComposants.DossierParDefaut());
+        _parametres.Closed += (_, _) => _parametres = null;
+        _parametres.Show(this);
+        return _parametres;
+    }
+    void AppliquerParametres()
+    {
+        if (_auto.IsChecked != Parametres.Courant.SimulationAuto && Environment.GetEnvironmentVariable("SILX_SIM_AUTO") != "0") _auto.IsChecked = Parametres.Courant.SimulationAuto;
+        _canvas.InvalidateVisual(); RefreshBenchBar(); RefreshPlot(keepLimits: true);
     }
 
     void RefreshToolButtons()
@@ -1910,7 +1934,7 @@ public sealed partial class MainWindow : Window
             bool dim = _drawing != null && isActive && nodes.Count > 1 && _drawing.Points.Count > 0 && n != _drawing.Noeud;
             var color = palette.GetColor(idx);
             var sc = p.Add.ScatterLine(xs.Select(X).ToArray(), ys);
-            sc.LegendText = ac ? $"|V({n})| (dB)" : $"V({n})"; sc.LineWidth = dim ? 1.5f : 2.5f; sc.Color = dim ? color.WithAlpha(0.35) : color;
+            sc.LegendText = ac ? $"|V({n})| (dB)" : $"V({n})"; sc.LineWidth = dim ? 1.5f : (float)Parametres.Courant.EpaisseurCourbes; sc.Color = dim ? color.WithAlpha(0.35) : color;
             yMin = Math.Min(yMin, ys.Min()); yMax = Math.Max(yMax, ys.Max()); xLo = Math.Min(xLo, X(xs[0])); xHi = Math.Max(xHi, X(xs[^1]));
             if (ac)   // Bode : la phase est tracée dans les deux modes, en tirets, sur l'axe de droite
             {
@@ -1935,7 +1959,7 @@ public sealed partial class MainWindow : Window
         if (_modeTest)
         {
             double span = Math.Max(yMax - yMin, 1e-9), far = 1000 * span;
-            var red = ScottPlot.Color.FromHex("#b91c1c");
+            var red = Parametres.VersPlot(Parametres.Courant.Gabarit);
             void DrawMask(GabaritTrace g, IReadOnlyList<(double X, double Y)> pts, ResultatGabaritGraphique? res, bool draft)
             {
                 if (pts.Count == 0) return;
@@ -1959,7 +1983,7 @@ public sealed partial class MainWindow : Window
                 if (res?.XPire is { } xp && res.YPire is { } yp && res.Marge is { } m)
                 {
                     var ok = res.Verdict == Verdict.Pass;
-                    var col = ok ? ScottPlot.Color.FromHex("#15803d") : red;
+                    var col = ok ? Parametres.VersPlot(Parametres.Courant.Conforme) : Parametres.VersPlot(Parametres.Courant.NonConforme);
                     var mk = p.Add.Marker(X(xp), yp); mk.Color = col; mk.Size = 10; mk.Shape = ScottPlot.MarkerShape.OpenCircle; mk.LineWidth = 2;
                     var lim = (double)(g.Limite == Limite.Haute ? yp + m : yp - m);
                     var conn2 = p.Add.Line(X(xp), yp, X(xp), lim); conn2.Color = col; conn2.LineWidth = 1.5f; conn2.LinePattern = ScottPlot.LinePattern.Dotted;
@@ -1979,7 +2003,7 @@ public sealed partial class MainWindow : Window
             foreach (var rc in _last.Criteres.Where(c => ac && c.Critere.Mesure == TypeMesure.BandePassante3dB && c.Resultat.Valeur is not null && pane.Signaux.Contains(c.Critere.Noeud)))
             {
                 var vl = p.Add.VerticalLine(Math.Log10(rc.Resultat.Valeur!.Value));
-                vl.Color = rc.Resultat.Verdict == Verdict.Pass ? ScottPlot.Color.FromHex("#15803d") : red;
+                vl.Color = Parametres.VersPlot(rc.Resultat.Verdict == Verdict.Pass ? Parametres.Courant.Conforme : Parametres.Courant.NonConforme);
                 vl.LinePattern = ScottPlot.LinePattern.Dotted; vl.LineWidth = 1.5f;
                 vl.LabelText = $"fc {SpiceNumber.Format(rc.Resultat.Valeur!.Value, "Hz")}"; vl.LabelFontSize = 11; vl.LabelBackgroundColor = vl.Color; vl.LabelFontColor = ScottPlot.Colors.White;
             }
@@ -2035,7 +2059,7 @@ public sealed partial class MainWindow : Window
             var color = palette.GetColor(idx++);
             if (f.Length == 0) continue;
             var sc = p.Add.ScatterLine(f.Select(Math.Log10).ToArray(), db);
-            sc.LegendText = $"|V({n})| (dBV)"; sc.LineWidth = 1.8f; sc.Color = color;
+            sc.LegendText = $"|V({n})| (dBV)"; sc.LineWidth = (float)Math.Max(1, Parametres.Courant.EpaisseurCourbes * 0.7); sc.Color = color;
             yMax = Math.Max(yMax, db.Max()); xLo = Math.Min(xLo, Math.Log10(f[0])); xHi = Math.Max(xHi, Math.Log10(f[^1]));
         }
         p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic

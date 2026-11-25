@@ -534,7 +534,7 @@ public sealed class SchematicCanvas : Control
 
     /// <summary>Molette ou pavé tactile : zoom proportionnel à l'amplitude du geste (un pavé envoie beaucoup de petits pas).</summary>
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e) => ZoomAt(e.GetPosition(this), FacteurMolette(e.Delta.Y));
-    public static double FacteurMolette(double delta) => Math.Pow(1.06, Math.Clamp(delta, -3, 3));
+    public static double FacteurMolette(double delta) => Math.Pow(Parametres.Courant.BaseZoom, Math.Clamp(delta, -3, 3));
     protected override void OnKeyDown(KeyEventArgs e)
     {
         bool cmd = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);

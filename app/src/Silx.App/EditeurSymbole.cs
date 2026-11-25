@@ -390,7 +390,8 @@ public sealed class EditeurSymbole : Window
     {
         readonly EditeurSymbole _e;
         int? _drag; bool _moved; int? _hover;
-        // Dessin : point de départ et point courant (demi-pas de grille) ; déplacement d'un élément.
+        public const int SousPas = 4;
+        // Dessin : point de départ et point courant (quart de pas de grille) ; déplacement d'un élément.
         (double X, double Y)? _p0, _p1; int? _dragPrim; Primitive? _primOrigine; (double X, double Y) _primDepart;
         public Vue(EditeurSymbole e)
         {
@@ -415,7 +416,8 @@ public sealed class EditeurSymbole : Window
         }
         Point Ecran(double x, double y) { var (d, o) = Cadre(); return new(o.X + x * d, o.Y + y * d); }
         (int X, int Y) Grille(Point p) { var (d, o) = Cadre(); return ((int)Math.Round((p.X - o.X) / d), (int)Math.Round((p.Y - o.Y) / d)); }
-        (double X, double Y) DemiGrille(Point p) { var (d, o) = Cadre(); return (Math.Round((p.X - o.X) / d * 2) / 2, Math.Round((p.Y - o.Y) / d * 2) / 2); }
+        /// <summary>Grille fine du dessin : quart de pas du schéma (les broches restent sur la grille du schéma).</summary>
+        (double X, double Y) DemiGrille(Point p) { var (d, o) = Cadre(); return (Math.Round((p.X - o.X) / d * SousPas) / SousPas, Math.Round((p.Y - o.Y) / d * SousPas) / SousPas); }
         (double X, double Y) Reel(Point p) { var (d, o) = Cadre(); return ((p.X - o.X) / d, (p.Y - o.Y) / d); }
         bool Libre => _e.Definition.Symbole.Gabarit == GabaritSymbole.Personnalise;
         int? Broche(Point p)
@@ -472,8 +474,11 @@ public sealed class EditeurSymbole : Window
         {
             ctx.FillRectangle(Brushes.White, new Rect(Bounds.Size));
             var (d, o) = Cadre();
-            var dot = new SolidColorBrush(Color.Parse("#c9ccd3"));
-            for (double x = o.X % d; x < Bounds.Width; x += d) for (double y = o.Y % d; y < Bounds.Height; y += d) ctx.FillRectangle(dot, new Rect(x - .75, y - .75, 1.5, 1.5));
+            // Grille fine du dessin (quart de pas) en points pâles ; grille du schéma, où se posent les broches, en croix plus marquées.
+            var fin = new SolidColorBrush(Color.Parse("#e3e5ea")); var dot = new SolidColorBrush(Color.Parse("#a9aebb"));
+            double f = d / SousPas;
+            if (f >= 5) for (double x = o.X % f; x < Bounds.Width; x += f) for (double y = o.Y % f; y < Bounds.Height; y += f) ctx.FillRectangle(fin, new Rect(x - .6, y - .6, 1.2, 1.2));
+            for (double x = o.X % d; x < Bounds.Width; x += d) for (double y = o.Y % d; y < Bounds.Height; y += d) { ctx.FillRectangle(dot, new Rect(x - 2.5, y - .5, 5, 1)); ctx.FillRectangle(dot, new Rect(x - .5, y - 2.5, 1, 5)); }
             FormattedText T(string s, double size, IBrush b, FontWeight w) => new(s, System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, w), size * d / 24 + 5, b);
             Symboles.DessinerSymbole(ctx, S, Ecran, d, Ui.Ink, new Pen(Ui.Ink, Math.Max(1.3, d / 14)), T);
             var acc = new Pen(Ui.AccentBrush, Math.Max(1.3, d / 14));   // même épaisseur que le dessin : seule la couleur signale la sélection

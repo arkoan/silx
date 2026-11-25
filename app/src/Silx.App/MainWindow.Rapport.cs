@@ -105,7 +105,7 @@ public sealed partial class MainWindow
         foreach (var t in b.TracesActives.Where(t => signaux.Contains(t.Noeud)))
         {
             var l = p.Add.ScatterLine(t.Points.Select(q => X(q.X)).ToArray(), t.Points.Select(q => q.Y).ToArray());
-            l.Color = ScottPlot.Color.FromHex("#b91c1c"); l.LineWidth = 2; l.LinePattern = ScottPlot.LinePattern.Dashed; l.LegendText = $"gabarit {(t.Limite == Limite.Haute ? "haut" : "bas")}";
+            l.Color = Parametres.VersPlot(Parametres.Courant.Gabarit); l.LineWidth = 2; l.LinePattern = ScottPlot.LinePattern.Dashed; l.LegendText = $"gabarit {(t.Limite == Limite.Haute ? "haut" : "bas")}";
         }
         if (ac)
             p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic { MinorTickGenerator = new ScottPlot.TickGenerators.LogMinorTickGenerator(), IntegerTicksOnly = true, LabelFormatter = x => SpiceNumber.Format(Math.Pow(10, x), "Hz") };

@@ -85,9 +85,9 @@ public class SpiceTests
     public void Pivoter_un_composant_spice_tourne_ses_broches()
     {
         var q = new PlacedComponent { Ref = "Q1", Kind = ComponentKind.Spice, Definition = Def("Q2N2222"), Position = new(10, 10) };
-        Assert.Equal([new GridPoint(10, 10), new GridPoint(13, 7), new GridPoint(13, 13)], q.Pins);
+        Assert.Equal([new GridPoint(10, 10), new GridPoint(12, 8), new GridPoint(12, 12)], q.Pins);
         q.Rotation = 1;
-        Assert.Equal([new GridPoint(10, 10), new GridPoint(13, 13), new GridPoint(7, 13)], q.Pins);
+        Assert.Equal([new GridPoint(10, 10), new GridPoint(12, 12), new GridPoint(8, 12)], q.Pins);
     }
 
     [Fact]
@@ -127,14 +127,14 @@ public class SpiceTests
     public async Task Suiveur_npn_importe_simule_avec_ngspice()
     {
         var e = new Silx.Etude.Etude(); var banc = new Banc(); var s = e.Schema;
-        s.Components.Add(new() { Ref = "Q1", Kind = ComponentKind.Spice, Definition = Def("Q2N2222"), Position = new(0, 0) }); // B(0,0) C(3,-3) E(3,3)
-        s.Components.Add(new() { Ref = "RE", Kind = ComponentKind.Resistor, Position = new(3, 3), Rotation = 1, Value = "1k" });  // (3,3)-(3,7)
-        s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(3, 7) });
-        s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(3, 3), Value = "OUT" });
+        s.Components.Add(new() { Ref = "Q1", Kind = ComponentKind.Spice, Definition = Def("Q2N2222"), Position = new(0, 0) }); // B(0,0) C(2,-2) E(2,2)
+        s.Components.Add(new() { Ref = "RE", Kind = ComponentKind.Resistor, Position = new(2, 2), Rotation = 1, Value = "1k" });  // (3,3)-(3,7)
+        s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(2, 6) });
+        s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(2, 2), Value = "OUT" });
         banc.Calque.Components.Add(new() { Ref = "VB", Kind = ComponentKind.VoltageSource, Position = new(0, 0), Rotation = 1, Value = "DC 2" }); // (0,0)-(0,4)
         banc.Calque.Components.Add(new() { Ref = "GND2", Kind = ComponentKind.Ground, Position = new(0, 4) });
-        banc.Calque.Components.Add(new() { Ref = "VCC", Kind = ComponentKind.VoltageSource, Position = new(3, -3), Rotation = 3, Value = "DC 10" }); // (3,-3)-(3,-7)
-        banc.Calque.Components.Add(new() { Ref = "GND3", Kind = ComponentKind.Ground, Position = new(3, -7) });
+        banc.Calque.Components.Add(new() { Ref = "VCC", Kind = ComponentKind.VoltageSource, Position = new(2, -2), Rotation = 3, Value = "DC 10" }); // (3,-3)-(3,-7)
+        banc.Calque.Components.Add(new() { Ref = "GND3", Kind = ComponentKind.Ground, Position = new(2, -6) });
         banc.Transitoire.Duree = 1e-3; banc.Transitoire.Pas = 1e-5;
         var r = await Verification.RunAsync(e, banc, []);
         Assert.Null(r.Erreur);

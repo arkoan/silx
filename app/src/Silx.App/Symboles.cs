@@ -46,9 +46,9 @@ public static class Symboles
         {
             case ComponentKind.Resistor:
                 {
-                    // Symbole IEC : rectangle.
-                    ctx.DrawLine(pen, At(0), At(.22)); ctx.DrawLine(pen, At(.78), At(1));
-                    var poly = new[] { At(.22, h * .38), At(.78, h * .38), At(.78, -h * .38), At(.22, -h * .38), At(.22, h * .38) };
+                    // Symbole IEC : rectangle de proportions 1 × 2,5 (1,5 pas × 0,6 pas), centré entre les broches.
+                    ctx.DrawLine(pen, At(0), At(.31)); ctx.DrawLine(pen, At(.69), At(1));
+                    var poly = new[] { At(.31, h * .43), At(.69, h * .43), At(.69, -h * .43), At(.31, -h * .43), At(.31, h * .43) };
                     for (int i = 0; i < 4; i++) ctx.DrawLine(pen, poly[i], poly[i + 1]);
                     break;
                 }
@@ -121,7 +121,7 @@ public static class Symboles
                         var a = map(t.X1, t.Y1); var b = map(t.X2, t.Y2);
                         ctx.DrawLine(pen, a, b);
                         var v = b - a; var l = Math.Sqrt(v.X * v.X + v.Y * v.Y); if (l < 1e-6) break;
-                        var u = new Point(v.X / l, v.Y / l); var n = new Point(-u.Y, u.X); var h = d * 0.45; var m = new Point(b.X - u.X * h * 0.2, b.Y - u.Y * h * 0.2);
+                        var u = new Point(v.X / l, v.Y / l); var n = new Point(-u.Y, u.X); var h = Math.Min(d * 0.45, l * 0.35); var m = new Point(b.X - u.X * h * 0.2, b.Y - u.Y * h * 0.2);
                         var geo = new StreamGeometry();
                         using (var g = geo.Open())
                         {

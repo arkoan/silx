@@ -61,13 +61,16 @@ public enum GabaritSymbole { Boite, Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf, Nmos3
 public sealed class Symbole
 {
     public GabaritSymbole Gabarit { get; set; } = GabaritSymbole.Boite;
+    /// <summary>Version du dessin : 2 = grille fine (transistors à 2 pas). Absente des fichiers anciens (0).</summary>
+    public int Version { get; set; }
+    public const int VersionCourante = 2;
     /// <summary>MOS 3 broches : dessiner la diode de corps entre drain et source.</summary>
     public bool DiodeCorps { get; set; }
     /// <summary>Corps rectangulaire (gabarit Boîte) : les broches hors du corps y sont reliées par un trait, et leur nom est écrit à l'intérieur.</summary>
     public double[]? Corps { get; set; }
     public List<Primitive> Traits { get; set; } = new();
     public List<BrocheSymbole> Broches { get; set; } = new();
-    public Symbole Clone() => new() { Gabarit = Gabarit, DiodeCorps = DiodeCorps, Corps = Corps?.ToArray(), Traits = Traits.Select(t => t.Clone()).ToList(), Broches = Broches.Select(b => b.Clone()).ToList() };
+    public Symbole Clone() => new() { Gabarit = Gabarit, Version = Version, DiodeCorps = DiodeCorps, Corps = Corps?.ToArray(), Traits = Traits.Select(t => t.Clone()).ToList(), Broches = Broches.Select(b => b.Clone()).ToList() };
 
     /// <summary>Encombrement en pas de grille : (xmin, ymin, xmax, ymax), broches et dessin compris.</summary>
     public (double X0, double Y0, double X1, double Y1) Encombrement()
@@ -273,7 +276,13 @@ public sealed class BibliothequeComposants
         var b = new BibliothequeComposants { Dossier = dossier };
         if (!Directory.Exists(dossier)) return b;
         foreach (var f in Directory.GetFiles(dossier, "*" + Extension).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
-            try { b.Definitions.Add(DefinitionComposant.DepuisJson(File.ReadAllText(f))); } catch (Exception) { /* fichier illisible : ignoré */ }
+            try
+            {
+                var d = DefinitionComposant.DepuisJson(File.ReadAllText(f));
+                b.Definitions.Add(d);
+                if (GabaritsSymboles.MettreAJour(d.Symbole)) File.WriteAllText(f, d.VersJson());   // gabarits redessinés sur la grille fine
+            }
+            catch (Exception) { /* fichier illisible : ignoré */ }
         return b;
     }
 

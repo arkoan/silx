@@ -12,7 +12,12 @@ static class BibliothequeDeTest
 {
     /// <summary>Les tests n'écrivent pas dans ~/Documents : bibliothèque de composants dans un dossier temporaire.</summary>
     [ModuleInitializer]
-    internal static void Init() => Environment.SetEnvironmentVariable("SILX_COMPOSANTS", Path.Combine(Path.GetTempPath(), "silx-tests-" + Guid.NewGuid().ToString("N")));
+    internal static void Init()
+    {
+        var id = Guid.NewGuid().ToString("N");
+        Environment.SetEnvironmentVariable("SILX_COMPOSANTS", Path.Combine(Path.GetTempPath(), "silx-tests-" + id));
+        Environment.SetEnvironmentVariable("SILX_PARAMETRES", Path.Combine(Path.GetTempPath(), "silx-tests-" + id, "parametres.json"));   // pas les préférences de l'utilisateur
+    }
 }
 
 /// <summary>Interface : fils élastiques à la souris, import de modèles SPICE, éditeur de symbole (captures avec SILX_SHOT_DIR).</summary>
@@ -76,13 +81,13 @@ public class UiSpiceTests
         Shot(w, "18-composants-importes.png");
 
         // On change le symbole : le collecteur passe à droite ; un fil attaché à C suit.
-        w.EtudeCourante.Schema.Wires.Add(new(new(23, 5), new(23, 1)));
-        w.EtudeCourante.Schema.Components.Add(new() { Ref = "NET9", Kind = ComponentKind.Label, Position = new(23, 1), Value = "VC" });
+        w.EtudeCourante.Schema.Wires.Add(new(new(24, 6), new(24, 1)));
+        w.EtudeCourante.Schema.Components.Add(new() { Ref = "NET9", Kind = ComponentKind.Label, Position = new(24, 1), Value = "VC" });
         var ed = new EditeurSymbole(q);
-        ed.DeplacerBroche(1, 5, -3);
+        ed.DeplacerBroche(1, 4, -2);
         ed.Enregistrer();
         w.AppliquerSymbole(q, ed.Resultat!);
-        Assert.Equal(new GridPoint(25, 5), inst.Pins[1]);
+        Assert.Equal(new GridPoint(24, 6), inst.Pins[1]);
         var conn = Connectivity.Build(w.EtudeCourante.Schema);
         Assert.Equal("VC", conn.NodeOf[inst.Pins[1]]);
         Assert.True(File.Exists(Path.Combine(Environment.GetEnvironmentVariable("SILX_COMPOSANTS")!, "Q2N2222.silxcomp")));
@@ -218,5 +223,50 @@ public class UiSpiceTests
         w.ProposerReferences("MOSFET canal N", w.Canevas);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Shot(w, "38-references-mosfet.png");
+    }
+
+    /// <summary>Paramètres : fenêtre à sections, couleur des bancs de test appliquée tout de suite et enregistrée.</summary>
+    [AvaloniaFact]
+    public void Parametres_couleur_des_tests()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var f = w.OuvrirParametres();
+        Assert.Same(f, w.OuvrirParametres());   // une seule fenêtre
+        f.Afficher(FenetreParametres.Section.Affichage);
+        Parametres.Courant.CouleurBanc = "#0891b2"; Parametres.Courant.Appliquer(); Parametres.Courant.Enregistrer();
+        Assert.Equal(Avalonia.Media.Color.Parse("#0891b2"), ((Avalonia.Media.SolidColorBrush)SchematicCanvas.BenchBrush).Color);
+        Assert.Contains("#0891b2", File.ReadAllText(Parametres.Fichier()));
+        f.Afficher(FenetreParametres.Section.Affichage);
+        Shot(f, "40-parametres-affichage.png");
+        Shot(w, "41-banc-couleur-reglee.png");
+        f.Afficher(FenetreParametres.Section.General);
+        Shot(f, "42-parametres-general.png");
+        f.Close();
+        Parametres.Courant.Reinitialiser(); Parametres.Courant.Appliquer();
+    }
+
+    /// <summary>Grille fine : transistors à 2 pas ; une ancienne bibliothèque est redessinée en gardant les liaisons des broches.</summary>
+    [AvaloniaFact]
+    public void Symboles_sur_grille_fine()
+    {
+        var neuf = GabaritsSymboles.Dessin(GabaritSymbole.Nmos3, true);
+        var (x0, y0, x1, y1) = neuf.Encombrement();
+        Assert.True(y1 - y0 <= 4.01 && x1 - x0 <= 3.2);   // 4 pas de haut au lieu de 6
+        var ancien = GabaritsSymboles.Dessin(GabaritSymbole.Npn, false);
+        GabaritsSymboles.Reduire(ancien, 1.5); ancien.Version = 0;   // tel qu'enregistré avant la grille fine : broches à 3 pas
+        ancien.Broches.Single(b => b.Role == "C").BrocheModele = "COL"; ancien.Broches.Single(b => b.Role == "C").Nom = "Vc";
+        Assert.True(GabaritsSymboles.MettreAJour(ancien));
+        var c = ancien.Broches.Single(b => b.Role == "C");
+        Assert.Equal((2, -2, "COL", "Vc"), (c.X, c.Y, c.BrocheModele, c.Nom));
+        Assert.False(GabaritsSymboles.MettreAJour(ancien));
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var defs = w.ImporterModeles(ModelesFabricantTests.Fichier, "demo.lib");
+        var ed = new EditeurSymbole(defs[0]); ed.Show();
+        Shot(ed, "43-editeur-grille-fine.png");
+        w.SelectBanc(null);
+        w.EtudeCourante.Schema.Components.Add(new() { Ref = "X1", Kind = ComponentKind.Spice, Definition = defs[0], Position = new(30, 4) });
+        w.EtudeCourante.Schema.Components.Add(new() { Ref = "R9", Kind = ComponentKind.Resistor, Position = new(26, 10), Value = "10k" });
+        w.Schema.Load(w.EtudeCourante.Schema); w.Schema.FitAll();
+        Shot(w, "44-mosfet-et-resistance.png");
     }
 }
