@@ -565,6 +565,21 @@ public sealed partial class MainWindow : Window
         return _left = new Border { Width = 102, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 1, 0), Child = new ScrollViewer { Content = _palette } };
     }
 
+    /// <summary>Catégorie d'un composant importé, d'après son symbole ou son type de modèle.</summary>
+    public static string Categorie(DefinitionComposant d) => d.Symbole.Gabarit switch
+    {
+        GabaritSymbole.Nmos or GabaritSymbole.Nmos3 => "MOSFET canal N", GabaritSymbole.Pmos or GabaritSymbole.Pmos3 => "MOSFET canal P",
+        GabaritSymbole.Npn => "Bipolaire NPN", GabaritSymbole.Pnp => "Bipolaire PNP", GabaritSymbole.Diode => "Diode",
+        GabaritSymbole.Njf or GabaritSymbole.Pjf => "JFET",
+        _ => d.Type switch
+        {
+            TypeModele.Nmos => "MOSFET canal N", TypeModele.Pmos => "MOSFET canal P", TypeModele.Npn => "Bipolaire NPN", TypeModele.Pnp => "Bipolaire PNP",
+            TypeModele.Diode => "Diode", TypeModele.Njf or TypeModele.Pjf => "JFET", _ => "Sous-circuit"
+        }
+    };
+    static readonly string[] OrdreCategories = ["Diode", "Bipolaire NPN", "Bipolaire PNP", "MOSFET canal N", "MOSFET canal P", "JFET", "Sous-circuit"];
+
+    /// <summary>Composants importés : une tuile par catégorie (MOSFET N, bipolaire NPN…), puis la liste des références.</summary>
     void RebuildSpicePalette()
     {
         _spiceWrap.Children.Clear(); _spiceButtons.Clear();
@@ -572,17 +587,47 @@ public sealed partial class MainWindow : Window
         ToolTip.SetTip(imp, "Importer des modèles SPICE (.lib, .mod, .cir…) : .model D, NPN, PNP, NMOS, PMOS, NJF, PJF et .subckt");
         imp.Click += async (_, _) => await ImporterFichierAsync();
         _spiceWrap.Children.Add(imp);
-        foreach (var d in _bib.Definitions)
+        foreach (var g in _bib.Definitions.GroupBy(Categorie).OrderBy(g => Array.IndexOf(OrdreCategories, g.Key)))
         {
-            var ico = new Symboles.Icone { Kind = ComponentKind.Spice, Symbole = d.Symbole, Width = 34, Height = 24, Brush = Ui.Ink };
-            var b = new Button { Content = ico, Padding = new Thickness(5, 7), Margin = new Thickness(2), Background = Brushes.Transparent, CornerRadius = new CornerRadius(6), HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch };
-            ToolTip.SetTip(b, $"{d.Nom} — {d.Description}\nBroches du modèle : {string.Join(", ", d.BrochesModele)}\nMaj+clic pour en poser plusieurs · clic droit : modifier le symbole");
-            var def = d; b.Click += (_, _) => _canvas.BeginPlace(def);
-            var edit = new MenuItem { Header = "Modifier le symbole…", Icon = Icones.Make(Icones.EditerSymbole, 14) };
-            edit.Click += async (_, _) => await OuvrirEditeurAsync(def);
-            b.ContextMenu = new ContextMenu { Items = { edit } };
-            _spiceButtons[d] = b; _spiceWrap.Children.Add(b);
+            var defs = g.OrderBy(d => d.Nom, StringComparer.OrdinalIgnoreCase).ToList();
+            var grille = new Grid();
+            grille.Children.Add(new Symboles.Icone { Kind = ComponentKind.Spice, Symbole = defs[0].Symbole, Width = 34, Height = 24, Brush = Ui.Ink });
+            if (defs.Count > 1)
+                grille.Children.Add(new Border { Background = Ui.AccentBrush, CornerRadius = new CornerRadius(6), Padding = new Thickness(4, 0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, -6, -6, 0),
+                    Child = new TextBlock { Text = defs.Count.ToString(), Foreground = Brushes.White, FontSize = 9, FontWeight = FontWeight.Bold } });
+            var b = new Button { Content = grille, Padding = new Thickness(5, 7), Margin = new Thickness(2), Background = Brushes.Transparent, CornerRadius = new CornerRadius(6), HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch };
+            ToolTip.SetTip(b, $"{g.Key} — {defs.Count} référence(s) : {string.Join(", ", defs.Select(d => d.Nom).Take(6))}{(defs.Count > 6 ? "…" : "")}");
+            var cat = g.Key; b.Click += (_, _) => ProposerReferences(cat, b);
+            foreach (var d in defs) _spiceButtons[d] = b;
+            _spiceWrap.Children.Add(b);
         }
+    }
+
+    /// <summary>Second niveau : les références d'une catégorie ; clic pour placer, crayon pour modifier le symbole.</summary>
+    public void ProposerReferences(string categorie, Control ancre)
+    {
+        var sp = new StackPanel { Spacing = 2, Width = 280, Margin = new Thickness(4) };
+        sp.Children.Add(Ui.Title(categorie));
+        var fly = new Flyout { Content = new ScrollViewer { Content = sp, MaxHeight = 420 }, Placement = PlacementMode.RightEdgeAlignedTop };
+        foreach (var d in _bib.Definitions.Where(d => Categorie(d) == categorie).OrderBy(d => d.Nom, StringComparer.OrdinalIgnoreCase))
+        {
+            var dd = d;
+            var g = new Grid { ColumnDefinitions = new("34,*,Auto") };
+            g.Children.Add(new Symboles.Icone { Kind = ComponentKind.Spice, Symbole = d.Symbole, Width = 30, Height = 22, Brush = Ui.Ink });
+            var txt = new StackPanel { Margin = new Thickness(6, 0) };
+            txt.Children.Add(new TextBlock { Text = d.Nom, FontWeight = FontWeight.SemiBold, FontSize = Ui.Texte });
+            if (d.Notes.Length > 0) txt.Children.Add(new TextBlock { Text = d.Notes, FontSize = Ui.Aide, Foreground = Ui.Muted, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 180 });
+            Grid.SetColumn(txt, 1); g.Children.Add(txt);
+            var edit = new Button { Content = Icones.Make(Icones.EditerSymbole, 13, Ui.Muted), Padding = new Thickness(4), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
+            ToolTip.SetTip(edit, "Modifier le symbole");
+            edit.Click += async (_, e) => { e.Handled = true; fly.Hide(); await OuvrirEditeurAsync(dd); };
+            Grid.SetColumn(edit, 2); g.Children.Add(edit);
+            var b = new Button { Content = g, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(6, 4), Background = Brushes.Transparent, CornerRadius = new CornerRadius(6) };
+            ToolTip.SetTip(b, $"Placer {d.Nom} (Maj+clic sur le schéma pour en poser plusieurs)");
+            b.Click += (_, _) => { fly.Hide(); _canvas.BeginPlace(dd); };
+            sp.Children.Add(b);
+        }
+        fly.ShowAt(ancre);
     }
 
     async Task ImporterFichierAsync()
@@ -616,7 +661,7 @@ public sealed partial class MainWindow : Window
             _bib.Enregistrer(d);
         }
         RebuildSpicePalette();
-        var msg = defs.Count == 0 ? $"Aucun modèle importable dans {source}." : $"{defs.Count} modèle(s) importé(s) de {source} : {string.Join(", ", defs.Select(d => d.Nom))}. Clic droit sur une tuile pour modifier son symbole.";
+        var msg = defs.Count == 0 ? $"Aucun modèle importable dans {source}." : $"{defs.Count} modèle(s) importé(s) de {source} : {string.Join(", ", defs.Select(d => d.Nom))}. Ils sont rangés par catégorie dans la palette : cliquez une catégorie pour choisir la référence.";
         if (a.Avertissements.Count > 0) { msg += $" {a.Avertissements.Count} remarque(s) dans le journal."; _journal.Text = $"Import de {source}\n" + string.Join("\n", a.Avertissements.Select(w => "• " + w)) + "\n\n" + _journal.Text; }
         _status.Text = msg;
         return defs.Select(d => _bib.Definitions.First(x => string.Equals(x.Modele, d.Modele, StringComparison.OrdinalIgnoreCase))).ToList();

@@ -203,4 +203,20 @@ public class UiSpiceTests
         Assert.Equal("50", ed.Definition.Symbole.Broches[^1].BrocheModele);
         Assert.False(ed.Definition.BrochesCachees.ContainsKey("50"));
     }
+
+    /// <summary>Composants importés rangés par catégorie (diode, NPN, MOSFET N, sous-circuit…) puis par référence.</summary>
+    [AvaloniaFact]
+    public void Composants_importes_par_categorie()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        w.ImporterModeles(SpiceTests.Bibliotheque + "\n" + ModelesFabricantTests.Fichier, "essai.lib");
+        var cats = w.Bibliotheque.Definitions.GroupBy(MainWindow.Categorie).ToDictionary(g => g.Key, g => g.Select(d => d.Nom).ToList());
+        Assert.Contains("Q2N2222", cats["Bipolaire NPN"]);
+        Assert.Contains("BS170", cats["MOSFET canal N"]);
+        Assert.Contains("DEMO138", cats["MOSFET canal N"]);
+        Assert.Contains("RCF", cats["Sous-circuit"]);
+        w.ProposerReferences("MOSFET canal N", w.Canevas);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Shot(w, "38-references-mosfet.png");
+    }
 }
