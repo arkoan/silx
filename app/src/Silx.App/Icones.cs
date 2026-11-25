@@ -27,6 +27,8 @@ static class Icones
     public const string LimiteBasse = "M3 11h6l4 4h8 M6 11l-3 3 M10 12l-3 3 M14 15l-3 3 M19 15l-3 3";
     public const string Croix = "M7 7l10 10 M17 7L7 17";
     public const string Plus = "M12 5v14 M5 12h14";
+    public const string Rapport = "M6 3h9l4 4v14H6z M14 3v5h5 M9 17v-3 M12 17v-6 M15 17v-4";
+    public const string Explorateur = "M4 5h6 M4 5v14 M4 11h5 M4 17h5 M12 5h8 M12 11h8 M12 17h8";
     public const string Chercher = "M4 10.5a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0 M15.5 15.5L21 21";
     public const string Aide = "M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6 M12 17.5v.01";
     public const string Reglages = "M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z M12 2v3 M12 19v3 M2 12h3 M19 12h3 M4.9 4.9l2.1 2.1 M17 17l2.1 2.1 M4.9 19.1L7 17 M17 7l2.1-2.1";

@@ -476,6 +476,7 @@ public sealed partial class MainWindow : Window
         bar.Children.Add(Icones.Button(Icones.Nouveau, "Nouveau projet, dans un nouvel onglet (⌘N)", () => NouveauProjet()));
         bar.Children.Add(Icones.Button(Icones.Ouvrir, "Ouvrir un projet .silx (⌘O)", () => _ = OuvrirProjetAsync()));
         bar.Children.Add(Icones.Button(Icones.Enregistrer, "Enregistrer le projet (⌘S) ; ⇧⌘S : enregistrer sous", () => _ = EnregistrerAsync(_projet!, false)));
+        bar.Children.Add(Icones.Button(Icones.Rapport, "Exporter le rapport de test (Markdown et courbes)", () => _ = ExporterRapportAsync()));
         bar.Children.Add(Icones.Button(Icones.Exemple, "Ouvrir l'exemple : filtre RC et ses deux bancs de test", () => OuvrirDansOnglet(EtudeModel.Demo(), "Exemple RC", null)));
         bar.Children.Add(Ui.Separator());
         _toolSelect = Icones.Button(Icones.Selection, "Sélectionner et déplacer (Échap)", () => _canvas.Tool = Tool.Select);

@@ -620,4 +620,26 @@ public class UiTests
         w.AfficherAide(); Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.True(w.AideOuverte);
     }
+
+    /// <summary>E2 : rapport de test Markdown avec synthèse, contraintes et une image par banc.</summary>
+    [AvaloniaFact]
+    public async Task Rapport_de_test()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var dir = Directory.CreateTempSubdirectory("silx-rapport").FullName;
+        try
+        {
+            var md = await w.ExporterRapportVers(Path.Combine(dir, "rapport.md"));
+            Assert.Contains("| Échelon 1 V | temporel | 4/4 | ✓ conforme |", md);
+            Assert.Contains("| Réponse en fréquence | fréquentiel |", md);
+            Assert.Contains("Temps de montée 10–90 %", md);
+            Assert.Equal(2, Directory.GetFiles(Path.Combine(dir, "rapport_courbes"), "*.png").Length);
+            if (Environment.GetEnvironmentVariable("SILX_SHOT_DIR") is { } sd)
+            {
+                File.Copy(Path.Combine(dir, "rapport.md"), Path.Combine(sd, "35-rapport.md"), true);
+                File.Copy(Path.Combine(dir, "rapport_courbes", "banc-1.png"), Path.Combine(sd, "35-rapport-banc-1.png"), true);
+            }
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }
