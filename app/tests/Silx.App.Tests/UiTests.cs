@@ -8,7 +8,8 @@ namespace Silx.App.Tests;
 
 public static class TestApp
 {
-    public static AppBuilder BuildAvaloniaApp() => AppBuilder.Configure<App>().UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
+    public static AppBuilder BuildAvaloniaApp() { Environment.SetEnvironmentVariable("SILX_SIM_AUTO", "0"); return BuildAvaloniaAppSansAuto(); }
+    static AppBuilder BuildAvaloniaAppSansAuto() => AppBuilder.Configure<App>().UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
 }
 
 /// <summary>Rend la fenêtre réelle hors écran ; SILX_SHOT_DIR=dossier pour enregistrer les captures.</summary>
@@ -530,5 +531,27 @@ public class UiTests
         var l2 = p2.Plot.Axes.GetLimits();
         foreach (var a in autres) { var l = a.Plot.Axes.GetLimits(); Assert.Equal(l2.Left, l.Left, 6); Assert.Equal(l2.Right, l.Right, 6); }
         Shot(w, "31-axes-lies.png");
+    }
+
+    /// <summary>G3 : simulation automatique après une modification quand le dernier calcul était court ; critère réévalué sans resimuler.</summary>
+    [AvaloniaFact]
+    public async Task Simulation_automatique()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        w.SimulationAutomatique = true;
+        await w.SimulateAsync();
+        Assert.Equal("✓ À jour", w.EtatResultats);
+        // Critère modifié : réévalué tout de suite sur les résultats existants.
+        w.BancActif!.Gabarits[0].Max = 1e-3;
+        w.Reevaluer();
+        Assert.Equal(Silx.Mesures.Gabarits.Verdict.Fail, w.Resultats!.Global);
+        // Composant modifié : résultats périmés, relance automatique.
+        var c1 = w.EtudeCourante.Schema.Components.Single(c => c.Ref == "C1");
+        w.EditerCircuitDepuisBanc(c1);
+        w.ModifierComposantDeLaBulle("C1", "470n");
+        Assert.Equal("● À relancer", w.EtatResultats);
+        for (int i = 0; i < 100 && w.Resultats == null; i++) { await Task.Delay(50); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+        Assert.NotNull(w.Resultats);
+        Assert.Equal("✓ À jour", w.EtatResultats);
     }
 }

@@ -179,6 +179,8 @@ public sealed class MainWindow : Window
             else if (cmd && e.Key == Key.W) { e.Handled = true; await FermerProjetAsync(_projet!); }
         };
         _veille.Tick += (_, _) => RafraichirOnglets();
+        if (Environment.GetEnvironmentVariable("SILX_SIM_AUTO") == "0") _auto.IsChecked = false;   // tests : pas de relance en arrière-plan
+        _relance.Tick += async (_, _) => { _relance.Stop(); if (!_simEnCours) await SimulerAsync(keepLimits: true); };
         _veille.Start();
         Closing += async (_, e) =>
         {
@@ -502,7 +504,9 @@ public sealed class MainWindow : Window
         bar.Children.Add(Icones.Button(Icones.PanneauDroit, "Afficher / masquer le panneau de propriétés et de gabarits", () => { _right.IsVisible = !_right.IsVisible; }));
 
         var rightSide = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(8, 3), HorizontalAlignment = HorizontalAlignment.Right };
-        rightSide.Children.Add(_verdict); rightSide.Children.Add(_simulate);
+        _auto.IsCheckedChanged += (_, _) => { _simAuto = _auto.IsChecked == true; MajEtatResultats(); };
+        ToolTip.SetTip(_auto, "Simulation automatique : relancée seule après chaque modification quand le calcul dure moins d'une seconde");
+        rightSide.Children.Add(_etat); rightSide.Children.Add(_verdict); rightSide.Children.Add(_auto); rightSide.Children.Add(_simulate);
         var g = new Grid { ColumnDefinitions = new("*,Auto") };
         g.Children.Add(bar); g.Children.Add(rightSide); Grid.SetColumn(rightSide, 1);
         return new Border { Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 0, 1), Child = g };
@@ -1329,7 +1333,8 @@ public sealed class MainWindow : Window
             c.Ref = reference.Trim(); c.Value = valeur;
             _results.Clear(); SetVerdict(null); _canvas.InvalidateVisual();
             RefreshGabarits(); RefreshBenchBar(); RefreshPlot();
-            _status.Text = $"{c.Ref} modifié dans le circuit sous test : relancez les bancs.";
+            _status.Text = $"{c.Ref} modifié dans le circuit sous test.";
+            ResultatsPerimes();
             if (_bulle?.IsOpen == true && _bulleContenu != null) { _cible = _bulleContenu; Proprietes(); _cible = _props; }
             return;
         }
@@ -1576,7 +1581,19 @@ public sealed class MainWindow : Window
     static string Fx(AnalyseKind k, double x) => k == AnalyseKind.Ac ? SpiceNumber.Format(x, "Hz") : SpiceNumber.Format(x, "s");
 
     /// <summary>Un critère a changé : les résultats affichés ne correspondent plus.</summary>
-    void Invalidate() { _last = _last is null ? null : _last with { Criteres = [] }; SetVerdict(null); RefreshGabarits(); }
+    void Invalidate()
+    {
+        // Un critère a changé : on le réévalue sur les résultats déjà calculés (pas besoin de resimuler).
+        if (_banc != null && _last is { Erreur: null } r)
+        {
+            var crit = Banc.CriteresActifs.Where(g => r.Resultats.ContainsKey(g.Info.Analyse))
+                .Select(g => new ResultatCritere(g, Verification.Evaluer(g, r.Resultats[g.Info.Analyse]))).ToList();
+            _last = r with { Criteres = crit };
+            SetVerdict(_last.Nombre == 0 ? null : _last.Global);
+        }
+        else SetVerdict(null);
+        RefreshGabarits(); RefreshBenchBar(); RefreshPlot(keepLimits: true);
+    }
 
     // ───────────────────────── schéma → netlist / ERC ─────────────────────────
     void OnSchemaChanged()
@@ -1594,17 +1611,20 @@ public sealed class MainWindow : Window
         // Circuit modifié : tous les bancs sont à relancer. Calque modifié : seulement le banc actif.
         bool had = !_chargement && (_banc == null ? _results.Count > 0 : _last != null);
         if (!_chargement) { if (_banc == null) _results.Clear(); else _last = null; }
-        if (had) { SetVerdict(null); RefreshGabarits(); RefreshPlot(); RefreshBenchBar(); if (_banc == null) RefreshSide(); }
+        if (had) { SetVerdict(null); RefreshGabarits(); RefreshPlot(keepLimits: true); RefreshBenchBar(); if (_banc == null) RefreshSide(); }
+        if (!_chargement && (had || _last == null)) ResultatsPerimes();
         if (_banc != null && _banc.Type != _typeAffiche) { _typeAffiche = _banc.Type; _cursors.Clear(); RefreshSide(); RefreshBenchBar(); RefreshPlot(); }
         RefreshPlotToolbar();
         RefreshProperties();
     }
 
     // ───────────────────────── simulation ─────────────────────────
-    public async Task SimulateAsync()
+    public async Task SimulateAsync() => await SimulerAsync(keepLimits: false);
+
+    async Task SimulerAsync(bool keepLimits)
     {
         _cts?.Cancel(); _cts = new();
-        _simulate.IsEnabled = false;
+        _simulate.IsEnabled = false; _simEnCours = true; MajEtatResultats();
         try
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -1618,6 +1638,7 @@ public sealed class MainWindow : Window
                 _journal.Text = string.Join("\n", all.Select(x => $"════ {x.b.Nom} ════\n{x.r.Journal}"));
                 int ok = all.Count(x => x.r.Erreur == null && (x.r.Nombre == 0 || x.r.Global == Verdict.Pass));
                 _status.Text = $"{all.Length} banc(s) simulé(s) en {sw.ElapsedMilliseconds} ms · {ok}/{all.Length} conforme(s)";
+                _dureeDerniere = sw.ElapsedMilliseconds;
                 SetVerdict(GlobalVerdict());
                 RefreshSide(); RefreshBenchBar();
                 return;
@@ -1638,14 +1659,40 @@ public sealed class MainWindow : Window
                 SetVerdict(res.Nombre == 0 ? null : res.Global);
                 _bottomTabs.SelectedIndex = 0;
             }
-            RefreshGabarits(); RefreshPlot(); RefreshBenchBar();
+            RefreshGabarits(); RefreshPlot(keepLimits); RefreshBenchBar();
+            _dureeDerniere = sw.ElapsedMilliseconds;
         }
         catch (OperationCanceledException) { }
-        finally { _simulate.IsEnabled = true; }
+        finally { _simulate.IsEnabled = true; _simEnCours = false; MajEtatResultats(); }
     }
+
+    // ───────────────────────── simulation automatique ─────────────────────────
+    bool _simAuto = true, _simEnCours;
+    long _dureeDerniere = long.MaxValue;   // durée du dernier calcul (ms) ; inconnue = pas d'automatique
+    readonly CheckBox _auto = new() { Content = "Auto", IsChecked = true, FontSize = Ui.Aide, VerticalAlignment = VerticalAlignment.Center };
+    readonly TextBlock _etat = new() { FontSize = Ui.Aide, VerticalAlignment = VerticalAlignment.Center };
+    readonly Avalonia.Threading.DispatcherTimer _relance = new() { Interval = TimeSpan.FromMilliseconds(350) };
+    public bool SimulationAutomatique { get => _simAuto; set => _auto.IsChecked = value; }
+
+    /// <summary>Résultats périmés : relance automatique si le dernier calcul était court, sinon « à relancer ».</summary>
+    void ResultatsPerimes()
+    {
+        MajEtatResultats();
+        if (_simAuto && _dureeDerniere < 1000 && !_chargement) { _relance.Stop(); _relance.Start(); }
+    }
+
+    void MajEtatResultats()
+    {
+        bool aJour = _banc == null ? _etude.Bancs.Count > 0 && _etude.Bancs.All(b => _results.ContainsKey(b)) : _last != null;
+        _etat.Text = _simEnCours ? "Calcul…" : aJour ? "✓ À jour" : _banc == null && _etude.Bancs.Count == 0 ? "" : "● À relancer";
+        _etat.Foreground = _simEnCours ? Ui.Muted : aJour ? Ui.PassBrush : Ui.WarnBrush;
+    }
+    public string EtatResultats => _etat.Text ?? "";
+    public void Reevaluer() => Invalidate();
 
     void SetVerdict(Verdict? v)
     {
+        MajEtatResultats();
         _verdict.IsVisible = v != null;
         if (v == null) return;
         _verdict.Background = v == Verdict.Pass ? Ui.PassBrush : v == Verdict.Fail ? Ui.FailBrush : Ui.WarnBrush;
