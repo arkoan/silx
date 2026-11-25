@@ -63,7 +63,7 @@ public sealed class SchematicCanvas : Control
 
     Tool _tool = Tool.Select;
     readonly Stack<(Schematic S, List<List<Wire>> Calques)> _undo = new(), _redo = new();
-    double _zoom = 2.6; Point _pan = new(60, -60);
+    double _zoom = 1.6; Point _pan = new(60, 0);
     GridPoint? _filDepuisBroche, _brocheSurvol;
     /// <summary>Broche (point de grille) sous le pointeur, à 0,35 pas près.</summary>
     GridPoint? BrocheSous(Point pos)
@@ -145,7 +145,7 @@ public sealed class SchematicCanvas : Control
     {
         var pts = AllComponents.SelectMany(c => c.Pins).Concat(AllWires.SelectMany(w => new[] { w.A, w.B })).ToList();
         if (pts.Count == 0 || Bounds.Width < 10) return;
-        FitGrid(pts.Min(p => p.X) - 3, pts.Min(p => p.Y) - 4, pts.Max(p => p.X) + 5, pts.Max(p => p.Y) + 3, 3.2);
+        FitGrid(pts.Min(p => p.X) - 3, pts.Min(p => p.Y) - 4, pts.Max(p => p.X) + 5, pts.Max(p => p.Y) + 3, ZoomCadrageMax);
     }
     void FitGrid(double x0, double y0, double x1, double y1, double maxZoom)
     {
@@ -528,7 +528,13 @@ public sealed class SchematicCanvas : Control
             _dragging = null; _dragOrigin = null; _dragGroup = null; _dragFilsOrigine = null; Done();
         }
     }
-    protected override void OnPointerWheelChanged(PointerWheelEventArgs e) => ZoomAt(e.GetPosition(this), e.Delta.Y > 0 ? 1.12 : 1 / 1.12);
+    /// <summary>Zoom maximal quand on cadre tout le schéma : les composants gardent une taille raisonnable.</summary>
+    public const double ZoomCadrageMax = 1.7;
+    public double Zoom => _zoom;
+
+    /// <summary>Molette ou pavé tactile : zoom proportionnel à l'amplitude du geste (un pavé envoie beaucoup de petits pas).</summary>
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e) => ZoomAt(e.GetPosition(this), FacteurMolette(e.Delta.Y));
+    public static double FacteurMolette(double delta) => Math.Pow(1.06, Math.Clamp(delta, -3, 3));
     protected override void OnKeyDown(KeyEventArgs e)
     {
         bool cmd = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);

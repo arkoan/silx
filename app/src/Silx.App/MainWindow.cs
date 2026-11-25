@@ -804,6 +804,7 @@ public sealed partial class MainWindow : Window
             plot.AddHandler(PointerPressedEvent, OnPlotPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel);
             plot.AddHandler(PointerMovedEvent, OnPlotMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel);
             plot.AddHandler(PointerReleasedEvent, OnPlotReleased, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            plot.AddHandler(PointerWheelChangedEvent, OnPlotWheel, Avalonia.Interactivity.RoutingStrategies.Tunnel);
             var host = new Grid(); host.Children.Add(plot);
             var frame = new Border { BorderThickness = new Thickness(2, 0, 0, 0), Margin = new Thickness(0, i == 0 ? 0 : 3, 0, 0) };
             var pane = new Pane { Signaux = lists[i], Plot = plot, Host = host, Frame = frame };
@@ -1963,7 +1964,30 @@ public sealed partial class MainWindow : Window
 
         }
         if (ac) p.Axes.AutoScaleY(p.Axes.Right);   // la phase garde toujours son échelle, même après un zoom
+        // Zoom et déplacement bornés aux données : inutile de dézoomer au-delà des courbes.
+        BornerAuxDonnees(p, xLo, xHi, yMin, yMax);
         _plot.Refresh();
+    }
+
+    static void BornerAuxDonnees(ScottPlot.Plot p, double x0, double x1, double y0, double y1)
+    {
+        if (!(x1 > x0) || !double.IsFinite(x0) || !double.IsFinite(x1)) return;
+        double pad = Math.Max((y1 - y0) * 0.2, 1e-6);
+        p.Axes.Rules.Clear();
+        p.Axes.Rules.Add(new ScottPlot.AxisRules.MaximumBoundary(p.Axes.Bottom, p.Axes.Left, new ScottPlot.AxisLimits(x0, x1, y0 - pad, y1 + pad)));
+    }
+
+    /// <summary>Molette ou pavé tactile sur une courbe : zoom en X autour du pointeur, doux et proportionnel au geste.</summary>
+    void OnPlotWheel(object? sender, PointerWheelEventArgs e)
+    {
+        if (sender is not AvaPlot ap) return;
+        e.Handled = true;
+        var f = SchematicCanvas.FacteurMolette(e.Delta.Y);
+        var pos = e.GetPosition(ap); var sc = ap.DisplayScale;
+        var c = ap.Plot.GetCoordinates(new ScottPlot.Pixel((float)(pos.X * sc), (float)(pos.Y * sc)));
+        var l = ap.Plot.Axes.GetLimits();
+        ap.Plot.Axes.SetLimitsX(c.X - (c.X - l.Left) / f, c.X + (l.Right - c.X) / f);
+        ap.Refresh();
     }
 
     static double[] Unwrap(double[] deg)

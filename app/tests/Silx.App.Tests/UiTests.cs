@@ -669,4 +669,19 @@ public class UiTests
         w.SetModeTest(true);
         Shot(w, "37-bode-phase-mode-test.png");
     }
+
+    /// <summary>Zoom des courbes borné aux données ; zoom au pavé tactile doux ; composants de taille raisonnable.</summary>
+    [AvaloniaFact]
+    public async Task Zoom_borne_et_doux()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Assert.True(w.Canevas.Zoom <= Silx.App.SchematicCanvas.ZoomCadrageMax);
+        Assert.InRange(Silx.App.SchematicCanvas.FacteurMolette(0.1), 1.0, 1.01);   // petit geste de pavé : petit zoom
+        var plot = w.PlotControl;
+        plot.Plot.Axes.SetLimitsX(-100, 100); plot.Refresh(); w.CaptureRenderedFrame();
+        var l = plot.Plot.Axes.GetLimits();
+        Assert.True(l.Left >= -1e-9 && l.Right <= 10 + 1e-9);   // 0 à 10 ms, pas au-delà
+    }
 }

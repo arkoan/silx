@@ -31,7 +31,7 @@ static class Icones
     public const string Explorateur = "M4 5h6 M4 5v14 M4 11h5 M4 17h5 M12 5h8 M12 11h8 M12 17h8";
     public const string Chercher = "M4 10.5a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0 M15.5 15.5L21 21";
     public const string Aide = "M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6 M12 17.5v.01";
-    public const string Reglages = "M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z M12 2v3 M12 19v3 M2 12h3 M19 12h3 M4.9 4.9l2.1 2.1 M17 17l2.1 2.1 M4.9 19.1L7 17 M17 7l2.1-2.1";
+    public const string Reglages = "M19.81 10.29 L22.41 10.64 L22.41 13.36 L19.81 13.71 L18.74 16.31 L20.32 18.40 L18.40 20.32 L16.31 18.74 L13.71 19.81 L13.36 22.41 L10.64 22.41 L10.29 19.81 L7.69 18.74 L5.60 20.32 L3.68 18.40 L5.26 16.31 L4.19 13.71 L1.59 13.36 L1.59 10.64 L4.19 10.29 L5.26 7.69 L3.68 5.60 L5.60 3.68 L7.69 5.26 L10.29 4.19 L10.64 1.59 L13.36 1.59 L13.71 4.19 L16.31 5.26 L18.40 3.68 L20.32 5.60 L18.74 7.69 Z M12 8.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7z";   // roue crantée (8 dents)
     public const string VueSchema = "M3 4h18v16H3z M7 12h3l2-3 2 6 2-3h1";
     public const string VueMixte = "M3 4h18v16H3z M3 11h18 M7 8h4 M6 17c2-4 4 2 6-2s3 1 5 0";
     public const string VueCourbes = "M3 4h18v16H3z M5 16c3-8 5 4 8-2s4-3 6-2";
