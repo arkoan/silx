@@ -642,4 +642,16 @@ public class UiTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    /// <summary>B4 : explorateur de projet (circuit, bancs, contraintes, graphiques) ; clic pour y aller.</summary>
+    [AvaloniaFact]
+    public async Task Explorateur_de_projet()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        w.ExplorateurVisible = true;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(w.ElementsExplorateur >= 10);
+        Shot(w, "36-explorateur.png");
+    }
 }

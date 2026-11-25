@@ -154,6 +154,7 @@ public sealed partial class MainWindow : Window
         statusRow.Children.Add(_status); statusRow.Children.Add(_undoDelete);
         var status = new Border { Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(12, 2), Child = statusRow };
         DockPanel.SetDock(status, Dock.Bottom); root.Children.Add(status);
+        var explo = BuildExplorateur(); DockPanel.SetDock(explo, Dock.Left); root.Children.Add(explo);
         var left = BuildPalette(); DockPanel.SetDock(left, Dock.Left); root.Children.Add(left);
         var right = BuildSidePanel(); DockPanel.SetDock(right, Dock.Right); root.Children.Add(right);
         root.Children.Add(BuildCenter());
@@ -430,6 +431,7 @@ public sealed partial class MainWindow : Window
 
     void RefreshBenchBar()
     {
+        RafraichirExplorateur();
         _benchBar.Children.Clear();
         Button Tab(string text, bool active, Verdict? v, Action click, IBrush accent, Banc? removable = null)
         {
@@ -505,6 +507,7 @@ public sealed partial class MainWindow : Window
         bar.Children.Add(Icones.Button(Icones.Chercher, "Chercher une commande ou un composant (⌘K)", OuvrirPaletteCommandes));
         bar.Children.Add(Icones.Button(Icones.Aide, "Aide-mémoire des gestes et raccourcis (?)", AfficherAide));
         bar.Children.Add(Ui.Separator());
+        bar.Children.Add(Icones.Button(Icones.Explorateur, "Afficher / masquer l'explorateur de projet", () => ExplorateurVisible = !ExplorateurVisible));
         bar.Children.Add(Icones.Button(Icones.PanneauGauche, "Afficher / masquer la palette de composants", () => { _left.IsVisible = !_left.IsVisible; }));
         bar.Children.Add(Icones.Button(Icones.PanneauDroit, "Afficher / masquer le panneau de propriétés et de gabarits", () => { _right.IsVisible = !_right.IsVisible; }));
 
