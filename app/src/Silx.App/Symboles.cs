@@ -34,7 +34,7 @@ public static class Symboles
                 g.LineTo(new Point(box.Left, box.Top)); g.LineTo(new Point(box.Right - 5, box.Top));
                 g.LineTo(new Point(box.Right, box.Center.Y)); g.LineTo(new Point(box.Right - 5, box.Bottom)); g.EndFigure(true);
             }
-            ctx.DrawGeometry(new SolidColorBrush(Color.Parse("#fff7ed")), new Pen(brush, 1), geo);
+            ctx.DrawGeometry(Ui.LabelFill, new Pen(brush, 1), geo);
             ctx.DrawText(t, new Point(box.Left + 3, box.Top + 2));
             ctx.DrawEllipse(brush, null, a, 2.5, 2.5);
             return;
@@ -150,7 +150,7 @@ public static class Symboles
             }
         if (s.Corps is { } c)
         {
-            ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#fffdf5")), pen, new Rect(map(c[0], c[1]), map(c[2], c[3])).Normalize());
+            ctx.DrawRectangle(Ui.SymbolFill, pen, new Rect(map(c[0], c[1]), map(c[2], c[3])).Normalize());
             foreach (var b in s.Broches)
             {
                 // Trait de la broche jusqu'au bord du corps, et nom à l'intérieur.
@@ -178,7 +178,7 @@ public static class Symboles
         public required ComponentKind Kind { get; init; }
         /// <summary>Symbole d'un composant SPICE importé (Kind = Spice).</summary>
         public Silx.Etude.Symbole? Symbole { get; set; }
-        public IBrush Brush { get; set; } = new SolidColorBrush(Color.Parse("#1c1f26"));
+        public IBrush Brush { get; set; } = Ui.Ink;
         public override void Render(DrawingContext ctx)
         {
             var w = Bounds.Width; var h = Bounds.Height; var pen = new Pen(Brush, 1.5);

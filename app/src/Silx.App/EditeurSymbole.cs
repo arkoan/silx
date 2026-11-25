@@ -60,7 +60,7 @@ public sealed class EditeurSymbole : Window
             var voir = new Button { Content = "Voir le texte SPICE", FontSize = 11.5, Padding = new Thickness(6, 2), Background = Brushes.Transparent, Foreground = Ui.AccentBrush };
             voir.Click += (_, _) => new Window { Title = $"Modèle {Definition.Modele}", Width = 640, Height = 520, Content = new TextBox { Text = Definition.TexteSpice, IsReadOnly = true, AcceptsReturn = true, FontFamily = new FontFamily("Menlo, Consolas, monospace"), FontSize = 12 } }.Show(this);
             infos.Children.Add(voir);
-            gauche.Children.Add(new Border { Child = infos, Background = Brushes.White, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 6) });
+            gauche.Children.Add(new Border { Child = infos, Background = Ui.Surface, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 6) });
         }
         gauche.Children.Add(Ui.Section("Broches du modèle"));
         gauche.Children.Add(_liste);
@@ -119,7 +119,7 @@ public sealed class EditeurSymbole : Window
         var footB = new Border { Child = foot, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 0) };
 
         // Texte du modèle, à côté du symbole : on s'y retrouve sans ouvrir le fichier.
-        var txt = new TextBox { Text = Definition.TexteSpice, IsReadOnly = true, AcceptsReturn = true, FontFamily = new FontFamily("Menlo, Consolas, monospace"), FontSize = 11.5, TextWrapping = TextWrapping.NoWrap, BorderThickness = new Thickness(0), Background = Brushes.White };
+        var txt = new TextBox { Text = Definition.TexteSpice, IsReadOnly = true, AcceptsReturn = true, FontFamily = new FontFamily("Menlo, Consolas, monospace"), FontSize = 11.5, TextWrapping = TextWrapping.NoWrap, BorderThickness = new Thickness(0), Background = Ui.Surface };
         var txtDock = new DockPanel();
         var txtHead = new TextBlock { Text = $"Modèle SPICE · {Definition.Modele}", FontWeight = FontWeight.SemiBold, FontSize = 12, Margin = new Thickness(10, 6) };
         DockPanel.SetDock(txtHead, Dock.Top); txtDock.Children.Add(txtHead); txtDock.Children.Add(txt);
@@ -472,10 +472,10 @@ public sealed class EditeurSymbole : Window
 
         public override void Render(DrawingContext ctx)
         {
-            ctx.FillRectangle(Brushes.White, new Rect(Bounds.Size));
+            ctx.FillRectangle(Ui.Surface, new Rect(Bounds.Size));
             var (d, o) = Cadre();
             // Grille fine du dessin (quart de pas) en points pâles ; grille du schéma, où se posent les broches, en croix plus marquées.
-            var fin = new SolidColorBrush(Color.Parse("#e3e5ea")); var dot = new SolidColorBrush(Color.Parse("#a9aebb"));
+            var fin = Ui.Line; var dot = Ui.Muted;
             double f = d / SousPas;
             if (f >= 5) for (double x = o.X % f; x < Bounds.Width; x += f) for (double y = o.Y % f; y < Bounds.Height; y += f) ctx.FillRectangle(fin, new Rect(x - .6, y - .6, 1.2, 1.2));
             for (double x = o.X % d; x < Bounds.Width; x += d) for (double y = o.Y % d; y < Bounds.Height; y += d) { ctx.FillRectangle(dot, new Rect(x - 2.5, y - .5, 5, 1)); ctx.FillRectangle(dot, new Rect(x - .5, y - 2.5, 1, 5)); }
@@ -494,9 +494,9 @@ public sealed class EditeurSymbole : Window
             {
                 var b = S.Broches[i]; var p = Ecran(b.X, b.Y);
                 bool sel = _e.BrocheSymboleChoisie == i, hov = _hover == i, lie = b.BrocheModele != null;
-                var col = sel ? Ui.AccentBrush : lie ? new SolidColorBrush(Color.Parse("#1f6f43")) : Ui.FailBrush;
+                var col = sel ? Ui.AccentBrush : lie ? Ui.Wire : Ui.FailBrush;
                 var r = d * (sel || hov ? .32 : .24);
-                ctx.DrawEllipse(sel ? new SolidColorBrush(Color.Parse("#dbe6fe")) : Brushes.White, new Pen(col, 2), p, r, r);
+                ctx.DrawEllipse(sel ? Ui.ActiveBg : Ui.Surface, new Pen(col, 2), p, r, r);
                 var etiquette = !string.IsNullOrWhiteSpace(b.Nom) ? b.Nom.Trim() + (lie ? $" ({b.BrocheModele})" : " · ?") : lie ? _e.Definition.NomAffiche(b.BrocheModele!) : "?";
                 var t = new FormattedText($"{i + 1} · {etiquette}", System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 11.5, col);
                 // Étiquette du côté extérieur du symbole.
@@ -505,7 +505,7 @@ public sealed class EditeurSymbole : Window
                 var at = Math.Abs(dx) >= Math.Abs(dy)
                     ? new Point(dx >= 0 ? p.X + r + 4 : p.X - r - 4 - t.Width, p.Y - t.Height - 2)
                     : new Point(p.X + r + 4, dy >= 0 ? p.Y + 2 : p.Y - t.Height - 2);
-                ctx.DrawRectangle(new SolidColorBrush(Colors.White, 0.85), null, new Rect(at, new Size(t.Width, t.Height)));
+                ctx.DrawRectangle(new SolidColorBrush(((ISolidColorBrush)Ui.Surface).Color, 0.85), null, new Rect(at, new Size(t.Width, t.Height)));
                 ctx.DrawText(t, at);
             }
         }

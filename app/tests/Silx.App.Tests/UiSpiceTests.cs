@@ -269,4 +269,44 @@ public class UiSpiceTests
         w.Schema.Load(w.EtudeCourante.Schema); w.Schema.FitAll();
         Shot(w, "44-mosfet-et-resistance.png");
     }
+
+    /// <summary>Chaque banc peut avoir sa couleur (réglages de sa pastille), enregistrée dans le projet.</summary>
+    [AvaloniaFact]
+    public void Couleur_propre_a_chaque_banc()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var bancs = w.EtudeCourante.Bancs;
+        w.SelectBanc(bancs[0]);
+        w.ColorerBanc("#0891b2");
+        Assert.Equal("#0891b2", bancs[0].Couleur);
+        Assert.Equal(Avalonia.Media.Color.Parse("#0891b2"), ((Avalonia.Media.ISolidColorBrush)w.Schema.CouleurCalque).Color);
+        Assert.Same(Ui_BenchBrush(), w.CouleurDe(bancs[1]));   // l'autre banc garde la couleur des paramètres
+        var relu = Projet.DepuisJson(Projet.VersJson(w.EtudeCourante));
+        Assert.Equal("#0891b2", relu.Bancs[0].Couleur);
+        w.OuvrirReglagesBanc(w.Schema);
+        Shot(w, "45-couleur-du-banc.png");
+    }
+    static Avalonia.Media.IBrush Ui_BenchBrush() => SchematicCanvas.BenchBrush;
+
+    /// <summary>Mode sombre et sensibilité du zoom (5 crans) depuis la fenêtre Paramètres.</summary>
+    [AvaloniaFact]
+    public async Task Mode_sombre_et_zoom()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        var p = Parametres.Courant;
+        p.NiveauZoom = 1; Assert.InRange(SchematicCanvas.FacteurMolette(1), 1.0, 1.02);
+        p.NiveauZoom = 5; Assert.InRange(SchematicCanvas.FacteurMolette(1), 1.14, 1.16);
+        p.NiveauZoom = 3;
+        p.Theme = "sombre"; p.Appliquer();
+        var f = w.OuvrirParametres(); f.Afficher(FenetreParametres.Section.Navigation);
+        Shot(f, "46-parametres-zoom-sombre.png");
+        w.SelectBanc(w.EtudeCourante.Bancs[0]);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Shot(w, "47-mode-sombre.png");
+        f.Close();
+        p.Theme = "clair"; p.Appliquer();
+        Assert.Equal(Avalonia.Media.Colors.White, ((Avalonia.Media.ISolidColorBrush)Silx_Surface()).Color);
+    }
+    static Avalonia.Media.IBrush Silx_Surface() => (Avalonia.Media.IBrush)typeof(MainWindow).Assembly.GetType("Silx.App.Ui")!.GetField("Surface")!.GetValue(null)!;
 }

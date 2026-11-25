@@ -31,6 +31,7 @@ public static class Projet
     public sealed class BancF
     {
         public string Nom { get; set; } = ""; public AnalyseKind TypeParDefaut { get; set; }
+        public string? Couleur { get; set; }
         public SchemaF Calque { get; set; } = new();
         public double Pas { get; set; } public double Duree { get; set; }
         public double FDebut { get; set; } public double FFin { get; set; } public int PointsParDecade { get; set; }
@@ -74,7 +75,7 @@ public static class Projet
             Circuit = S(e.Schema),
             Bancs = e.Bancs.Select(b => new BancF
             {
-                Nom = b.Nom, TypeParDefaut = b.TypeParDefaut, Calque = S(b.Calque),
+                Nom = b.Nom, TypeParDefaut = b.TypeParDefaut, Couleur = b.Couleur, Calque = S(b.Calque),
                 Pas = b.Transitoire.Pas, Duree = b.Transitoire.Duree, FDebut = b.Ac.FDebut, FFin = b.Ac.FFin, PointsParDecade = b.Ac.PointsParDecade,
                 Criteres = b.Gabarits.ToList(),
                 GabaritsDessines = b.GabaritsTraces.Select(g => new TraceF { Analyse = g.Analyse, Noeud = g.Noeud, Limite = g.Limite, Points = g.Points.Select(p => new[] { p.X, p.Y }).ToList() }).ToList(),
@@ -106,7 +107,7 @@ public static class Projet
         var e = new Etude { Schema = S(f.Circuit) };
         foreach (var bf in f.Bancs)
         {
-            var b = new Banc { Nom = bf.Nom, Calque = S(bf.Calque), TypeParDefaut = bf.TypeParDefaut };
+            var b = new Banc { Nom = bf.Nom, Calque = S(bf.Calque), TypeParDefaut = bf.TypeParDefaut, Couleur = bf.Couleur };
             b.Transitoire.Pas = bf.Pas; b.Transitoire.Duree = bf.Duree;
             b.Ac.FDebut = bf.FDebut; b.Ac.FFin = bf.FFin; b.Ac.PointsParDecade = bf.PointsParDecade;
             b.Gabarits.AddRange(bf.Criteres);

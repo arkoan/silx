@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -11,14 +12,15 @@ namespace Silx.App;
 /// </summary>
 public sealed class FenetreParametres : Window
 {
-    public enum Section { General, Affichage, Composants }
+    public enum Section { General, Affichage, Navigation, Composants }
     static readonly (Section S, string Nom, string Icone)[] Sections =
     [
         (Section.General, "Général", Icones.Reglages),
         (Section.Affichage, "Affichage", Icones.VueMixte),
+        (Section.Navigation, "Zoom et navigation", Icones.ZoomPlus),
         (Section.Composants, "Composants", Icones.OutilBroche),
     ];
-    static readonly string[] Nuancier = ["#7c3aed", "#2563eb", "#0891b2", "#15803d", "#ca8a04", "#ea580c", "#b91c1c", "#db2777", "#475569"];
+    public static readonly string[] Nuancier = ["#7c3aed", "#2563eb", "#0891b2", "#15803d", "#ca8a04", "#ea580c", "#b91c1c", "#db2777", "#475569"];
 
     readonly Parametres _p = Parametres.Courant;
     readonly Action _changement;
@@ -31,7 +33,7 @@ public sealed class FenetreParametres : Window
     {
         _changement = changement; _dossier = dossierComposants;
         Title = "Paramètres"; Width = 760; Height = 500; MinWidth = 620; MinHeight = 380;
-        WindowStartupLocation = WindowStartupLocation.CenterOwner; Background = Brushes.White;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner; Background = Ui.Surface;
         var g = new Grid { ColumnDefinitions = new("200,*") };
         var gauche = new Border { Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 1, 0), Child = _liste };
         g.Children.Add(gauche);
@@ -64,11 +66,17 @@ public sealed class FenetreParametres : Window
             case Section.General:
                 sp.Children.Add(Carte(
                     Ligne("Simulation automatique", "Relance la simulation après chaque modification quand le calcul est rapide.",
-                        Interrupteur(_p.SimulationAuto, v => _p.SimulationAuto = v)),
-                    Ligne("Sensibilité du zoom", "Molette et pavé tactile, sur le schéma et les courbes.",
-                        Choix(["Douce", "Normale", "Rapide"], _p.SensibiliteZoom - 1, i => _p.SensibiliteZoom = i + 1))));
+                        Interrupteur(_p.SimulationAuto, v => _p.SimulationAuto = v))));
+                sp.Children.Add(Ui.Hint("La sensibilité du zoom se règle dans « Zoom et navigation »."));
+                break;
+            case Section.Navigation:
+                sp.Children.Add(Carte(Ligne("Sensibilité du zoom", "Molette de la souris et glissement à deux doigts sur le pavé tactile, sur le schéma et sur les courbes.", CurseurZoom())));
+                sp.Children.Add(Ui.Hint("Les loupes de la barre d'outils (+ et −) zooment toujours d'un cran fixe ; « 0 » cadre tout."));
                 break;
             case Section.Affichage:
+                sp.Children.Add(Ui.Section("Apparence"));
+                sp.Children.Add(Carte(Ligne("Thème", "Clair, sombre, ou selon le réglage de macOS.",
+                    Choix(["Clair", "Sombre", "Système"], _p.Theme switch { "sombre" => 1, "systeme" => 2, _ => 0 }, i => _p.Theme = i switch { 1 => "sombre", 2 => "systeme", _ => "clair" }))));
                 sp.Children.Add(Ui.Section("Tests"));
                 sp.Children.Add(Carte(
                     Ligne("Bancs de test", "Calque du banc, pastilles et éléments ajoutés par le banc.", Nuances(() => _p.CouleurBanc, v => _p.CouleurBanc = v)),
@@ -124,6 +132,25 @@ public sealed class FenetreParametres : Window
         return g;
     }
 
+    /// <summary>Curseur à cinq crans, avec le nom du cran choisi.</summary>
+    Control CurseurZoom()
+    {
+        var sp = new StackPanel { Spacing = 2, Width = 220 };
+        var nom = new TextBlock { Text = Parametres.LibellesZoom[Math.Clamp(_p.NiveauZoom, 1, 5) - 1], FontSize = Ui.Aide, Foreground = Ui.AccentBrush, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center };
+        var s = new Slider { Minimum = 1, Maximum = 5, TickFrequency = 1, IsSnapToTickEnabled = true, TickPlacement = TickPlacement.BottomRight, Value = Math.Clamp(_p.NiveauZoom, 1, 5) };
+        s.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != RangeBase.ValueProperty) return;
+            var n = (int)Math.Round(s.Value); if (n == _p.NiveauZoom) return;
+            _p.NiveauZoom = n; nom.Text = Parametres.LibellesZoom[n - 1]; Valider();
+        };
+        var bornes = new Grid { ColumnDefinitions = new("*,*") };
+        bornes.Children.Add(new TextBlock { Text = "Douce", FontSize = 10.5, Foreground = Ui.Muted });
+        var r = new TextBlock { Text = "Rapide", FontSize = 10.5, Foreground = Ui.Muted, HorizontalAlignment = HorizontalAlignment.Right }; Grid.SetColumn(r, 1); bornes.Children.Add(r);
+        sp.Children.Add(nom); sp.Children.Add(s); sp.Children.Add(bornes);
+        return sp;
+    }
+
     Control Interrupteur(bool valeur, Action<bool> ecrire)
     {
         var c = new ToggleSwitch { IsChecked = valeur, OnContent = "", OffContent = "" };
@@ -140,7 +167,7 @@ public sealed class FenetreParametres : Window
             var b = new Button
             {
                 Content = options[i], FontSize = Ui.Aide, Padding = new Thickness(10, 4), BorderBrush = Ui.Line, BorderThickness = new Thickness(1),
-                Background = on ? Ui.AccentBrush : Brushes.White, Foreground = on ? Brushes.White : Ui.Ink,
+                Background = on ? Ui.AccentBrush : Ui.Surface, Foreground = on ? Brushes.White : Ui.Ink,
                 CornerRadius = i == 0 ? new CornerRadius(6, 0, 0, 6) : i == options.Length - 1 ? new CornerRadius(0, 6, 6, 0) : new CornerRadius(0)
             };
             b.Click += (_, _) => { ecrire(ii); Valider(); Afficher(Active); };

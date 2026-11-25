@@ -10,8 +10,10 @@ public sealed class Parametres
 {
     // Général
     public bool SimulationAuto { get; set; } = true;
-    /// <summary>Sensibilité du zoom à la molette et au pavé tactile : 1 douce, 2 normale, 3 rapide.</summary>
-    public int SensibiliteZoom { get; set; } = 2;
+    /// <summary>Sensibilité du zoom à la molette et au pavé tactile : de 1 (très douce) à 5 (très rapide).</summary>
+    public int NiveauZoom { get; set; } = 3;
+    /// <summary>Apparence : « clair », « sombre » ou « systeme » (suit macOS).</summary>
+    public string Theme { get; set; } = "clair";
     // Affichage
     public string CouleurBanc { get; set; } = "#7c3aed";
     public string CouleurGabarit { get; set; } = "#b91c1c";
@@ -46,7 +48,7 @@ public sealed class Parametres
     public void Reinitialiser()
     {
         var d = new Parametres();
-        SimulationAuto = d.SimulationAuto; SensibiliteZoom = d.SensibiliteZoom;
+        SimulationAuto = d.SimulationAuto; NiveauZoom = d.NiveauZoom; Theme = d.Theme;
         CouleurBanc = d.CouleurBanc; CouleurGabarit = d.CouleurGabarit; CouleurConforme = d.CouleurConforme; CouleurNonConforme = d.CouleurNonConforme;
         EpaisseurCourbes = d.EpaisseurCourbes;
     }
@@ -58,11 +60,18 @@ public sealed class Parametres
     public Color NonConforme => Lire(CouleurNonConforme, "#b91c1c");
     public static ScottPlot.Color VersPlot(Color c) => new(c.R, c.G, c.B, c.A);
     /// <summary>Facteur de zoom par cran de molette.</summary>
-    public double BaseZoom => SensibiliteZoom switch { 1 => 1.03, 3 => 1.12, _ => 1.06 };
+    public double BaseZoom => Math.Clamp(NiveauZoom, 1, 5) switch { 1 => 1.015, 2 => 1.03, 4 => 1.10, 5 => 1.15, _ => 1.06 };
+    public static readonly string[] LibellesZoom = ["Très douce", "Douce", "Normale", "Rapide", "Très rapide"];
 
     /// <summary>Recolore les pinceaux partagés : tout ce qui les utilise suit sans reconstruction.</summary>
     public void Appliquer()
     {
+        if (Avalonia.Application.Current is { } app)
+        {
+            app.RequestedThemeVariant = Theme switch { "sombre" => Avalonia.Styling.ThemeVariant.Dark, "systeme" => Avalonia.Styling.ThemeVariant.Default, _ => Avalonia.Styling.ThemeVariant.Light };
+            Ui.AppliquerTheme(app.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Dark);
+        }
+        else Ui.AppliquerTheme(Theme == "sombre");
         ((SolidColorBrush)SchematicCanvas.BenchBrush).Color = Banc;
         var b = Banc;
         ((SolidColorBrush)Ui.BenchBg).Color = Color.FromRgb((byte)(255 - (255 - b.R) * 0.09), (byte)(255 - (255 - b.G) * 0.09), (byte)(255 - (255 - b.B) * 0.09));

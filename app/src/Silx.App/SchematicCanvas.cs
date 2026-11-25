@@ -17,6 +17,8 @@ public sealed class SchematicCanvas : Control
     Schematic? _underlay;
     /// <summary>Texte affiché en haut à gauche du canevas.</summary>
     public string Caption { get; set; } = "";
+    /// <summary>Couleur du calque affiché (celle du banc sélectionné).</summary>
+    public IBrush CouleurCalque { get; set; } = BenchBrush;
     public Tool Tool
     {
         get => _tool;
@@ -96,14 +98,14 @@ public sealed class SchematicCanvas : Control
     List<PlacedComponent>? _dragGroup;
     int _ghostRotation;
 
-    static readonly IBrush Ink = new SolidColorBrush(Color.Parse("#1c1f26"));
-    static readonly IBrush Accent = new SolidColorBrush(Color.Parse("#2563eb"));
-    static readonly IBrush WireBrush = new SolidColorBrush(Color.Parse("#1f6f43"));
-    static readonly IBrush LabelBrush = new SolidColorBrush(Color.Parse("#b45309"));
-    static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#5b6170"));
-    static readonly IBrush GridDot = new SolidColorBrush(Color.Parse("#c9ccd3"));
+    static IBrush Ink => Ui.Ink;
+    static IBrush Accent => Ui.AccentBrush;
+    static IBrush WireBrush => Ui.Wire;
+    static IBrush LabelBrush => Ui.NodeLabel;
+    static IBrush Muted => Ui.Muted;
+    static IBrush GridDot => Ui.GridDot;
     public static readonly IBrush BenchBrush = new SolidColorBrush(Color.Parse("#7c3aed"));
-    static readonly IBrush Line = new SolidColorBrush(Color.Parse("#dfe2e8"));
+    static IBrush Line => Ui.Line;
 
     public SchematicCanvas() { Focusable = true; ClipToBounds = true; }
 
@@ -659,7 +661,7 @@ public sealed class SchematicCanvas : Control
 
     public override void Render(DrawingContext ctx)
     {
-        ctx.FillRectangle(Brushes.White, new Rect(Bounds.Size));
+        ctx.FillRectangle(Ui.Surface, new Rect(Bounds.Size));
         var step = Grid * _zoom;
         if (step >= 6)
         {
@@ -670,7 +672,7 @@ public sealed class SchematicCanvas : Control
 
         double lw = Math.Max(1.2, 1.6 * _zoom / 2);
         var layer = _underlay != null;
-        var wireBrush = layer ? BenchBrush : WireBrush;
+        var wireBrush = layer ? CouleurCalque : WireBrush;
         var wirePen = new Pen(wireBrush, lw);
         if (_underlay != null)
         {
@@ -690,7 +692,7 @@ public sealed class SchematicCanvas : Control
         foreach (var p in ends.Distinct())
         {
             int n = ends.Count(q => q.Equals(p)) + allWires.Count(w => OnSeg(p, w)) * 2;
-            if (n >= 3) ctx.DrawEllipse(layer ? BenchBrush : WireBrush, null, ToScreen(p), 3.2 * _zoom / 2 + 1, 3.2 * _zoom / 2 + 1);
+            if (n >= 3) ctx.DrawEllipse(layer ? CouleurCalque : WireBrush, null, ToScreen(p), 3.2 * _zoom / 2 + 1, 3.2 * _zoom / 2 + 1);
         }
 
         if (_tool == Tool.Probe && _probeNode is { } pn && pn != "0" && _inside)
@@ -702,7 +704,7 @@ public sealed class SchematicCanvas : Control
             foreach (var p in AllComponents.SelectMany(c => c.Pins).Where(p => conn.NodeOf.TryGetValue(p, out var n) && n == pn))
                 ctx.DrawEllipse(new SolidColorBrush(Color.Parse("#f59e0b"), 0.7), null, ToScreen(p), 6, 6);
         }
-        foreach (var c in Schematic.Components) DrawComponent(ctx, c, c == _selected || _multi.Contains(c) ? Accent : layer ? BenchBrush : c.Kind == ComponentKind.Label ? LabelBrush : Ink, 1);
+        foreach (var c in Schematic.Components) DrawComponent(ctx, c, c == _selected || _multi.Contains(c) ? Accent : layer ? CouleurCalque : c.Kind == ComponentKind.Label ? LabelBrush : Ink, 1);
         if (_tool == Tool.Probe && _inside)
         {
             // Pointe de sonde + nom du nœud visé.
@@ -723,13 +725,13 @@ public sealed class SchematicCanvas : Control
             ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#b91c1c")), null, r, 4, 4); ctx.DrawText(t, new Point(r.X + 8, r.Y + 4));
         }
         // Banc actif : cadre violet autour du canevas et nom du banc dans un coin (au lieu d'un long bandeau).
-        if (layer) ctx.DrawRectangle(null, new Pen(BenchBrush, 3), new Rect(1.5, 1.5, Bounds.Width - 3, Bounds.Height - 3));
+        if (layer) ctx.DrawRectangle(null, new Pen(CouleurCalque, 3), new Rect(1.5, 1.5, Bounds.Width - 3, Bounds.Height - 3));
         double yChip = 10;
         if (Caption.Length > 0)
         {
-            var t = new FormattedText(Caption, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, layer ? BenchBrush : Muted);
+            var t = new FormattedText(Caption, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, layer ? CouleurCalque : Muted);
             var box = new Rect(10, yChip, t.Width + 16, t.Height + 8);
-            ctx.DrawRectangle(new SolidColorBrush(Color.Parse(layer ? "#f3effe" : "#f3f4f6")), new Pen(layer ? BenchBrush : Line, 1), box, 4, 4);
+            ctx.DrawRectangle(layer ? Ui.Teinte(CouleurCalque, 0.1) : Ui.Panel, new Pen(layer ? CouleurCalque : Line, 1), box, 4, 4);
             ctx.DrawText(t, new Point(18, yChip + 4));
             yChip = box.Bottom + 6;
         }

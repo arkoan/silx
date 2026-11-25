@@ -73,7 +73,7 @@ public sealed partial class MainWindow : Window
     Curseur? _dragCursor, _hoverCursor;
     bool _cursorMode, _zoomMode; Point? _zoomStart;
     Button _cursorBtn = null!, _zoomWinBtn = null!, _probeBtn = null!;
-    readonly Border _readout = new() { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 14, 52), Background = new SolidColorBrush(Colors.White, 0.93), BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 6), IsVisible = false, IsHitTestVisible = false };
+    readonly Border _readout = new() { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 14, 52), Background = Ui.Surface, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 6), IsVisible = false, IsHitTestVisible = false };
     readonly Border _zoomRect = new() { BorderBrush = Ui.AccentBrush, BorderThickness = new Thickness(1), Background = new SolidColorBrush(Color.Parse("#2563eb"), 0.08), IsVisible = false, IsHitTestVisible = false };
     public IReadOnlyList<Curseur> Curseurs => _cursors;
     /// <summary>Pose (ou déplace) le curseur A ou B sur la courbe la plus proche du point (repère du graphique actif).</summary>
@@ -188,6 +188,13 @@ public sealed partial class MainWindow : Window
             else if (cmd && e.Key == Key.W) { e.Handled = true; await FermerProjetAsync(_projet!); }
         };
         _veille.Tick += (_, _) => RafraichirOnglets();
+        // Thème « Système » : suit le passage de macOS en clair ou sombre.
+        if (Application.Current is { } app)
+            app.ActualThemeVariantChanged += (_, _) =>
+            {
+                if (Parametres.Courant.Theme != "systeme") return;
+                Ui.AppliquerTheme(app.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Dark); AppliquerParametres();
+            };
         if (Environment.GetEnvironmentVariable("SILX_SIM_AUTO") == "0") _auto.IsChecked = false;   // tests : pas de relance en arrière-plan
         _relance.Tick += async (_, _) => { _relance.Stop(); if (!_simEnCours) await SimulerAsync(keepLimits: true); };
         _veille.Start();
@@ -395,7 +402,7 @@ public sealed partial class MainWindow : Window
         EndDrawing(false);
         if (_banc != b) _cursors.Clear();
         _banc = b; _typeAffiche = b?.Type ?? AnalyseKind.Transitoire;
-        _canvas.Caption = b == null ? "" : $"Banc « {b.Nom} »";
+        _canvas.Caption = b == null ? "" : $"Banc « {b.Nom} »"; if (b != null) _canvas.CouleurCalque = CouleurDe(b);
         ToolTip.SetTip(_canvas, b == null ? null : "Le banc est le calque violet ; le circuit dessous, atténué, se modifie dans « Circuit sous test ».");
         _chargement = true;   // recharger le canevas n'est pas une modification : les résultats restent valables
         _canvas.SimulationPossible = b != null;
@@ -457,7 +464,7 @@ public sealed partial class MainWindow : Window
                 row.Children.Add(x);
             }
             var b = new Button { Content = row, Padding = new Thickness(12, 4), CornerRadius = new CornerRadius(14), BorderThickness = new Thickness(1),
-                BorderBrush = active ? accent : Ui.Line, Background = active ? (accent == Ui.AccentBrush ? Ui.ActiveBg : Ui.BenchBg) : Brushes.White, Foreground = active ? accent : Ui.Ink };
+                BorderBrush = active ? accent : Ui.Line, Background = active ? (accent == Ui.AccentBrush ? Ui.ActiveBg : Ui.Teinte(accent)) : Ui.Surface, Foreground = active ? accent : Ui.Ink };
             b.Click += (_, _) => click();
             _benchBar.Children.Add(b);
             return b;
@@ -467,7 +474,7 @@ public sealed partial class MainWindow : Window
         foreach (var b in _etude.Bancs)
         {
             Verdict? v = _results.TryGetValue(b, out var r) ? (r.Erreur != null ? Verdict.NonEvaluable : r.Nombre == 0 ? null : r.Global) : null;
-            var bb = b; Tab(b.Nom, _banc == b, v, () => SelectBanc(bb), Ui.BenchBrush, bb);
+            var bb = b; Tab(b.Nom, _banc == b, v, () => SelectBanc(bb), CouleurDe(bb), bb);
         }
         var add = new Button { Content = Icones.Make(Icones.Plus, 14, Ui.BenchBrush), Padding = new Thickness(7), Background = Brushes.Transparent, CornerRadius = new CornerRadius(14) };
         ToolTip.SetTip(add, "Nouveau banc : un calque où brancher sources, alimentations et charges sur le circuit");
@@ -911,7 +918,7 @@ public sealed partial class MainWindow : Window
             ToolTip.SetTip(x, $"Retirer V({n}) de ce graphique");
             var nn = n; x.Click += (_, e) => { e.Handled = true; pane.Signaux.Remove(nn); _cursors.RemoveAll(k => k.Noeud == nn && !_panes.Any(p => p != pane && p.Signaux.Contains(nn))); RebuildPanes(); RefreshPlot(); };
             chip.Children.Add(x);
-            row.Children.Add(new Border { Child = chip, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(7, 1, 2, 1), Background = Brushes.White });
+            row.Children.Add(new Border { Child = chip, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(10), Padding = new Thickness(7, 1, 2, 1), Background = Ui.Surface });
         }
         if (pane.Signaux.Count == 0)
             row.Children.Add(new TextBlock { Text = "Graphique vide : activez la sonde puis cliquez sur un fil du schéma.", FontSize = 11.5, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center });
@@ -1349,7 +1356,7 @@ public sealed partial class MainWindow : Window
                 };
                 Grid.SetColumn(detail, 2); row.Children.Add(detail);
                 var bb = b;
-                var btn = new Button { Content = row, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Background = Brushes.White, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 8) };
+                var btn = new Button { Content = row, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Background = Ui.Surface, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(10, 8) };
                 btn.Click += (_, _) => SelectBanc(bb);
                 _circuitPanel.Children.Add(btn);
             }
@@ -1389,7 +1396,7 @@ public sealed partial class MainWindow : Window
         foreach (var m in Enum.GetValues<ModeleBanc>())
         {
             var mm = m;
-            var b = new Button { Content = ModelesBanc.Libelle(m), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(10, 5), Background = Brushes.White, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6) };
+            var b = new Button { Content = ModelesBanc.Libelle(m), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(10, 5), Background = Ui.Surface, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6) };
             b.Click += (_, _) => { fly.Hide(); CreerBanc(mm, entree.SelectedItem as string, sortie.SelectedItem as string); };
             sp.Children.Add(b);
         }
@@ -1413,11 +1420,12 @@ public sealed partial class MainWindow : Window
     {
         if (_banc == null) return;
         var sp = new StackPanel { Spacing = 6, Width = 300, Margin = new Thickness(4) };
-        var t = Ui.Title("Banc de test"); t.Foreground = Ui.BenchBrush; sp.Children.Add(t);
+        var t = Ui.Title("Banc de test"); t.Foreground = CouleurDe(Banc); sp.Children.Add(t);
         var nom = new TextBox { Text = Banc.Nom, FontSize = 13 };
         void Renommer() { var n = (nom.Text ?? "").Trim(); if (n.Length > 0 && n != Banc.Nom) { Banc.Nom = n; RefreshBenchBar(); _canvas.Caption = $"Banc « {n} »"; _canvas.InvalidateVisual(); } }
         nom.KeyDown += (_, e) => { if (e.Key == Key.Enter) Renommer(); }; nom.LostFocus += (_, _) => Renommer();
         sp.Children.Add(Ui.Labeled("Nom", nom));
+        sp.Children.Add(Ui.Labeled("Couleur du banc", NuancierBanc(t)));
         sp.Children.Add(Ui.Rule());
         sp.Children.Add(Ui.Title("Analyse"));
         sp.Children.Add(BuildAnalysisPanel());
@@ -1426,6 +1434,41 @@ public sealed partial class MainWindow : Window
         fly.ShowAt(ancre);
     }
     Flyout? _bulleBanc;
+
+    /// <summary>Couleur d'un banc : la sienne, sinon celle des paramètres.</summary>
+    public IBrush CouleurDe(Banc b) => b.Couleur is { } c && Color.TryParse(c, out var col) ? new SolidColorBrush(col) : Ui.BenchBrush;
+
+    /// <summary>Change la couleur du banc actif (null = couleur des paramètres) : pastille, calque et explorateur suivent.</summary>
+    public void ColorerBanc(string? couleur)
+    {
+        if (_banc == null) return;
+        Banc.Couleur = couleur;
+        _canvas.CouleurCalque = CouleurDe(Banc); _canvas.InvalidateVisual(); RefreshBenchBar();
+    }
+
+    Control NuancierBanc(TextBlock titre)
+    {
+        var sp = new WrapPanel { Orientation = Orientation.Horizontal };
+        void Remplir()
+        {
+            sp.Children.Clear();
+            var auto = new Button { Content = "Par défaut", FontSize = Ui.Aide, Padding = new Thickness(8, 2), Margin = new Thickness(0, 0, 6, 0), CornerRadius = new CornerRadius(9),
+                BorderThickness = new Thickness(Banc.Couleur == null ? 2 : 1), BorderBrush = Banc.Couleur == null ? Ui.Ink : Ui.Line, Background = Ui.Surface };
+            ToolTip.SetTip(auto, "Couleur des bancs choisie dans Paramètres › Affichage");
+            auto.Click += (_, _) => { ColorerBanc(null); titre.Foreground = CouleurDe(Banc); Remplir(); };
+            sp.Children.Add(auto);
+            foreach (var n in FenetreParametres.Nuancier)
+            {
+                bool on = string.Equals(n, Banc.Couleur, StringComparison.OrdinalIgnoreCase);
+                var b = new Button { Width = 20, Height = 20, Padding = new Thickness(0), Margin = new Thickness(0, 0, 4, 0), CornerRadius = new CornerRadius(10), Background = new SolidColorBrush(Color.Parse(n)),
+                    BorderBrush = on ? Ui.Ink : Brushes.Transparent, BorderThickness = new Thickness(on ? 2 : 0) };
+                var nn = n; b.Click += (_, _) => { ColorerBanc(nn); titre.Foreground = CouleurDe(Banc); Remplir(); };
+                sp.Children.Add(b);
+            }
+        }
+        Remplir();
+        return sp;
+    }
     public bool ReglagesBancOuverts => _bulleBanc?.IsOpen == true;
 
     Control BuildAnalysisPanel()
@@ -1447,7 +1490,7 @@ public sealed partial class MainWindow : Window
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
             row.Children.Add(Icones.Make(icon, 15, Banc.Type == k ? Ui.AccentBrush : Ui.Muted)); row.Children.Add(new TextBlock { Text = label, FontSize = Ui.Texte, VerticalAlignment = VerticalAlignment.Center });
-            var b = new Button { Content = row, Padding = new Thickness(10, 4), CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), BorderBrush = Banc.Type == k ? Ui.AccentBrush : Ui.Line, Background = Banc.Type == k ? Ui.ActiveBg : Brushes.White };
+            var b = new Button { Content = row, Padding = new Thickness(10, 4), CornerRadius = new CornerRadius(6), BorderThickness = new Thickness(1), BorderBrush = Banc.Type == k ? Ui.AccentBrush : Ui.Line, Background = Banc.Type == k ? Ui.ActiveBg : Ui.Surface };
             ToolTip.SetTip(b, k == AnalyseKind.Ac ? "Banc fréquentiel : analyse .ac, courbes en Bode" : "Banc temporel : analyse .tran, courbes en fonction du temps");
             var kk = k; b.Click += (_, _) => ShowAnalysis(kk);
             type.Children.Add(b);
@@ -1734,7 +1777,7 @@ public sealed partial class MainWindow : Window
         var b = new Button
         {
             Content = g, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(8, 6),
-            Background = ouverte ? Ui.ActiveBg : Brushes.White, BorderBrush = v == Verdict.Fail ? Ui.FailBrush : ouverte ? Ui.AccentBrush : Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6)
+            Background = ouverte ? Ui.ActiveBg : Ui.Surface, BorderBrush = v == Verdict.Fail ? Ui.FailBrush : ouverte ? Ui.AccentBrush : Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6)
         };
         ToolTip.SetTip(b, cle is CritereGabarit ? "Cliquer pour modifier ; le signal s'affiche sur les courbes" : "Cliquer pour mettre ce gabarit en avant sur les courbes");
         b.Click += (_, _) => { _ligneOuverte = ouverte ? null : cle; if (!ouverte) MontrerContrainte(cle); RefreshGabarits(); RefreshPlot(keepLimits: true); };
@@ -1907,6 +1950,7 @@ public sealed partial class MainWindow : Window
         var p = _plot.Plot;
         var limits = p.Axes.GetLimits();
         p.Clear(); p.Axes.Right.IsVisible = false;
+        StylerGraphique(p);
         p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic();
         var nodesOk = new List<string>();
         if (_last != null && _last.Resultats.TryGetValue(Shown, out var raw0))
@@ -1991,7 +2035,7 @@ public sealed partial class MainWindow : Window
                     txt.LabelFontColor = col; txt.LabelFontSize = 12; txt.LabelBold = true;
                     bool droite = X(xp) > (xLo + xHi) / 2;
                     txt.LabelOffsetX = droite ? -10 : 10;
-                    txt.LabelAlignment = droite ? ScottPlot.Alignment.MiddleRight : ScottPlot.Alignment.MiddleLeft; txt.LabelBackgroundColor = ScottPlot.Colors.White.WithAlpha(0.85);
+                    txt.LabelAlignment = droite ? ScottPlot.Alignment.MiddleRight : ScottPlot.Alignment.MiddleLeft; txt.LabelBackgroundColor = Parametres.VersPlot(((ISolidColorBrush)Ui.Surface).Color).WithAlpha(0.85);
                 }
             }
             foreach (var g in Banc.TracesActives.Where(g => g.Analyse == Shown && pane.Signaux.Contains(g.Noeud)))
@@ -2079,6 +2123,16 @@ public sealed partial class MainWindow : Window
         _plot.Refresh();
     }
 
+    /// <summary>Couleurs du graphique selon le thème (fond, axes, grille).</summary>
+    static void StylerGraphique(ScottPlot.Plot p)
+    {
+        ScottPlot.Color C(IBrush b) => Parametres.VersPlot(((ISolidColorBrush)b).Color);
+        p.FigureBackground.Color = C(Ui.Surface); p.DataBackground.Color = C(Ui.Surface);
+        p.Axes.Color(C(Ui.Muted)); p.Axes.FrameColor(C(Ui.Line));
+        p.Grid.MajorLineColor = C(Ui.Line);
+        foreach (var a in new ScottPlot.IAxis[] { p.Axes.Bottom, p.Axes.Left, p.Axes.Right }) a.Label.ForeColor = C(Ui.Ink);
+    }
+
     static void BornerAuxDonnees(ScottPlot.Plot p, double x0, double x1, double y0, double y1)
     {
         if (!(x1 > x0) || !double.IsFinite(x0) || !double.IsFinite(x1)) return;
@@ -2107,5 +2161,5 @@ public sealed partial class MainWindow : Window
         return r;
     }
 
-    static TextBox Mono() => new() { IsReadOnly = true, FontFamily = new FontFamily("Menlo, Consolas, monospace"), AcceptsReturn = true, FontSize = 12, BorderThickness = new Thickness(0), Padding = new Thickness(10), Background = Brushes.White };
+    static TextBox Mono() => new() { IsReadOnly = true, FontFamily = new FontFamily("Menlo, Consolas, monospace"), AcceptsReturn = true, FontSize = 12, BorderThickness = new Thickness(0), Padding = new Thickness(10), Background = Ui.Surface };
 }

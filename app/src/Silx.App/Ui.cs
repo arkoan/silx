@@ -24,6 +24,34 @@ static class Ui
     public static readonly IBrush PassBrush = new SolidColorBrush(Color.Parse("#15803d"));
     public static readonly IBrush FailBrush = new SolidColorBrush(Color.Parse("#b91c1c"));
     public static readonly IBrush WarnBrush = new SolidColorBrush(Color.Parse("#b45309"));
+    /// <summary>Fond des cartes, champs, schéma et courbes (blanc en mode clair).</summary>
+    public static readonly IBrush Surface = new SolidColorBrush(Colors.White);
+    public static readonly IBrush GridDot = new SolidColorBrush(Color.Parse("#c9ccd3"));
+    public static readonly IBrush Wire = new SolidColorBrush(Color.Parse("#1f6f43"));
+    public static readonly IBrush NodeLabel = new SolidColorBrush(Color.Parse("#b45309"));
+    public static readonly IBrush SymbolFill = new SolidColorBrush(Color.Parse("#fffdf5"));
+    public static readonly IBrush LabelFill = new SolidColorBrush(Color.Parse("#fff7ed"));
+    public static bool Sombre { get; private set; }
+
+    /// <summary>Palette claire ou sombre : les pinceaux partagés sont recolorés, les vues suivent sans reconstruction.</summary>
+    public static void AppliquerTheme(bool sombre)
+    {
+        Sombre = sombre;
+        void S(IBrush b, string clair, string fonce) => ((SolidColorBrush)b).Color = Color.Parse(sombre ? fonce : clair);
+        S(Window, "#eef0f3", "#15171c"); S(Panel, "#f7f8fa", "#1c1f25"); S(Line, "#dfe2e8", "#343944");
+        S(Ink, "#1c1f26", "#e4e7ec"); S(Muted, "#5b6170", "#9aa1ae"); S(AccentBrush, "#2563eb", "#4f8ef7");
+        S(ActiveBg, "#dbe6fe", "#1d3461"); S(WarnBrush, "#b45309", "#f59e0b"); S(Surface, "#ffffff", "#23262d");
+        S(GridDot, "#c9ccd3", "#3d424d"); S(Wire, "#1f6f43", "#3fbf7f"); S(NodeLabel, "#b45309", "#f5a524");
+        S(SymbolFill, "#fffdf5", "#2b2a24"); S(LabelFill, "#fff7ed", "#3a2a17");
+    }
+
+    /// <summary>Fond clair (ou sombre) teinté d'une couleur : pastille active, étiquette de calque.</summary>
+    public static IBrush Teinte(IBrush couleur, double force = 0.09)
+    {
+        var c = (couleur as ISolidColorBrush)?.Color ?? Colors.Gray; var f = ((ISolidColorBrush)Surface).Color;
+        byte M(byte a, byte b) => (byte)(b + (a - b) * force);
+        return new SolidColorBrush(Color.FromRgb(M(c.R, f.R), M(c.G, f.G), M(c.B, f.B)));
+    }
 
     public static Button ToolButton(string text, string tip, Action a)
     {
