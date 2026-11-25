@@ -459,11 +459,7 @@ public sealed class MainWindow : Window
         }
         var add = new Button { Content = Icones.Make(Icones.Plus, 14, Ui.BenchBrush), Padding = new Thickness(7), Background = Brushes.Transparent, CornerRadius = new CornerRadius(14) };
         ToolTip.SetTip(add, "Nouveau banc : un calque où brancher sources, alimentations et charges sur le circuit");
-        add.Click += (_, _) =>
-        {
-            var b = new Banc { Nom = $"Banc {_etude.Bancs.Count + 1}" };
-            _etude.Bancs.Add(b); SelectBanc(b);
-        };
+        add.Click += (_, _) => ProposerNouveauBanc(add);
         _benchBar.Children.Add(add);
     }
 
@@ -1287,6 +1283,41 @@ public sealed class MainWindow : Window
         _benchPanel.Children.Add(_gabarits);
         _benchPanel.Children.Add(Ui.Hint("Gabarits dessinés : sous les courbes, « Limite haute » ou « Limite basse ». Réglages du banc (nom, analyse) : roue dentée de sa pastille."));
         RefreshGabarits();
+    }
+
+    /// <summary>Nouveau banc depuis un modèle (échelon, sinus, Bode, vide) : choix de l'entrée et de la sortie, puis création.</summary>
+    void ProposerNouveauBanc(Control ancre)
+    {
+        var conn = Connectivity.Build(_etude.Schema);
+        var noeuds = conn.AllNodes.ToList();
+        var sp = new StackPanel { Spacing = 6, Width = 300, Margin = new Thickness(4) };
+        var t = Ui.Title("Nouveau banc de test"); t.Foreground = Ui.BenchBrush; sp.Children.Add(t);
+        var entree = new ComboBox { ItemsSource = noeuds, SelectedItem = noeuds.FirstOrDefault(n => n.Equals("IN", StringComparison.OrdinalIgnoreCase)) ?? conn.NamedNodes.FirstOrDefault() ?? noeuds.FirstOrDefault(), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var sortie = new ComboBox { ItemsSource = noeuds, SelectedItem = noeuds.FirstOrDefault(n => n.Equals("OUT", StringComparison.OrdinalIgnoreCase)) ?? conn.NamedNodes.LastOrDefault() ?? noeuds.LastOrDefault(), HorizontalAlignment = HorizontalAlignment.Stretch };
+        var g = new Grid { ColumnDefinitions = new("*,8,*") };
+        g.Children.Add(Ui.Labeled("Entrée (stimulus)", entree)); var so = Ui.Labeled("Sortie (critère)", sortie); Grid.SetColumn(so, 2); g.Children.Add(so);
+        sp.Children.Add(g);
+        var fly = new Flyout { Content = sp, Placement = PlacementMode.BottomEdgeAlignedLeft };
+        foreach (var m in Enum.GetValues<ModeleBanc>())
+        {
+            var mm = m;
+            var b = new Button { Content = ModelesBanc.Libelle(m), HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(10, 5), Background = Brushes.White, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6) };
+            b.Click += (_, _) => { fly.Hide(); CreerBanc(mm, entree.SelectedItem as string, sortie.SelectedItem as string); };
+            sp.Children.Add(b);
+        }
+        sp.Children.Add(Ui.Hint("La source est posée sur l'entrée, référencée à la masse ; le premier critère mesure la sortie. Ajoutez ensuite ses bornes dans le plan de test."));
+        fly.ShowAt(ancre);
+    }
+
+    public Banc CreerBanc(ModeleBanc m, string? entree, string? sortie)
+    {
+        var nom = m switch { ModeleBanc.Echelon => "Échelon", ModeleBanc.Sinus => "Sinus", ModeleBanc.Bode => "Bode", _ => "Banc" };
+        int i = 1; var n = nom; while (_etude.Bancs.Any(b => b.Nom == n)) n = $"{nom} {++i}";
+        var banc = ModelesBanc.Creer(_etude, m, entree, sortie, n);
+        _etude.Bancs.Add(banc); SelectBanc(banc);
+        if (m != ModeleBanc.Vide && !banc.Calque.Components.Any()) _status.Text = "Pas de place libre pour poser la source près de l'entrée : posez-la à la main.";
+        else if (m != ModeleBanc.Vide) { _status.Text = $"Banc « {n} » créé : source sur {entree}."; _ = SimulateAsync(); }
+        return banc;
     }
 
     /// <summary>Bulle des réglages du banc actif, ouverte depuis la roue dentée de sa pastille.</summary>

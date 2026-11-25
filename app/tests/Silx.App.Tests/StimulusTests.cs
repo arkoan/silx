@@ -50,4 +50,21 @@ public class StimulusTests
     [InlineData("AC 1", "AC 1 V")]
     [InlineData("DC 5", "5 V")]
     public void Resume_lisible_sur_le_schema(string spice, string resume) => Assert.Equal(resume, Stimulus.Lire(spice).Resume());
+
+    [Theory]
+    [InlineData(ModeleBanc.Echelon, AnalyseKind.Transitoire)]
+    [InlineData(ModeleBanc.Bode, AnalyseKind.Ac)]
+    [InlineData(ModeleBanc.Sinus, AnalyseKind.Transitoire)]
+    public async Task Banc_cree_depuis_un_modele_simule_tout_de_suite(ModeleBanc m, AnalyseKind type)
+    {
+        var e = Silx.Etude.Etude.Demo(); e.Bancs.Clear();
+        var b = ModelesBanc.Creer(e, m, "IN", "OUT", "Nouveau");
+        e.Bancs.Add(b);
+        Assert.Equal(type, b.Type);
+        Assert.Single(b.Calque.Components, k => k.Kind == ComponentKind.VoltageSource);
+        var r = await Verification.RunAsync(e, b, [], TestContext.Current.CancellationToken);
+        Assert.Null(r.Erreur);
+        if (m == ModeleBanc.Echelon) Assert.InRange(r.Criteres.Single().Resultat.Valeur!.Value, 2.1e-3, 2.3e-3);   // mesuré même sans borne
+        if (m == ModeleBanc.Bode) Assert.InRange(r.Criteres.Single().Resultat.Valeur!.Value, 155, 165);
+    }
 }

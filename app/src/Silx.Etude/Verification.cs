@@ -103,8 +103,6 @@ public static class Verification
     {
         var info = g.Info;
         var bornes = new Bornes(g.Min, g.Max);
-        if (bornes.Min is null && bornes.Max is null)
-            return new(info.Nom, Verdict.NonEvaluable, null, info.Unite, bornes, "Aucune borne saisie.");
         string vec = $"v({g.Noeud})";
         if (!raw.Variables.Any(v => string.Equals(v.Name, vec, StringComparison.OrdinalIgnoreCase)))
             return new(info.Nom, Verdict.NonEvaluable, null, info.Unite, bornes, $"Nœud « {g.Noeud} » absent des résultats.");
@@ -124,6 +122,16 @@ public static class Verification
             TypeMesure.MargeDeGain => Catalogue.MargeDeGain,
             _ => null
         };
+        if (bornes.Min is null && bornes.Max is null)
+        {
+            // Sans borne : on mesure quand même, pour aider à choisir les bornes.
+            try
+            {
+                double v = mt != null ? mt.Mesurer(Temporelle(raw, vec)) : mf!.Mesurer(Frequentielle(raw, vec));
+                return new(info.Nom, Verdict.NonEvaluable, double.IsFinite(v) ? v : null, info.Unite, bornes, "Aucune borne saisie.");
+            }
+            catch (Exception ex) when (ex is ArgumentException or MesureImpossibleException) { return new(info.Nom, Verdict.NonEvaluable, null, info.Unite, bornes, "Aucune borne saisie."); }
+        }
         try
         {
             if (mt != null) return new Gabarit<CourbeTemporelle>(info.Nom, mt, bornes).Evaluer(Temporelle(raw, vec));

@@ -589,4 +589,18 @@ public class UiTests
         w.OuvrirDetail(null);
         Assert.Null(w.DetailOuvert);
     }
+
+    /// <summary>G2 : nouveau banc depuis un modèle, simulé dans la foulée.</summary>
+    [AvaloniaFact]
+    public async Task Nouveau_banc_depuis_un_modele()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var b = w.CreerBanc(Silx.Etude.ModeleBanc.Bode, "IN", "OUT");
+        for (int i = 0; i < 100 && w.Resultats == null; i++) { await Task.Delay(50); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+        Assert.Equal("Bode", b.Nom);
+        Assert.Same(b, w.BancActif);
+        Assert.Equal(Silx.Etude.AnalyseKind.Ac, b.Type);
+        Assert.NotNull(w.Resultats);
+        Shot(w, "34-banc-depuis-modele.png");
+    }
 }

@@ -34,6 +34,7 @@ public static class SpiceNumber
     public static string Format(double v, string unit = "")
     {
         if (double.IsNaN(v)) return "—";
+        if (Math.Abs(v) < 5e-15 || (unit is "%" or "°" or "dB" or "V/V" or "ratio" && Math.Abs(v) < 0.005)) v = 0;   // pas de « -0,00 »
         if (unit is "%" or "°" or "dB" or "V/V" or "ratio" || v == 0)
             return v.ToString(Math.Abs(v) >= 100 ? "0" : Math.Abs(v) >= 10 ? "0.0" : "0.00", CultureInfo.GetCultureInfo("fr-FR")) + (unit.Length > 0 ? " " + unit : "");
         var a = Math.Abs(v);
