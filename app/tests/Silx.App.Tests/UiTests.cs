@@ -554,4 +554,23 @@ public class UiTests
         Assert.NotNull(w.Resultats);
         Assert.Equal("✓ À jour", w.EtatResultats);
     }
+
+    /// <summary>G4 : erreurs signalées sur le schéma (broche non reliée, masse absente).</summary>
+    [AvaloniaFact]
+    public void Erreurs_sur_le_schema()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Assert.Empty(w.Canevas.Erreurs); Assert.Null(w.Canevas.ErreurGlobale);     // démo cohérente
+        // Nouveau projet : une résistance seule dans un banc → 2 broches non reliées et pas de masse.
+        w.NouveauProjet();
+        w.EtudeCourante.Bancs.Add(new Silx.Etude.Banc { Nom = "B" });
+        w.SelectBanc(w.EtudeCourante.Bancs[0]);
+        w.Canevas.Schematic.Components.Add(new() { Ref = "R1", Kind = Silx.Etude.ComponentKind.Resistor, Position = new(4, 4), Value = "1k" });
+        w.Canevas.InvalidateVisual();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Assert.Equal(2, w.Canevas.Erreurs.Count(e => e.Message.Contains("non reliée")));
+        Assert.NotNull(w.Canevas.ErreurGlobale);
+        Shot(w, "32-erreurs-sur-schema.png");
+    }
 }

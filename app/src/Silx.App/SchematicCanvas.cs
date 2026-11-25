@@ -590,6 +590,67 @@ public sealed class SchematicCanvas : Control
     }
 
     // ---- rendu ----
+    // ---- erreurs de cohérence sur le schéma ----
+    public sealed record Erreur(Point Ecran, string Message);
+    /// <summary>Erreurs placées sur le schéma : broche non reliée, référence en double, valeur manquante.</summary>
+    public IReadOnlyList<Erreur> Erreurs { get; private set; } = [];
+    /// <summary>Message global (ex. masse absente), affiché en puce rouge.</summary>
+    public string? ErreurGlobale { get; private set; }
+
+    void CalculerErreurs()
+    {
+        var m = Merged(); var conn = Connectivity.Build(m);
+        var l = new List<Erreur>();
+        bool circuitSeul = _underlay == null && !SimulationPossible;
+        foreach (var c in m.Components.Where(c => c.IsElectrical))
+        {
+            for (int i = 0; i < c.Pins.Count; i++)
+            {
+                if (c.Kind == ComponentKind.Spice && c.Definition?.Symbole.Broches.ElementAtOrDefault(i)?.BrocheModele == null) continue;
+                if (!conn.NodeOf.TryGetValue(c.Pins[i], out var n) || n == "0") continue;
+                if (conn.PinCount.GetValueOrDefault(n) == 1 && !(circuitSeul && conn.NamedNodes.Contains(n)))
+                    l.Add(new(ToScreen(c.Pins[i]), $"{c.Ref} : broche non reliée"));
+            }
+            if (c.Kind != ComponentKind.Spice && string.IsNullOrWhiteSpace(c.Value)) l.Add(new(ToScreen(c.Position), $"{c.Ref} : valeur manquante"));
+        }
+        foreach (var g in m.Components.Where(c => c.IsElectrical).GroupBy(c => c.Ref, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
+            foreach (var c in g) l.Add(new(ToScreen(c.Position), $"Référence {c.Ref} en double"));
+        Erreurs = l;
+        ErreurGlobale = !circuitSeul && m.Components.Any(c => c.IsElectrical) && !m.Components.Any(c => c.Kind == ComponentKind.Ground)
+            ? "Aucune masse : posez une masse (G) pour pouvoir simuler" : null;
+    }
+
+    /// <summary>Vrai quand le schéma affiché est simulable seul (banc actif) : masse et broches libres sont alors des erreurs.</summary>
+    public bool SimulationPossible { get; set; }
+
+    void DessinerErreurs(DrawingContext ctx)
+    {
+        CalculerErreurs();
+        var rouge = new SolidColorBrush(Color.Parse("#dc2626"));
+        Erreur? survolee = null;
+        foreach (var e in Erreurs)
+        {
+            ctx.DrawEllipse(null, new Pen(rouge, 2), e.Ecran, 7, 7);
+            var b = new Point(e.Ecran.X + 8, e.Ecran.Y - 12);
+            ctx.DrawEllipse(rouge, null, b, 6, 6);
+            var t = new FormattedText("!", System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.Bold), 10, Brushes.White);
+            ctx.DrawText(t, new Point(b.X - t.Width / 2, b.Y - t.Height / 2));
+            if (_inside && Math.Abs(_lastPos.X - e.Ecran.X) < 14 && Math.Abs(_lastPos.Y - e.Ecran.Y) < 16) survolee = e;
+        }
+        if (survolee is { } s0)
+        {
+            var t = new FormattedText(s0.Message, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, Brushes.White);
+            var r = new Rect(s0.Ecran.X + 16, s0.Ecran.Y - 34, t.Width + 12, t.Height + 6);
+            ctx.DrawRectangle(rouge, null, r, 4, 4); ctx.DrawText(t, new Point(r.X + 6, r.Y + 3));
+        }
+        if (ErreurGlobale is { } g0)
+        {
+            var t = new FormattedText("⛔ " + g0, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, Brushes.White);
+            var r = new Rect(Bounds.Width - t.Width - 26, 10, t.Width + 16, t.Height + 8);
+            ctx.DrawRectangle(rouge, null, r, 4, 4); ctx.DrawText(t, new Point(r.X + 8, r.Y + 4));
+        }
+    }
+
     public override void Render(DrawingContext ctx)
     {
         ctx.FillRectangle(Brushes.White, new Rect(Bounds.Size));
@@ -648,6 +709,7 @@ public sealed class SchematicCanvas : Control
                 ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#b45309")), null, r, 3, 3); ctx.DrawText(t, new Point(r.X + 5, r.Y + 2));
             }
         }
+        DessinerErreurs(ctx);
         if (_dragging != null && !DernierDeplacementSur)
         {
             var t = new FormattedText("⚠ Ce déplacement modifie des connexions (un fil étiré touche une autre broche)", System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, Brushes.White);

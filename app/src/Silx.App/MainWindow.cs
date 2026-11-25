@@ -387,6 +387,7 @@ public sealed class MainWindow : Window
         _canvas.Caption = b == null ? "" : $"Banc « {b.Nom} »";
         ToolTip.SetTip(_canvas, b == null ? null : "Le banc est le calque violet ; le circuit dessous, atténué, se modifie dans « Circuit sous test ».");
         _chargement = true;   // recharger le canevas n'est pas une modification : les résultats restent valables
+        _canvas.SimulationPossible = b != null;
         try { _canvas.Load(b?.Calque ?? _etude.Schema, b == null ? null : _etude.Schema); } finally { _chargement = false; }
         if (b == null) _canvas.CalquesLies = _etude.Bancs.Select(x => x.Calque).ToList();
         _canvas.FitAll();
