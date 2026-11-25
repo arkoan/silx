@@ -47,6 +47,7 @@ public static class Verification
 
     public static async Task<ResultatEtude> RunAsync(Etude circuit, Banc etude, IEnumerable<AnalyseKind> toujours, CancellationToken ct = default)
     {
+        etude.RecalerGabarits();   // gabarits relatifs : suivent le front du stimulus
         var schema = etude.Fusion(circuit.Schema);
         var conn = Connectivity.Build(schema);
         var erc = Erc.Check(schema, conn);

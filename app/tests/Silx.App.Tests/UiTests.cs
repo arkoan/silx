@@ -712,4 +712,30 @@ public class UiTests
         Assert.InRange(f[k], 900, 1100);
         Assert.InRange(db[k], -1.5, 0.5);
     }
+
+    /// <summary>Gabarit relatif au front : quand le retard de l'échelon passe de 0,5 à 2 ms, il se décale de 1,5 ms et reste conforme.</summary>
+    [AvaloniaFact]
+    public async Task Gabarit_relatif_suit_le_front()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var banc = w.EtudeCourante.Bancs[0];
+        var bas = banc.GabaritsTraces.Single(g => g.Relatif);
+        var haut = banc.GabaritsTraces.Single(g => !g.Relatif);
+        Assert.Equal(0.5e-3, banc.InstantFront, 9);
+        var v1 = banc.Calque.Components.Single(c => c.Ref == "V1");
+        v1.Value = "PULSE(0 1 2m 1u 1u 20m 40m)";
+        await w.SimulateAsync();
+        Assert.Equal(2e-3, banc.InstantFront, 9);
+        Assert.Equal(3.5e-3, bas.Points[0].X, 9);       // 2 ms + 1,5 ms
+        Assert.Equal(0, haut.Points[0].X, 9);           // absolu : inchangé
+        Assert.True(w.Resultats!.Traces.All(t => t.Resultat.Verdict == Silx.Mesures.Gabarits.Verdict.Pass));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Shot(w, "48-gabarit-relatif-au-front.png");
+        // Décrocher puis raccrocher ne déplace rien ; l'option est enregistrée dans le projet.
+        w.RendreRelatif(bas, false); Assert.Equal(3.5e-3, bas.Points[0].X, 9);
+        w.RendreRelatif(bas, true);
+        var relu = Silx.Etude.Projet.DepuisJson(Silx.Etude.Projet.VersJson(w.EtudeCourante));
+        var r = relu.Bancs[0].GabaritsTraces.Single(g => g.Relatif);
+        Assert.Equal(2e-3, r.Ancrage, 9);
+    }
 }

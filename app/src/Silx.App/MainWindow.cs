@@ -1004,7 +1004,8 @@ public sealed partial class MainWindow : Window
         var n = ActiveSignals.FirstOrDefault();   // précisé au premier clic : courbe la plus proche
         if (n == null || _banc == null || VueFft) return;
         if (_last == null || !_last.Resultats.ContainsKey(Shown)) { _status.Text = "Simulez d'abord : le gabarit se dessine sur la courbe."; return; }
-        _drawing = new GabaritTrace { Analyse = Shown, Noeud = n, Limite = lim };
+        // Temporel : gabarit accroché au front du stimulus par défaut (il suit un changement de retard).
+        _drawing = new GabaritTrace { Analyse = Shown, Noeud = n, Limite = lim, Relatif = Shown == AnalyseKind.Transitoire, Ancrage = Banc.InstantFront };
         _plot.UserInputProcessor.Disable();
         RefreshPlotToolbar(); RefreshPlot(keepLimits: true);
     }
@@ -1751,8 +1752,38 @@ public sealed partial class MainWindow : Window
                 ? (m >= 0 ? $"marge {SpiceNumber.Format(m, g.Unite)} à {Fx(g.Analyse, res.XPire!.Value)}" : $"franchi de {SpiceNumber.Format(-m, g.Unite)} à {Fx(g.Analyse, res.XPire!.Value)}")
                 : res.Detail ?? "non évaluable";
             var titre = $"Gabarit {(g.Limite == Limite.Haute ? "haut" : "bas")} · {(g.Analyse == AnalyseKind.Ac ? $"|V({g.Noeud})|" : $"V({g.Noeud})")}";
+            if (g.Relatif) detail += $" · suit le front (t0 = {SpiceNumber.Format(Banc.InstantFront, "s")})";
             _gabarits.Children.Add(LignePlan(res?.Verdict, titre, detail, g, () => { Banc.GabaritsTraces.Remove(g); _ligneOuverte = null; ReevaluateTraces(); RefreshGabarits(); RefreshPlot(keepLimits: true); }, "Retirer ce gabarit"));
+            if (_ligneOuverte == g && g.Analyse == AnalyseKind.Transitoire) _gabarits.Children.Add(EditeurTrace(g));
         }
+    }
+
+    /// <summary>Gabarit temporel déplié : position absolue, ou accrochée au front du stimulus.</summary>
+    Control EditeurTrace(GabaritTrace g)
+    {
+        var sp = new StackPanel { Spacing = 4, Margin = new Thickness(8, 2, 0, 8) };
+        var seg = new StackPanel { Orientation = Orientation.Horizontal };
+        foreach (var (rel, txt) in new[] { (false, "Temps absolu"), (true, "Relatif au front") })
+        {
+            bool on = g.Relatif == rel;
+            var b = new Button { Content = txt, FontSize = Ui.Aide, Padding = new Thickness(10, 3), BorderBrush = Ui.Line, BorderThickness = new Thickness(1),
+                Background = on ? Ui.AccentBrush : Ui.Surface, Foreground = on ? Brushes.White : Ui.Ink,
+                CornerRadius = rel ? new CornerRadius(0, 6, 6, 0) : new CornerRadius(6, 0, 0, 6) };
+            var r = rel; b.Click += (_, _) => RendreRelatif(g, r);
+            seg.Children.Add(b);
+        }
+        sp.Children.Add(seg);
+        sp.Children.Add(Ui.Hint(g.Relatif
+            ? $"Les points suivent le front du stimulus (t0 = {SpiceNumber.Format(Banc.InstantFront, "s")}) : si son retard change, le gabarit se décale d'autant."
+            : "Les points restent aux mêmes instants, quel que soit le retard du stimulus."));
+        return sp;
+    }
+
+    /// <summary>Accroche (ou décroche) un gabarit temporel au front du stimulus, sans le déplacer.</summary>
+    public void RendreRelatif(GabaritTrace g, bool relatif)
+    {
+        g.Relatif = relatif; g.Ancrage = Banc.InstantFront;
+        RefreshGabarits(); RefreshPlot(keepLimits: true);
     }
 
     static string Marge(CritereGabarit g, double v)
@@ -2002,6 +2033,14 @@ public sealed partial class MainWindow : Window
 
         if (_modeTest)
         {
+            if (!ac && Banc.RecalerGabarits()) ReevaluateTraces();
+            if (!ac && Banc.TracesActives.Any(g => g.Relatif && pane.Signaux.Contains(g.Noeud)))
+            {
+                // Repère du front du stimulus auquel les gabarits relatifs sont accrochés.
+                var fl = p.Add.VerticalLine(X(Banc.InstantFront));
+                fl.Color = Parametres.VersPlot(((ISolidColorBrush)Ui.Muted).Color).WithAlpha(0.7); fl.LineWidth = 1; fl.LinePattern = ScottPlot.LinePattern.Dashed;
+                fl.LabelText = "front t0"; fl.LabelFontSize = 10.5f; fl.LabelBackgroundColor = fl.Color; fl.LabelFontColor = ScottPlot.Colors.White;
+            }
             double span = Math.Max(yMax - yMin, 1e-9), far = 1000 * span;
             var red = Parametres.VersPlot(Parametres.Courant.Gabarit);
             void DrawMask(GabaritTrace g, IReadOnlyList<(double X, double Y)> pts, ResultatGabaritGraphique? res, bool draft)

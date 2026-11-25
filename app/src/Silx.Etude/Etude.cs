@@ -43,6 +43,12 @@ public sealed class GabaritTrace
     public string Noeud { get; set; } = "OUT";
     public Silx.Mesures.Gabarits.Limite Limite { get; set; }
     public List<(double X, double Y)> Points { get; set; } = new();
+    /// <summary>
+    /// Gabarit temporel accroché au front du stimulus : quand le retard du front change, les points suivent.
+    /// Les points restent en temps absolu ; <see cref="Ancrage"/> est l'instant du front pour lequel ils ont été posés.
+    /// </summary>
+    public bool Relatif { get; set; }
+    public double Ancrage { get; set; }
     public string Nom => $"Limite {(Limite == Silx.Mesures.Gabarits.Limite.Haute ? "haute" : "basse")} sur {(Analyse == AnalyseKind.Ac ? "|V(" + Noeud + ")| dB" : "V(" + Noeud + ")")}";
     public string Unite => Analyse == AnalyseKind.Ac ? "dB" : "V";
 }
@@ -72,6 +78,34 @@ public sealed class Banc
     public PlacedComponent? PremierStimulus => Calque.Components.FirstOrDefault(k => k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource);
     public IEnumerable<CritereGabarit> CriteresActifs => Gabarits.Where(g => g.Info.Analyse == Type);
     public IEnumerable<GabaritTrace> TracesActives => GabaritsTraces.Where(g => g.Analyse == Type);
+
+    /// <summary>
+    /// Instant du front du stimulus : retard (td) de la première source en échelon / impulsion du banc, sinon d'un sinus ;
+    /// 0 sans stimulus temporel.
+    /// </summary>
+    public double InstantFront
+    {
+        get
+        {
+            var sources = Calque.Components.Where(k => k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource).Select(k => Stimulus.Lire(k.Value)).ToList();
+            var s = sources.FirstOrDefault(x => x.Forme == FormeStimulus.Impulsion) ?? sources.FirstOrDefault(x => x.Forme == FormeStimulus.Sinus);
+            return s == null ? 0 : s["td"];
+        }
+    }
+
+    /// <summary>Décale les gabarits relatifs au front si le front a bougé depuis leur pose. Renvoie vrai si un gabarit a bougé.</summary>
+    public bool RecalerGabarits()
+    {
+        double t0 = InstantFront; bool bouge = false;
+        foreach (var g in GabaritsTraces.Where(g => g.Relatif && g.Analyse == AnalyseKind.Transitoire))
+        {
+            double d = t0 - g.Ancrage;
+            if (Math.Abs(d) < 1e-15) continue;
+            for (int i = 0; i < g.Points.Count; i++) g.Points[i] = (g.Points[i].X + d, g.Points[i].Y);
+            g.Ancrage = t0; bouge = true;
+        }
+        return bouge;
+    }
     public Schematic Calque { get; set; } = new();
     public ReglagesTransitoire Transitoire { get; } = new();
     public ReglagesAc Ac { get; } = new();
@@ -111,8 +145,8 @@ public sealed class Etude
         echelon.Calque.Components.Add(new() { Ref = "V1", Kind = ComponentKind.VoltageSource, Position = new(4, 8), Rotation = 1, Value = "PULSE(0 1 0.5m 1u 1u 20m 40m)" });
         echelon.Gabarits.Add(new() { Mesure = TypeMesure.TempsDeMontee, Noeud = "OUT", Max = 2.5e-3 });
         echelon.Gabarits.Add(new() { Mesure = TypeMesure.Depassement, Noeud = "OUT", Max = 5 });
-        echelon.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Haute, Points = [(0, 1.1), (10e-3, 1.1)] });
-        echelon.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Basse, Points = [(2e-3, 0), (3e-3, 0.8), (6e-3, 0.95), (10e-3, 0.95)] });
+        echelon.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Haute, Points = [(0, 1.1), (10e-3, 1.1)] });   // absolu : plafond sur toute la durée
+        echelon.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Transitoire, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Basse, Points = [(2e-3, 0), (3e-3, 0.8), (6e-3, 0.95), (10e-3, 0.95)], Relatif = true, Ancrage = 0.5e-3 });   // suit le front de V1
         e.Bancs.Add(echelon);
 
         var bode = new Banc { Nom = "Réponse en fréquence", Type = AnalyseKind.Ac };

@@ -39,7 +39,7 @@ public static class Projet
         public List<TraceF> GabaritsDessines { get; set; } = new();
         public List<List<string>> Graphiques { get; set; } = new();
     }
-    public sealed class TraceF { public AnalyseKind Analyse { get; set; } public string Noeud { get; set; } = ""; public Silx.Mesures.Gabarits.Limite Limite { get; set; } public List<double[]> Points { get; set; } = new(); }
+    public sealed class TraceF { public AnalyseKind Analyse { get; set; } public bool Relatif { get; set; } public double Ancrage { get; set; } public string Noeud { get; set; } = ""; public Silx.Mesures.Gabarits.Limite Limite { get; set; } public List<double[]> Points { get; set; } = new(); }
 
     static readonly JsonSerializerOptions Json = new()
     {
@@ -78,7 +78,7 @@ public static class Projet
                 Nom = b.Nom, TypeParDefaut = b.TypeParDefaut, Couleur = b.Couleur, Calque = S(b.Calque),
                 Pas = b.Transitoire.Pas, Duree = b.Transitoire.Duree, FDebut = b.Ac.FDebut, FFin = b.Ac.FFin, PointsParDecade = b.Ac.PointsParDecade,
                 Criteres = b.Gabarits.ToList(),
-                GabaritsDessines = b.GabaritsTraces.Select(g => new TraceF { Analyse = g.Analyse, Noeud = g.Noeud, Limite = g.Limite, Points = g.Points.Select(p => new[] { p.X, p.Y }).ToList() }).ToList(),
+                GabaritsDessines = b.GabaritsTraces.Select(g => new TraceF { Analyse = g.Analyse, Relatif = g.Relatif, Ancrage = g.Ancrage, Noeud = g.Noeud, Limite = g.Limite, Points = g.Points.Select(p => new[] { p.X, p.Y }).ToList() }).ToList(),
                 Graphiques = b.Graphiques.Select(g => g.ToList()).ToList(),
             }).ToList(),
         };
@@ -111,7 +111,7 @@ public static class Projet
             b.Transitoire.Pas = bf.Pas; b.Transitoire.Duree = bf.Duree;
             b.Ac.FDebut = bf.FDebut; b.Ac.FFin = bf.FFin; b.Ac.PointsParDecade = bf.PointsParDecade;
             b.Gabarits.AddRange(bf.Criteres);
-            b.GabaritsTraces.AddRange(bf.GabaritsDessines.Select(t => new GabaritTrace { Analyse = t.Analyse, Noeud = t.Noeud, Limite = t.Limite, Points = t.Points.Where(p => p.Length == 2).Select(p => (p[0], p[1])).ToList() }));
+            b.GabaritsTraces.AddRange(bf.GabaritsDessines.Select(t => new GabaritTrace { Analyse = t.Analyse, Relatif = t.Relatif, Ancrage = t.Ancrage, Noeud = t.Noeud, Limite = t.Limite, Points = t.Points.Where(p => p.Length == 2).Select(p => (p[0], p[1])).ToList() }));
             b.Graphiques.AddRange(bf.Graphiques);
             e.Bancs.Add(b);
         }
