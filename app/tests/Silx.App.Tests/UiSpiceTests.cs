@@ -184,4 +184,23 @@ public class UiSpiceTests
         Assert.Null(ed.Definition.Symbole.Broches[g].Nom);
         Assert.Equal("GATE", ed.Definition.NomBroche(ed.Definition.Symbole.Broches[g]));
     }
+
+    /// <summary>F1 : déposer une broche du modèle sur une broche du symbole (liaison) ou sur la grille d'une boîte (nouvelle broche).</summary>
+    [AvaloniaFact]
+    public void Glisser_deposer_des_broches()
+    {
+        var d = DefinitionComposant.Depuis(ModelesSpice.Analyser(ModelesFabricantTests.Fichier).Modeles.First());
+        var ed = new EditeurSymbole(d); ed.Show();
+        int g = ed.Definition.Symbole.Broches.FindIndex(b => b.BrocheModele == "10");
+        int dr = ed.Definition.Symbole.Broches.FindIndex(b => b.BrocheModele == "20");
+        ed.DeposerBrocheModele("20", g, 0, 0);                       // 20 (DRAIN) déposée sur la broche de grille
+        Assert.Equal("20", ed.Definition.Symbole.Broches[g].BrocheModele);
+        Assert.Null(ed.Definition.Symbole.Broches[dr].BrocheModele);  // une broche du modèle n'a qu'une broche de symbole
+        ed.ChoisirGabarit(GabaritSymbole.Boite);
+        int n = ed.Definition.Symbole.Broches.Count;
+        ed.DeposerBrocheModele("50", null, 4, 6);                     // VTEMP déposée sur la grille : nouvelle broche
+        Assert.Equal(n + 1, ed.Definition.Symbole.Broches.Count);
+        Assert.Equal("50", ed.Definition.Symbole.Broches[^1].BrocheModele);
+        Assert.False(ed.Definition.BrochesCachees.ContainsKey("50"));
+    }
 }

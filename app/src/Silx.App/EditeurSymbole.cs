@@ -248,6 +248,24 @@ public sealed class EditeurSymbole : Window
         BrocheModeleChoisie = null; BrocheSymboleChoisie = null;
     }
 
+    const string PrefixeGlisser = "silx-broche:";
+    PointerPressedEventArgs? _pressePourGlisser;
+
+    /// <summary>Dépôt d'une broche du modèle : sur une broche du symbole (liaison), ou sur la grille d'un symbole boîte / personnalisé (nouvelle broche liée).</summary>
+    public void DeposerBrocheModele(string broche, int? brocheSymbole, int x, int y)
+    {
+        if (!Definition.BrochesModele.Contains(broche, StringComparer.OrdinalIgnoreCase)) return;
+        if (brocheSymbole is null)
+        {
+            if (Definition.Symbole.Gabarit is not (GabaritSymbole.Boite or GabaritSymbole.Personnalise)) return;
+            if (Definition.Symbole.Broches.Any(b => b.X == x && b.Y == y)) return;
+            Memo(); Definition.Symbole.Broches.Add(new BrocheSymbole { X = x, Y = y });
+            brocheSymbole = Definition.Symbole.Broches.Count - 1;
+        }
+        else Memo();
+        BrocheModeleChoisie = broche; BrocheSymboleChoisie = brocheSymbole; Lier(); Rafraichir();
+    }
+
     /// <summary>Raccordement d'une broche du modèle absente du symbole : 0 = sur le symbole (à relier), 1 = masse, 2 = tension fixe.</summary>
     public void RaccorderCachee(string broche, int mode, string valeur)
     {
@@ -307,6 +325,20 @@ public sealed class EditeurSymbole : Window
             var b = new Button { Content = row, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(6, 3), CornerRadius = new CornerRadius(5), Background = BrocheModeleChoisie == n ? Ui.ActiveBg : idx >= 0 && idx == BrocheSymboleChoisie ? new SolidColorBrush(Color.Parse("#fef3c7")) : Brushes.Transparent };
             ToolTip.SetTip(b, $"Broche « {n} » du modèle (position {Definition.BrochesModele.IndexOf(n) + 1} sur la ligne SPICE)");
             var nn = n; b.Click += (_, _) => ChoisirBrocheModele(nn);
+            // Glisser-déposer : tirer la broche du modèle sur une broche du symbole (ou sur la grille pour en créer une).
+            Point? depart = null;
+            b.AddHandler(PointerPressedEvent, (_, e) => { if (e.GetCurrentPoint(b).Properties.IsLeftButtonPressed) depart = e.GetPosition(b); }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            b.AddHandler(PointerReleasedEvent, (_, _) => depart = null, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            b.AddHandler(PointerMovedEvent, async (_, e) =>
+            {
+                if (depart is not { } d0 || !e.GetCurrentPoint(b).Properties.IsLeftButtonPressed) return;
+                var p = e.GetPosition(b);
+                if (Math.Abs(p.X - d0.X) + Math.Abs(p.Y - d0.Y) < 6 || _pressePourGlisser is not { } pe) return;
+                depart = null;
+                var dt = new DataTransfer(); dt.Add(DataTransferItem.CreateText(PrefixeGlisser + nn));
+                await DragDrop.DoDragDropAsync(pe, dt, DragDropEffects.Link);
+            }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            b.AddHandler(PointerPressedEvent, (_, e) => _pressePourGlisser = e, Avalonia.Interactivity.RoutingStrategies.Tunnel);
             _liste.Children.Add(b);
             if (idx < 0)
             {
@@ -360,7 +392,18 @@ public sealed class EditeurSymbole : Window
         int? _drag; bool _moved; int? _hover;
         // Dessin : point de départ et point courant (demi-pas de grille) ; déplacement d'un élément.
         (double X, double Y)? _p0, _p1; int? _dragPrim; Primitive? _primOrigine; (double X, double Y) _primDepart;
-        public Vue(EditeurSymbole e) { _e = e; ClipToBounds = true; Focusable = true; }
+        public Vue(EditeurSymbole e)
+        {
+            _e = e; ClipToBounds = true; Focusable = true;
+            DragDrop.SetAllowDrop(this, true);
+            AddHandler(DragDrop.DragOverEvent, (_, ev) => { ev.DragEffects = ev.DataTransfer.TryGetText()?.StartsWith(PrefixeGlisser) == true ? DragDropEffects.Link : DragDropEffects.None; });
+            AddHandler(DragDrop.DropEvent, (_, ev) =>
+            {
+                if (ev.DataTransfer.TryGetText() is not { } t || !t.StartsWith(PrefixeGlisser)) return;
+                var pos = ev.GetPosition(this); var (gx, gy) = Grille(pos);
+                _e.DeposerBrocheModele(t[PrefixeGlisser.Length..], Broche(pos), gx, gy);
+            });
+        }
         Symbole S => _e.Definition.Symbole;
 
         (double D, Point O) Cadre()
