@@ -88,6 +88,7 @@ public sealed partial class MainWindow : Window
     public void SetZoomWindowMode(bool on) { _zoomMode = on; _cursorMode = false; RefreshPlotToolbar(); }
     public Control Readout => _readout;
     public Border PuceCourbes => _puceCourbes;
+    public bool PhaseTracee => _plot.Plot.Axes.Right.IsVisible && _plot.Plot.GetPlottables().OfType<ScottPlot.Plottables.Scatter>().Any(sc => sc.Axes.YAxis == _plot.Plot.Axes.Right);
     public bool PlanDeTestVisible => _benchPanel.IsEffectivelyVisible;
     public bool ProprietesVisibles => _blocProps.IsEffectivelyVisible;
     public int LignesPlan => _gabarits.Children.OfType<Button>().Count();
@@ -1858,12 +1859,12 @@ public sealed partial class MainWindow : Window
             var sc = p.Add.ScatterLine(xs.Select(X).ToArray(), ys);
             sc.LegendText = ac ? $"|V({n})| (dB)" : $"V({n})"; sc.LineWidth = dim ? 1.5f : 2.5f; sc.Color = dim ? color.WithAlpha(0.35) : color;
             yMin = Math.Min(yMin, ys.Min()); yMax = Math.Max(yMax, ys.Max()); xLo = Math.Min(xLo, X(xs[0])); xHi = Math.Max(xHi, X(xs[^1]));
-            if (ac && !_modeTest)
+            if (ac)   // Bode : la phase est tracée dans les deux modes, en tirets, sur l'axe de droite
             {
                 var r = Verification.Frequentielle(raw, $"v({n})");
                 var ph = p.Add.ScatterLine(xs.Select(X).ToArray(), Unwrap(r.Valeurs.ToArray().Select(z => z.Phase * 180 / Math.PI).ToArray()));
                 ph.LegendText = $"phase V({n}) (°)"; ph.LineWidth = 1.5f; ph.Color = color.WithAlpha(0.6); ph.LinePattern = ScottPlot.LinePattern.Dashed;
-                ph.Axes.YAxis = p.Axes.Right; p.Axes.Right.IsVisible = true; p.Axes.Right.Label.Text = "Phase (°)";
+                ph.Axes.YAxis = p.Axes.Right; p.Axes.Right.IsVisible = true; p.Axes.Right.Label.Text = "Phase (°, tirets)";
             }
             idx++;
         }
@@ -1959,8 +1960,9 @@ public sealed partial class MainWindow : Window
             var (x0, _) = Verification.Courbe(Shown, all, nodes.First());
             double pad = Math.Max((yMax - yMin) * (_modeTest ? 0.18 : 0.06), 1e-6);
             p.Axes.SetLimits(X(x0[0]), X(x0[^1]), yMin - pad, yMax + pad);
-            if (ac && !_modeTest) p.Axes.AutoScaleY(p.Axes.Right);
+
         }
+        if (ac) p.Axes.AutoScaleY(p.Axes.Right);   // la phase garde toujours son échelle, même après un zoom
         _plot.Refresh();
     }
 

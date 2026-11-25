@@ -654,4 +654,19 @@ public class UiTests
         Assert.True(w.ElementsExplorateur >= 10);
         Shot(w, "36-explorateur.png");
     }
+
+    /// <summary>Régression : la phase est tracée sur le Bode en mode Test (mode par défaut) comme en mode Simulation.</summary>
+    [AvaloniaFact]
+    public async Task Phase_tracee_sur_le_bode_dans_les_deux_modes()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        w.SelectBanc(w.EtudeCourante.Bancs[1]);
+        await w.SimulateAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(w.PhaseTracee);
+        w.SetModeTest(false);
+        Assert.True(w.PhaseTracee);
+        w.SetModeTest(true);
+        Shot(w, "37-bode-phase-mode-test.png");
+    }
 }
