@@ -46,8 +46,6 @@ public sealed class MainWindow : Window
     readonly StackPanel _gabarits = new() { Spacing = 8 };
     readonly StackPanel _traces = new() { Spacing = 8 };
     readonly StackPanel _palette = new() { Spacing = 2 };
-    readonly TabControl _bottomTabs = new();
-    readonly TabItem _ercTab = new();
     readonly Button _simulate;
     readonly Dictionary<ComponentKind, Button> _paletteButtons = new();
     // Composants SPICE importés : bibliothèque de l'utilisateur et tuiles de la palette.
@@ -637,28 +635,55 @@ public sealed class MainWindow : Window
     // ───────────────────────── centre ─────────────────────────
     Control BuildCenter()
     {
-        var tabs = new TabControl { Padding = new Thickness(0) };
+        // Une seule rangée de navigation : Circuit sous test et bancs. Netlist, Vérifications et Journal dans le tiroir « Détails ».
         var schemaDock = new DockPanel();
-        var barBorder = new Border { Child = new ScrollViewer { Content = _benchBar, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled }, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 1) };
+        var barBorder = new Border { Child = new ScrollViewer { Content = _benchBar, HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto, VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled }, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 0, 0, 1) };
         DockPanel.SetDock(barBorder, Dock.Top); schemaDock.Children.Add(barBorder); _cadreSchema.Child = _canvas; schemaDock.Children.Add(_cadreSchema);
         _canvas.AddHandler(PointerPressedEvent, (_, _) => ActiverZone(Zone.Schema), Avalonia.Interactivity.RoutingStrategies.Tunnel);
-        tabs.Items.Add(new TabItem { FontSize = Ui.Onglet, MinHeight = 30, Header = "Schéma", Content = schemaDock });
-        tabs.Items.Add(new TabItem { FontSize = Ui.Onglet, MinHeight = 30, Header = "Netlist", Content = _netlist });
-
-        _ercTab.Header = "Vérifications"; _ercTab.FontSize = Ui.Onglet; _ercTab.MinHeight = 30;
-        _bottomTabs.Items.Add(new TabItem { FontSize = Ui.Onglet, MinHeight = 30, Header = "Courbes", Content = BuildPlotArea() });
-        _bottomTabs.Items.Add(_ercTab); _ercTab.Content = new ScrollViewer { Content = _ercList };
-        _bottomTabs.Items.Add(new TabItem { FontSize = Ui.Onglet, MinHeight = 30, Header = "Journal ngspice", Content = _journal });
+        barBorder.DoubleTapped += (_, e) => { if (e.Source is not Button && (e.Source as Visual)?.FindAncestorOfType<Button>() == null) Disposer(_disposition == Disposition.Schema ? Disposition.Mixte : Disposition.Schema); };
 
         var g = _centre;
-        g.RowDefinitions = new("3*,5,2*");
-        g.Children.Add(tabs); _zoneHaut = tabs;
+        g.RowDefinitions = new("3*,5,2*,Auto");
+        g.Children.Add(schemaDock); _zoneHaut = schemaDock;
         var split = new GridSplitter { Background = Ui.Line, ResizeDirection = GridResizeDirection.Rows }; Grid.SetRow(split, 1); g.Children.Add(split); _separateur = split;
-        var bottom = new Border { Background = Ui.Panel, Child = _bottomTabs }; Grid.SetRow(bottom, 2); g.Children.Add(bottom); _zoneBas = bottom;
-        // Double-clic sur un titre de zone : l'agrandir, puis revenir.
-        tabs.DoubleTapped += (_, e) => { if (e.Source is Visual v && v.FindAncestorOfType<TabItem>() != null) Disposer(_disposition == Disposition.Schema ? Disposition.Mixte : Disposition.Schema); };
-        _bottomTabs.DoubleTapped += (_, e) => { if (e.Source is Visual v && v.FindAncestorOfType<TabItem>() != null && v.FindAncestorOfType<AvaPlot>() == null) Disposer(_disposition == Disposition.Courbes ? Disposition.Mixte : Disposition.Courbes); };
+        var bottom = new Border { Background = Ui.Panel, Child = BuildPlotArea() }; Grid.SetRow(bottom, 2); g.Children.Add(bottom); _zoneBas = bottom;
+        var tiroir = BuildDetails(); Grid.SetRow(tiroir, 3); g.Children.Add(tiroir);
         return g;
+    }
+
+    // ───────────────────────── tiroir « Détails » ─────────────────────────
+    public enum Detail { Netlist, Verifications, Journal }
+    Detail? _detailOuvert;
+    readonly ContentControl _detailsContenu = new() { Height = 200, IsVisible = false };
+    readonly Dictionary<Detail, Button> _boutonsDetails = new();
+    public Detail? DetailOuvert => _detailOuvert;
+
+    Control BuildDetails()
+    {
+        var barre = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 1) };
+        barre.Children.Add(new TextBlock { Text = "Détails", FontSize = Ui.Aide, FontWeight = FontWeight.SemiBold, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 0) });
+        foreach (var (d, nom) in new[] { (Detail.Netlist, "Netlist"), (Detail.Verifications, "Vérifications"), (Detail.Journal, "Journal ngspice") })
+        {
+            var b = new Button { Content = nom, FontSize = Ui.Aide, Padding = new Thickness(8, 2), Background = Brushes.Transparent, CornerRadius = new CornerRadius(4) };
+            var dd = d; b.Click += (_, _) => OuvrirDetail(_detailOuvert == dd ? null : dd);
+            _boutonsDetails[d] = b; barre.Children.Add(b);
+        }
+        var dock = new DockPanel();
+        var barreB = new Border { Child = barre, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 0) };
+        DockPanel.SetDock(barreB, Dock.Top); dock.Children.Add(barreB); dock.Children.Add(_detailsContenu);
+        return dock;
+    }
+
+    /// <summary>Ouvre le tiroir sur un détail (null : le replie).</summary>
+    public void OuvrirDetail(Detail? d)
+    {
+        _detailOuvert = d;
+        _detailsContenu.IsVisible = d != null;
+        _detailsContenu.Content = d switch
+        {
+            Detail.Netlist => _netlist, Detail.Verifications => new ScrollViewer { Content = _ercList }, Detail.Journal => _journal, _ => null
+        };
+        foreach (var (k, b) in _boutonsDetails) Ui.SetActive(b, k == d);
     }
 
     // ───────────────────────── zone active (cible des loupes) ─────────────────────────
@@ -704,7 +729,7 @@ public sealed class MainWindow : Window
         _centre.RowDefinitions[1].Height = d == Disposition.Mixte ? new GridLength(5) : new GridLength(0);
         _centre.RowDefinitions[2].Height = d == Disposition.Schema ? new GridLength(0) : new GridLength(d == Disposition.Courbes ? 1 : 2, GridUnitType.Star);
         foreach (var (k, b) in _boutonsDisposition) Ui.SetActive(b, k == d);
-        if (d == Disposition.Courbes) { _bottomTabs.SelectedIndex = 0; ActiverZone(Zone.Courbes); }
+        if (d == Disposition.Courbes) ActiverZone(Zone.Courbes);
         else if (d == Disposition.Schema) ActiverZone(Zone.Schema);
     }
 
@@ -1605,7 +1630,6 @@ public sealed class MainWindow : Window
         if (_panes.FirstOrDefault(p => p.Signaux.Contains(noeud)) is { } pane) Activate(pane);
         else if (_active != null) { _active.Signaux.Add(noeud); var i = _panes.IndexOf(_active); RebuildPanes(); Activate(_panes[i]); }
         if (_disposition == Disposition.Schema) Disposer(Disposition.Mixte);
-        _bottomTabs.SelectedIndex = 0;
     }
 
     Control EditeurCritere(CritereGabarit g, List<string> nodes)
@@ -1658,7 +1682,7 @@ public sealed class MainWindow : Window
         foreach (var i in issues)
             _ercList.Children.Add(new TextBlock { Text = (i.Severity == Severity.Error ? "⛔ " : "⚠ ") + i.Message, Foreground = i.Severity == Severity.Error ? Ui.FailBrush : Ui.WarnBrush, TextWrapping = TextWrapping.Wrap });
         int nErr = issues.Count(i => i.Severity == Severity.Error), nWarn = issues.Count - nErr;
-        _ercTab.Header = nErr + nWarn == 0 ? "Vérifications ✓" : $"Vérifications ({nErr + nWarn})";
+        if (_boutonsDetails.TryGetValue(Detail.Verifications, out var bv)) { bv.Content = nErr + nWarn == 0 ? "Vérifications ✓" : $"Vérifications ({nErr + nWarn})"; bv.Foreground = nErr > 0 ? Ui.FailBrush : nWarn > 0 ? Ui.WarnBrush : Ui.Ink; }
         // Circuit modifié : tous les bancs sont à relancer. Calque modifié : seulement le banc actif.
         bool had = !_chargement && (_banc == null ? _results.Count > 0 : _last != null);
         if (!_chargement) { if (_banc == null) _results.Clear(); else _last = null; }
@@ -1701,15 +1725,14 @@ public sealed class MainWindow : Window
             if (res.Erreur != null)
             {
                 _status.Text = "⛔ " + res.Erreur;
-                _bottomTabs.SelectedIndex = res.Erc.Any(i => i.Severity == Severity.Error) ? 1 : 2;
+                OuvrirDetail(res.Erc.Any(i => i.Severity == Severity.Error) ? Detail.Verifications : Detail.Journal);
                 SetVerdict(null);
             }
             else
             {
                 _status.Text = $"« {Banc.Nom} » simulé en {sw.ElapsedMilliseconds} ms ({string.Join(" + ", res.Resultats.Keys.Select(k => k == AnalyseKind.Ac ? "AC" : "transitoire"))}) · {res.Respectes}/{res.Nombre} contrainte(s) respectée(s)";
                 SetVerdict(res.Nombre == 0 ? null : res.Global);
-                _bottomTabs.SelectedIndex = 0;
-            }
+                    }
             RefreshGabarits(); RefreshPlot(keepLimits); RefreshBenchBar();
             _dureeDerniere = sw.ElapsedMilliseconds;
         }

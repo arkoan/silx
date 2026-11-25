@@ -573,4 +573,20 @@ public class UiTests
         Assert.NotNull(w.Canevas.ErreurGlobale);
         Shot(w, "32-erreurs-sur-schema.png");
     }
+
+    /// <summary>G1 : plus d'onglets Schéma/Netlist ni Courbes/Vérifications/Journal ; tiroir « Détails » replié par défaut.</summary>
+    [AvaloniaFact]
+    public void Navigation_a_un_niveau_et_tiroir_details()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Empty(w.GetLogicalDescendants().OfType<Avalonia.Controls.TabControl>());
+        Assert.Null(w.DetailOuvert);
+        w.OuvrirDetail(MainWindow.Detail.Netlist);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(MainWindow.Detail.Netlist, w.DetailOuvert);
+        Shot(w, "33-tiroir-details.png");
+        w.OuvrirDetail(null);
+        Assert.Null(w.DetailOuvert);
+    }
 }
