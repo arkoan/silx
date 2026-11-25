@@ -684,4 +684,32 @@ public class UiTests
         var l = plot.Plot.Axes.GetLimits();
         Assert.True(l.Left >= -1e-9 && l.Right <= 10 + 1e-9);   // 0 à 10 ms, pas au-delà
     }
+
+    /// <summary>Banc temporel : vue spectrale (FFT) en dBV selon la fréquence, sans curseurs ni gabarits.</summary>
+    [AvaloniaFact]
+    public async Task Vue_fft_du_temporel()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        w.AfficherFft(true);
+        Assert.True(w.VueFft);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        var l = w.PlotControl.Plot.Axes.GetLimits();
+        Assert.True(l.Left > 1 && l.Right > l.Left + 2);   // log10(f) : de ~100 Hz à plusieurs MHz
+        Shot(w, "39-fft.png");
+        w.AfficherFft(false);
+        Assert.False(w.VueFft);
+    }
+
+    /// <summary>FFT d'une sinusoïde de 1 kHz, 1 V crête : raie à 1 kHz proche de 0 dBV.</summary>
+    [Fact]
+    public void Spectre_sinus()
+    {
+        var t = Enumerable.Range(0, 5000).Select(i => i * 2e-6).ToArray();   // 10 ms, 10 périodes
+        var y = t.Select(x => Math.Sin(2 * Math.PI * 1000 * x)).ToArray();
+        var (f, db) = Silx.Etude.Spectre.Calculer(t, y);
+        int k = Array.IndexOf(db, db.Max());
+        Assert.InRange(f[k], 900, 1100);
+        Assert.InRange(db[k], -1.5, 0.5);
+    }
 }

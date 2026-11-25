@@ -60,7 +60,11 @@ public sealed partial class MainWindow : Window
     readonly Button _modeSim = new(), _modeTestBtn = new();
     readonly StackPanel _testTools = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
     readonly Button _drawHigh = new(), _drawLow = new();
-    Button _viewTran = null!, _viewAc = null!;
+    Button _viewTran = null!, _viewAc = null!, _viewFft = null!;
+    bool _vueFft;
+    /// <summary>Vue spectrale (FFT) d'un banc temporel : amplitude en dBV selon la fréquence.</summary>
+    public bool VueFft => _vueFft && _banc?.Type == AnalyseKind.Transitoire;
+    public void AfficherFft(bool fft) { _vueFft = fft; if (fft) EndDrawing(false); RefreshPlotToolbar(); RefreshPlot(); }
     // Édition des points d'un gabarit : survol (grossit) puis glisser.
     (GabaritTrace G, int I)? _hoverVertex, _dragVertex;
     // Curseurs de mesure : deux au plus par courbe (A, B), ils suivent la courbe.
@@ -75,7 +79,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Pose (ou déplace) le curseur A ou B sur la courbe la plus proche du point (repère du graphique actif).</summary>
     public void PoserCurseur(char nom, Point pos)
     {
-        if (_banc == null || _last == null || CourbeProche(pos) is not { } sig) return;
+        if (_banc == null || _last == null || VueFft || CourbeProche(pos) is not { } sig) return;
         var c = _cursors.FirstOrDefault(k => k.Noeud == sig && k.Nom == nom);
         if (c == null) { c = new Curseur { Noeud = sig, Nom = nom }; _cursors.Add(c); }
         c.X = ClampToCurve(sig, ToData(pos).X);
@@ -799,10 +803,11 @@ public sealed partial class MainWindow : Window
         var seg = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
         seg.Children.Add(_modeSim); seg.Children.Add(_modeTestBtn);
 
-        _viewTran = Icones.Button(Icones.Temporel, "Vue temporelle : suit le type du banc (réglable dans le panneau du banc)", () => { }, 17);
+        _viewTran = Icones.Button(Icones.Temporel, "Vue temporelle (banc temporel)", () => AfficherFft(false), 17);
+        _viewFft = Icones.Button(Icones.Fft, "Vue spectrale (FFT) du banc temporel : amplitude en dBV selon la fréquence", () => AfficherFft(true), 17);
         _viewAc = Icones.Button(Icones.Bode, "Vue Bode : suit le type du banc (réglable dans le panneau du banc)", () => { }, 17);
         var view = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
-        view.Children.Add(_viewTran); view.Children.Add(_viewAc);
+        view.Children.Add(_viewTran); view.Children.Add(_viewFft); view.Children.Add(_viewAc);
 
         foreach (var (b, lim) in new[] { (_drawHigh, Limite.Haute), (_drawLow, Limite.Basse) })
         {
@@ -937,11 +942,11 @@ public sealed partial class MainWindow : Window
         if (_viewTran != null)
         {
             // La vue suit le type du banc : l'autre est grisée.
-            Ui.SetActive(_viewTran, _banc != null && Shown == AnalyseKind.Transitoire); Ui.SetActive(_viewAc, _banc != null && Shown == AnalyseKind.Ac);
-            _viewTran.IsEnabled = _banc?.Type == AnalyseKind.Transitoire; _viewAc.IsEnabled = _banc?.Type == AnalyseKind.Ac;
-            _viewTran.Opacity = _viewTran.IsEnabled ? 1 : 0.3; _viewAc.Opacity = _viewAc.IsEnabled ? 1 : 0.3;
+            Ui.SetActive(_viewTran, _banc != null && Shown == AnalyseKind.Transitoire && !VueFft); Ui.SetActive(_viewFft, VueFft); Ui.SetActive(_viewAc, _banc != null && Shown == AnalyseKind.Ac);
+            _viewTran.IsEnabled = _viewFft.IsEnabled = _banc?.Type == AnalyseKind.Transitoire; _viewAc.IsEnabled = _banc?.Type == AnalyseKind.Ac;
+            _viewTran.Opacity = _viewTran.IsEnabled ? 1 : 0.3; _viewFft.Opacity = _viewFft.IsEnabled ? 1 : 0.3; _viewAc.Opacity = _viewAc.IsEnabled ? 1 : 0.3;
         }
-        _testTools.IsVisible = _modeTest && _banc != null;
+        _testTools.IsVisible = _modeTest && _banc != null && !VueFft;
         Ui.SetActive(_drawHigh, _drawing?.Limite == Limite.Haute); Ui.SetActive(_drawLow, _drawing?.Limite == Limite.Basse);
         _drawHint.Text = _drawing == null ? "" : _drawing.Points.Count == 0
             ? "Cliquez près de la courbe à contraindre pour poser le premier point (de gauche à droite)…"
@@ -966,7 +971,7 @@ public sealed partial class MainWindow : Window
     public void StartDrawing(Limite lim)
     {
         var n = ActiveSignals.FirstOrDefault();   // précisé au premier clic : courbe la plus proche
-        if (n == null || _banc == null) return;
+        if (n == null || _banc == null || VueFft) return;
         if (_last == null || !_last.Resultats.ContainsKey(Shown)) { _status.Text = "Simulez d'abord : le gabarit se dessine sur la courbe."; return; }
         _drawing = new GabaritTrace { Analyse = Shown, Noeud = n, Limite = lim };
         _plot.UserInputProcessor.Disable();
@@ -1028,6 +1033,7 @@ public sealed partial class MainWindow : Window
             e.Handled = true; _zoomStart = e.GetPosition(_plot); _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
             return;
         }
+        if (VueFft) return;   // spectre : ni curseurs ni gabarits
         if (_hoverVertex is { } hv)
         {
             e.Handled = true; _dragVertex = hv; _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
@@ -1088,7 +1094,7 @@ public sealed partial class MainWindow : Window
             ReevaluateTraces(); RefreshPlot(keepLimits: true);
             e.Handled = true; return;
         }
-        if (_banc == null || _last == null) return;
+        if (_banc == null || _last == null || VueFft) return;
         var pos = e.GetPosition(_plot);
         var hit = _modeTest ? VertexAt(pos) : null;
         var hc = hit == null ? CursorAt(pos) : null;
@@ -1891,6 +1897,7 @@ public sealed partial class MainWindow : Window
             p.Axes.SetLimits(-1, 1, -1, 1); p.HideGrid(); p.Axes.Left.IsVisible = p.Axes.Bottom.IsVisible = p.Axes.Top.IsVisible = false; _plot.Refresh(); return;
         }
         p.ShowGrid(); p.Axes.Left.IsVisible = p.Axes.Bottom.IsVisible = p.Axes.Top.IsVisible = true;
+        if (VueFft) { RenderSpectre(pane, raw, nodesOk, isActive); return; }
         bool ac = Shown == AnalyseKind.Ac;
         double X(double x) => ac ? Math.Log10(x) : x * 1e3;
         var nodes = nodesOk;
@@ -2011,6 +2018,40 @@ public sealed partial class MainWindow : Window
         if (ac) p.Axes.AutoScaleY(p.Axes.Right);   // la phase garde toujours son échelle, même après un zoom
         // Zoom et déplacement bornés aux données : inutile de dézoomer au-delà des courbes.
         BornerAuxDonnees(p, xLo, xHi, yMin, yMax);
+        _plot.Refresh();
+    }
+
+    /// <summary>Vue FFT d'un banc temporel : amplitude crête (dBV) de chaque signal, fréquence en échelle log.</summary>
+    void RenderSpectre(Pane pane, Silx.Core.Raw.RawFile raw, List<string> nodes, bool isActive)
+    {
+        var p = _plot.Plot;
+        var palette = new ScottPlot.Palettes.Category10();
+        double yMax = double.NegativeInfinity, xLo = double.PositiveInfinity, xHi = double.NegativeInfinity;
+        int idx = 0;
+        foreach (var n in nodes.Take(8))
+        {
+            var (t, y) = Verification.Courbe(AnalyseKind.Transitoire, raw, n);
+            var (f, db) = Spectre.Calculer(t, y);
+            var color = palette.GetColor(idx++);
+            if (f.Length == 0) continue;
+            var sc = p.Add.ScatterLine(f.Select(Math.Log10).ToArray(), db);
+            sc.LegendText = $"|V({n})| (dBV)"; sc.LineWidth = 1.8f; sc.Color = color;
+            yMax = Math.Max(yMax, db.Max()); xLo = Math.Min(xLo, Math.Log10(f[0])); xHi = Math.Max(xHi, Math.Log10(f[^1]));
+        }
+        p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic
+        {
+            MinorTickGenerator = new ScottPlot.TickGenerators.LogMinorTickGenerator(), IntegerTicksOnly = true,
+            LabelFormatter = x => SpiceNumber.Format(Math.Pow(10, x), "Hz")
+        };
+        p.Axes.Bottom.Label.Text = "Fréquence (FFT, fenêtre de Hann)"; p.Axes.Left.Label.Text = "Amplitude (dBV crête)";
+        p.Title(""); p.HideLegend();
+        if (_panes.Count > 1 && pane != _panes[^1]) p.Axes.Bottom.Label.Text = "";
+        if (isActive) _readout.IsVisible = false;
+        pane.Mesures.Children.Clear();
+        if (!double.IsFinite(yMax)) { _plot.Refresh(); return; }
+        double yMin = yMax - 120;   // 120 dB de dynamique : en dessous, c'est du bruit numérique
+        p.Axes.SetLimits(xLo, xHi, yMin, yMax + 10);
+        BornerAuxDonnees(p, xLo, xHi, yMin, yMax + 5);
         _plot.Refresh();
     }
 
