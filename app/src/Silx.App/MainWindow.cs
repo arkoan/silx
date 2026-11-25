@@ -33,6 +33,8 @@ public sealed class MainWindow : Window
         public required AvaPlot Plot { get; init; }
         public required Grid Host { get; init; }
         public required Border Frame { get; init; }
+        /// <summary>Bandeau des mesures automatiques sous le graphique.</summary>
+        public WrapPanel Mesures { get; } = new() { Margin = new Thickness(10, 0, 10, 2) };
     }
     readonly List<Pane> _panes = new();
     Pane? _active;
@@ -774,7 +776,9 @@ public sealed class MainWindow : Window
             var pane = new Pane { Signaux = lists[i], Plot = plot, Host = host, Frame = frame };
             var dock = new DockPanel();
             var header = BuildPaneHeader(pane, lists.Count > 1);
-            DockPanel.SetDock(header, Dock.Top); dock.Children.Add(header); dock.Children.Add(host);
+            DockPanel.SetDock(header, Dock.Top); dock.Children.Add(header);
+            DockPanel.SetDock(pane.Mesures, Dock.Bottom); dock.Children.Add(pane.Mesures);
+            dock.Children.Add(host);
             frame.Child = dock;
             _panesGrid.RowDefinitions.Add(new RowDefinition(GridLength.Star));
             Grid.SetRow(frame, i); _panesGrid.Children.Add(frame);
@@ -1091,6 +1095,52 @@ public sealed class MainWindow : Window
             if (Math.Abs(px.X / sc - pos.X) < 6) return c;
         }
         return null;
+    }
+
+    /// <summary>Mesures automatiques par trace, sous le graphique : comme les mesures d'un oscilloscope.</summary>
+    void RemplirMesures(Pane pane, Silx.Core.Raw.RawFile raw, List<string> nodes, Func<string, ScottPlot.Color> couleur)
+    {
+        pane.Mesures.Children.Clear();
+        bool ac = Shown == AnalyseKind.Ac;
+        foreach (var n in nodes)
+        {
+            var (xs, ys) = Verification.Courbe(Shown, raw, n);
+            var c = couleur(n);
+            var ligne = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(0, 0, 18, 0) };
+            ligne.Children.Add(new Border { Width = 10, Height = 3, Background = new SolidColorBrush(Color.FromRgb(c.R, c.G, c.B)), VerticalAlignment = VerticalAlignment.Center });
+            ligne.Children.Add(new TextBlock { Text = ac ? $"|V({n})|" : $"V({n})", FontWeight = FontWeight.SemiBold, FontSize = Ui.Aide });
+            foreach (var (nom, val) in ac ? MesuresBode(xs, ys) : MesuresTemps(xs, ys))
+                ligne.Children.Add(new TextBlock { Text = $"{nom} {val}", FontSize = Ui.Aide, Foreground = Ui.Muted, FontFamily = new FontFamily("Menlo, Consolas, monospace") });
+            pane.Mesures.Children.Add(ligne);
+        }
+    }
+
+    /// <summary>Min, max, crête-crête, moyenne temporelle, fréquence (passages montants par la moyenne).</summary>
+    public static IEnumerable<(string, string)> MesuresTemps(double[] t, double[] v)
+    {
+        double min = v.Min(), max = v.Max(), aire = 0;
+        for (int i = 1; i < t.Length; i++) aire += 0.5 * (v[i] + v[i - 1]) * (t[i] - t[i - 1]);
+        double moy = aire / Math.Max(t[^1] - t[0], 1e-30);
+        var montees = new List<double>();
+        for (int i = 1; i < t.Length; i++)
+            if (v[i - 1] < moy && v[i] >= moy) montees.Add(t[i - 1] + (moy - v[i - 1]) / (v[i] - v[i - 1]) * (t[i] - t[i - 1]));
+        string f = montees.Count >= 3 && max - min > 1e-9 ? SpiceNumber.Format((montees.Count - 1) / (montees[^1] - montees[0]), "Hz") : "—";
+        return [("min", SpiceNumber.Format(min, "V")), ("max", SpiceNumber.Format(max, "V")), ("c-c", SpiceNumber.Format(max - min, "V")), ("moy", SpiceNumber.Format(moy, "V")), ("f", f)];
+    }
+
+    /// <summary>Gain basse fréquence, fréquence de coupure −3 dB, pente sur la dernière décade.</summary>
+    public static IEnumerable<(string, string)> MesuresBode(double[] f, double[] db)
+    {
+        string fc = "—";
+        for (int i = 1; i < f.Length; i++)
+            if (db[i - 1] > db[0] - 3.0103 && db[i] <= db[0] - 3.0103)
+            {
+                double a = Math.Log10(f[i - 1]), b = Math.Log10(f[i]), t = (db[0] - 3.0103 - db[i - 1]) / (db[i] - db[i - 1]);
+                fc = SpiceNumber.Format(Math.Pow(10, a + t * (b - a)), "Hz"); break;
+            }
+        int j = Array.FindLastIndex(f, x => x <= f[^1] / 10);
+        string pente = j >= 0 && j < f.Length - 1 ? $"{(db[^1] - db[j]) / Math.Log10(f[^1] / f[j]):0.#} dB/déc".Replace('.', ',') : "—";
+        return [("gain BF", SpiceNumber.Format(db[0], "dB")), ("fc", fc), ("pente", pente)];
     }
 
     /// <summary>Tableau des curseurs en bas à droite : valeurs en A et B, écarts Δ (et 1/Δt en temporel).</summary>
@@ -1725,6 +1775,7 @@ public sealed class MainWindow : Window
             var t = p.Add.Text(_banc == null ? "Sélectionnez un banc de test pour voir ses courbes" : pane.Signaux.Count == 0 ? "Sonde : cliquez sur un fil du schéma pour afficher sa tension ici" : _last == null ? "Lancez « Simuler » pour tracer les courbes" : "Cette analyse n'a pas été simulée : relancez la simulation", 0, 0);
             t.LabelFontSize = 14; t.LabelFontColor = ScottPlot.Color.FromHex("#5b6170"); t.LabelAlignment = ScottPlot.Alignment.MiddleCenter;
             if (isActive) _readout.IsVisible = false;
+            pane.Mesures.Children.Clear();
             p.Axes.SetLimits(-1, 1, -1, 1); p.HideGrid(); p.Axes.Left.IsVisible = p.Axes.Bottom.IsVisible = p.Axes.Top.IsVisible = false; _plot.Refresh(); return;
         }
         p.ShowGrid(); p.Axes.Left.IsVisible = p.Axes.Bottom.IsVisible = p.Axes.Top.IsVisible = true;
@@ -1832,6 +1883,7 @@ public sealed class MainWindow : Window
             lt.LabelAlignment = haut ? ScottPlot.Alignment.UpperRight : ScottPlot.Alignment.LowerRight; lt.LabelOffsetX = -6; lt.LabelOffsetY = haut ? 6 : -6; lt.LabelPadding = 3;
         }
         if (isActive) RefreshReadout(ColorOf);
+        RemplirMesures(pane, raw, nodes, ColorOf);
         // Les pastilles au-dessus du graphique servent de légende : plus de cadre de légende sur les courbes.
         p.Title(""); p.HideLegend();
         if (_panes.Count > 1 && pane != _panes[^1]) p.Axes.Bottom.Label.Text = "";   // titre de l'axe X sur le dernier graphique seulement

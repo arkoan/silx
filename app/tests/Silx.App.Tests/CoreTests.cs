@@ -162,4 +162,17 @@ public class CoreTests
         Assert.True(v.Min() > -0.05);          // demi-alternance négative bloquée
         Assert.InRange(v.Max(), 4.1, 4.5);     // 5 V − ~0,7 V de seuil
     }
+
+    [Fact]
+    public void Mesures_par_trace_sinus_et_bode()
+    {
+        var t = Enumerable.Range(0, 2001).Select(i => i * 1e-5).ToArray();             // 20 ms
+        var v = t.Select(x => 1 + 2 * Math.Sin(2 * Math.PI * 500 * x)).ToArray();     // 500 Hz, 1 V ± 2 V
+        var m = Silx.App.MainWindow.MesuresTemps(t, v).ToDictionary(x => x.Item1, x => x.Item2);
+        Assert.Equal("4,00 V", m["c-c"]); Assert.Equal("1,00 V", m["moy"]); Assert.Equal("500 Hz", m["f"]);
+        var f = Enumerable.Range(0, 121).Select(i => Math.Pow(10, i / 20.0)).ToArray();     // 1 Hz → 1 MHz
+        var db = f.Select(x => -10 * Math.Log10(1 + Math.Pow(x / 1000, 2))).ToArray();     // 1er ordre, fc 1 kHz
+        var b = Silx.App.MainWindow.MesuresBode(f, db).ToDictionary(x => x.Item1, x => x.Item2);
+        Assert.Equal("1,00 kHz", b["fc"]); Assert.Equal("-20 dB/déc", b["pente"]);
+    }
 }
