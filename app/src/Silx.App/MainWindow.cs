@@ -601,7 +601,7 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Catégorie d'un composant importé, d'après son symbole ou son type de modèle.</summary>
-    public static string Categorie(DefinitionComposant d) => d.Symbole.Gabarit switch
+    public static string Categorie(DefinitionComposant d) => d.CodeXspice != null ? "Logique" : d.Symbole.Gabarit switch
     {
         GabaritSymbole.Nmos or GabaritSymbole.Nmos3 => "MOSFET canal N", GabaritSymbole.Pmos or GabaritSymbole.Pmos3 => "MOSFET canal P",
         GabaritSymbole.Npn => "Bipolaire NPN", GabaritSymbole.Pnp => "Bipolaire PNP", GabaritSymbole.Diode => "Diode",
@@ -612,14 +612,14 @@ public sealed partial class MainWindow : Window
             TypeModele.Diode => "Diode", TypeModele.Njf or TypeModele.Pjf => "JFET", _ => "Sous-circuit"
         }
     };
-    static readonly string[] OrdreCategories = ["Diode", "Bipolaire NPN", "Bipolaire PNP", "MOSFET canal N", "MOSFET canal P", "JFET", "Sous-circuit"];
+    static readonly string[] OrdreCategories = ["Diode", "Bipolaire NPN", "Bipolaire PNP", "MOSFET canal N", "MOSFET canal P", "JFET", "Logique", "Sous-circuit"];
 
     /// <summary>Composants importés : une tuile par catégorie (MOSFET N, bipolaire NPN…), puis la liste des références.</summary>
     void RebuildSpicePalette()
     {
         _spiceWrap.Children.Clear(); _spiceButtons.Clear();
         var imp = new Button { Content = Icones.Make(Icones.ImporterSpice, 20, Ui.AccentBrush), Padding = new Thickness(5, 7), Margin = new Thickness(2), Background = Brushes.Transparent, CornerRadius = new CornerRadius(6), HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch };
-        ToolTip.SetTip(imp, "Importer des modèles SPICE (.lib, .mod, .cir…) : .model D, NPN, PNP, NMOS, PMOS, NJF, PJF et .subckt");
+        ToolTip.SetTip(imp, "Importer des modèles SPICE (.lib, .mod, .cir…) : .model D, NPN, PNP, NMOS, PMOS, NJF, PJF, portes et bascules XSPICE (d_and, d_dff…) et .subckt");
         imp.Click += async (_, _) => await ImporterFichierAsync();
         _spiceWrap.Children.Add(imp);
         foreach (var g in _bib.Definitions.GroupBy(Categorie).OrderBy(g => Array.IndexOf(OrdreCategories, g.Key)))
@@ -651,7 +651,8 @@ public sealed partial class MainWindow : Window
             g.Children.Add(new Symboles.Icone { Kind = ComponentKind.Spice, Symbole = d.Symbole, Width = 30, Height = 22, Brush = Ui.Ink });
             var txt = new StackPanel { Margin = new Thickness(6, 0) };
             txt.Children.Add(new TextBlock { Text = d.Nom, FontWeight = FontWeight.SemiBold, FontSize = Ui.Texte });
-            if (d.Notes.Length > 0) txt.Children.Add(new TextBlock { Text = d.Notes, FontSize = Ui.Aide, Foreground = Ui.Muted, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 180 });
+            var info = d.CodeXspice != null ? d.Description : d.Notes;
+            if (info.Length > 0) txt.Children.Add(new TextBlock { Text = info, FontSize = Ui.Aide, Foreground = Ui.Muted, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = 180 });
             Grid.SetColumn(txt, 1); g.Children.Add(txt);
             var edit = new Button { Content = Icones.Make(Icones.EditerSymbole, 13, Ui.Muted), Padding = new Thickness(4), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
             ToolTip.SetTip(edit, "Modifier le symbole");

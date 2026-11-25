@@ -13,7 +13,7 @@ public class SpiceTests
         + CJC=7.306p MJC=.3416 VJC=.75 FC=.5 CJE=22.01p MJE=.377 VJE=.75   ; capacités
         + TR=46.91n TF=411.1p ITF=.6 VTF=1.7 XTF=3 RB=10)
         .MODEL BS170 nmos (Level=1 Vto=1.8 Kp=0.1 Lambda=0.01)
-        .model DAND d_and(rise_delay=1n)
+        .model SW1 SW(vt=1 vh=0.1)
         * Filtre RC en sous-circuit
         .subckt RCF IN OUT GND params: R=1k C=1u
         R1 IN OUT {R}
@@ -35,7 +35,7 @@ public class SpiceTests
         var x = a.Modeles[2];
         Assert.Equal(["IN", "OUT", "GND"], x.Broches); Assert.Equal("R=1k C=1u", x.Parametres);
         Assert.EndsWith(".ends RCF", x.Texte.Trim());
-        Assert.Contains(a.Avertissements, w => w.Contains("DAND") && w.Contains("d_and"));
+        Assert.Contains(a.Avertissements, w => w.Contains("SW1") && w.Contains("SW"));
     }
 
     [Fact]
@@ -116,8 +116,8 @@ public class SpiceTests
             var bib = BibliothequeComposants.Charger(dir);
             bib.Enregistrer(d); bib.Enregistrer(Def("RCF"));
             var relu = BibliothequeComposants.Charger(dir);
-            Assert.Equal(["BS170", "RCF"], relu.Definitions.Select(x => x.Nom));
-            Assert.Equal(5, relu.Definitions[0].Symbole.Broches[3].X);
+            Assert.Equal(["BS170", "RCF"], relu.Definitions.Where(x => x.CodeXspice == null).Select(x => x.Nom));   // + composants logiques intégrés
+            Assert.Equal(5, relu.Definitions.Single(x => x.Nom == "BS170").Symbole.Broches[3].X);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }
@@ -163,5 +163,59 @@ public class SpiceTests
         var r = await Verification.RunAsync(e, banc, []);
         Assert.Null(r.Erreur);
         Assert.Equal(Verdict.Pass, r.Global);
+    }
+
+    /// <summary>Composants logiques XSPICE : bascule D et porte ET intégrées, ponts placés par Silx, simulées avec ngspice.</summary>
+    [Fact]
+    public async Task Bascule_d_et_porte_et_xspice_simulees_avec_ngspice()
+    {
+        var bib = BibliothequeLogique.Definitions().ToDictionary(d => d.Nom);
+        Assert.Equal(["D", "CLK", "Q", "QB"], bib["DFF"].BrochesModele);
+        var e = new Silx.Etude.Etude(); var banc = new Banc(); var s = e.Schema;
+        // DFF : D(0,-1) CLK(0,1) Q(5,-1) /Q(5,1) laissée en l'air ; AND2 : A(20,-1) B(20,1) Y(24,0).
+        s.Components.Add(new() { Ref = "A1", Kind = ComponentKind.Spice, Definition = bib["DFF"], Position = new(0, 0) });
+        s.Components.Add(new() { Ref = "A2", Kind = ComponentKind.Spice, Definition = bib["AND2"], Position = new(20, 0) });
+        void Net(string r, int x, int y, string n) => s.Components.Add(new() { Ref = r, Kind = ComponentKind.Label, Position = new(x, y), Value = n });
+        Net("NET1", 0, -1, "D"); Net("NET2", 0, 1, "CLK"); Net("NET3", 5, -1, "Q");
+        Net("NET4", 20, -1, "Q"); Net("NET5", 20, 1, "CLK"); Net("NET6", 24, 0, "Y");
+        void Source(string r, int x, string n, string v)
+        {
+            banc.Calque.Components.Add(new() { Ref = r, Kind = ComponentKind.VoltageSource, Position = new(x, 10), Rotation = 1, Value = v });
+            banc.Calque.Components.Add(new() { Ref = "GND" + r, Kind = ComponentKind.Ground, Position = new(x, 14) });
+            banc.Calque.Components.Add(new() { Ref = "NET" + r, Kind = ComponentKind.Label, Position = new(x, 10), Value = n });
+        }
+        Source("VD", 40, "D", "PULSE(0 5 3u 10n 10n 20u 40u)");
+        Source("VC", 50, "CLK", "PULSE(0 5 1u 10n 10n 5u 10u)");
+        banc.Transitoire.Duree = 40e-6; banc.Transitoire.Pas = 10e-9;
+        var c = Connectivity.Build(banc.Fusion(s));
+        var net = CircuitBuilder.Preview(banc.Fusion(s), c, null);
+        Assert.Contains("A1 A1_D_d A1_CLK_d NULL NULL A1_Q_d A1_QB_d silx_dff", net);
+        Assert.Contains("A2 [A2_A_d A2_B_d] A2_Y_d silx_and2", net);
+        Assert.Contains(".model silx_adc_5 adc_bridge(in_low=1.5 in_high=3.5)", net);
+        var r = await Verification.RunAsync(e, banc, []);
+        Assert.Null(r.Erreur);
+        var raw = r.Resultats[AnalyseKind.Transitoire];
+        double A(string n, double t) { var tt = raw.Vector("time"); var v = raw.Vector($"v({n})"); int i = Array.FindIndex(tt.ToArray(), x => x >= t); return v[i]; }
+        Assert.True(A("q", 4e-6) < 0.5);     // front d'horloge à 1 µs : D encore bas
+        Assert.True(A("q", 12e-6) > 4.5);    // front à 11 µs : D haut → Q haut
+        Assert.True(A("y", 12e-6) > 4.5);    // ET(Q, CLK) : CLK haut de 11 à 16 µs
+        Assert.True(A("y", 18e-6) < 0.5);    // CLK bas
+        Assert.True(A("q", 32e-6) < 0.5);    // D retombé à 23 µs, front à 31 µs → Q bas
+    }
+
+    /// <summary>Import d'un fichier qui mélange modèles XSPICE et ponts : portes et bascules importées, ponts ignorés.</summary>
+    [Fact]
+    public void Import_des_modeles_xspice_de_la_demo()
+    {
+        var a = ModelesSpice.Analyser(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../../demo_xspice/comparateur_compteur.cir")));
+        var logiques = a.Modeles.Where(m => m.Type == TypeModele.Logique).ToDictionary(m => m.Nom);
+        Assert.Equal(["A", "Y"], logiques["inv1"].Broches);
+        Assert.Equal(["D", "CLK", "Q", "QB"], logiques["dff1"].Broches);
+        Assert.Equal(["A", "B", "C", "Y"], logiques["and3"].Broches);   // « and3 » : 3 entrées
+        Assert.Contains(a.Avertissements, w => w.Contains("adc1") && w.Contains("ponts"));
+        var d = DefinitionComposant.Depuis(logiques["and3"]);
+        Assert.Equal("A", d.Lettre);
+        Assert.Equal(4, d.Symbole.Broches.Count);
+        Assert.Equal("Logique", Silx.App.MainWindow.Categorie(d));
     }
 }

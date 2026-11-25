@@ -50,6 +50,15 @@ public sealed class EditeurSymbole : Window
         var gauche = new StackPanel { Spacing = 6, Margin = new Thickness(10) };
         gauche.Children.Add(Ui.Labeled("Nom dans la palette", nom));
         gauche.Children.Add(Ui.Hint($"{Definition.Description} « {Definition.Modele} », lettre SPICE {Definition.Lettre}"));
+        if (Definition.CodeXspice != null)
+        {
+            // Famille logique : seuils des entrées et niveau des sorties découlent de la tension d'alimentation.
+            gauche.Children.Add(Ui.Field("Tension logique (V)", SpiceNumber.Format(Definition.TensionLogique, ""), v =>
+            {
+                if (SpiceNumber.ParseOrNull(v.Replace("V", "").Trim()) is > 0 and <= 50 and var x) Definition.TensionLogique = x;
+            }));
+            gauche.Children.Add(Ui.Hint("Entrées : bas sous 30 %, haut au-dessus de 70 % de cette tension ; sorties à 0 V ou à cette tension, derrière 50 Ω."));
+        }
         if (Definition.Notes.Length > 0 || Definition.Parametres.Length > 0)
         {
             // Ce que dit le fichier, pour s'y retrouver sans l'ouvrir.

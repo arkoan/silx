@@ -309,4 +309,42 @@ public class UiSpiceTests
         Assert.Equal(Avalonia.Media.Colors.White, ((Avalonia.Media.ISolidColorBrush)Silx_Surface()).Color);
     }
     static Avalonia.Media.IBrush Silx_Surface() => (Avalonia.Media.IBrush)typeof(MainWindow).Assembly.GetType("Silx.App.Ui")!.GetField("Surface")!.GetValue(null)!;
+
+    /// <summary>Composants logiques dans l'éditeur : catégorie « Logique » de la palette, bascule D et porte ET posées, courbes.</summary>
+    [AvaloniaFact]
+    public async Task Logique_xspice_dans_l_editeur()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var bib = w.Bibliotheque.Definitions.Where(d => d.CodeXspice != null).ToDictionary(d => d.Nom);
+        Assert.Contains("DFF", bib.Keys); Assert.Contains("NAND2", bib.Keys);
+        var e = new Silx.Etude.Etude(); var s = e.Schema;
+        s.Components.Add(new() { Ref = "A1", Kind = ComponentKind.Spice, Definition = bib["DFF"], Position = new(10, 10) });
+        s.Components.Add(new() { Ref = "A2", Kind = ComponentKind.Spice, Definition = bib["AND2"], Position = new(22, 10) });
+        s.Components.Add(new() { Ref = "A3", Kind = ComponentKind.Spice, Definition = bib["INV"], Position = new(4, 11) });
+        void Net(string r, int x, int y, string n) => s.Components.Add(new() { Ref = r, Kind = ComponentKind.Label, Position = new(x, y), Value = n });
+        e.Schema.Wires.Add(new(new(15, 9), new(22, 9)));       // Q → A
+        e.Schema.Wires.Add(new(new(8, 11), new(10, 11)));      // INV → CLK
+        e.Schema.Wires.Add(new(new(8, 11), new(8, 14))); e.Schema.Wires.Add(new(new(8, 14), new(20, 14))); e.Schema.Wires.Add(new(new(20, 14), new(20, 11))); e.Schema.Wires.Add(new(new(20, 11), new(22, 11)));
+        Net("NET1", 10, 9, "D"); Net("NET2", 4, 11, "H"); Net("NET3", 15, 9, "Q"); Net("NET4", 26, 10, "Y");
+        var banc = new Banc { Nom = "Horloge 100 kHz" }; e.Bancs.Add(banc);
+        void Source(string r, int x, string n, string v)
+        {
+            banc.Calque.Components.Add(new() { Ref = r, Kind = ComponentKind.VoltageSource, Position = new(x, 20), Rotation = 1, Value = v });
+            banc.Calque.Components.Add(new() { Ref = "GND" + r, Kind = ComponentKind.Ground, Position = new(x, 24) });
+            banc.Calque.Components.Add(new() { Ref = "NET" + r, Kind = ComponentKind.Label, Position = new(x, 20), Value = n });
+        }
+        Source("VD", 4, "D", "PULSE(0 5 3u 10n 10n 20u 40u)");
+        Source("VH", 12, "H", "PULSE(5 0 1u 10n 10n 5u 10u)");
+        banc.Transitoire.Duree = 40e-6; banc.Transitoire.Pas = 10e-9;
+        banc.Graphiques.Add(["H", "D"]); banc.Graphiques.Add(["Q", "Y"]);
+        w.OuvrirDansOnglet(e, "Logique", null);
+        w.SelectBanc(banc);
+        await w.SimulateAsync();
+        Assert.Null(w.Resultats!.Erreur);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Shot(w, "49-logique-xspice.png");
+        w.SelectBanc(null);
+        w.ProposerReferences("Logique", w.Schema);
+        Shot(w, "50-palette-logique.png");
+    }
 }
