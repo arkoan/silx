@@ -364,8 +364,17 @@ public class UiSpiceTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.True(w.BulleOuverte);
         var r1 = w.EtudeCourante.Schema.Components.Single(k => k.Ref == "R1");
-        w.ModifierValeurCircuit(r1, "2k");
+        // La bulle est modifiable : on tape une valeur puis Annuler rétablit, OK garde.
+        TextBox Valeur() => w.ChampsBulle.ElementAt(1);   // référence, puis valeur
+        Valeur().Text = "3k"; w.AnnulerBulle();
+        Assert.Equal("1k", r1.Value);
+        p = Ecran(w, 6, 8); w.MouseDown(p, MouseButton.Left); w.MouseUp(p, MouseButton.Left);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Valeur().Text = "2k"; Shot(w, "55-bulle-ok-annuler.png");
+        w.ValiderBulle();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal("2k", r1.Value);
+        Assert.False(w.BulleOuverte);
         Assert.Same(banc, w.BancActif);   // on reste dans le banc
         await w.SimulateAsync();
         double apres = w.Resultats!.Criteres.Single(c => c.Critere == tm).Resultat.Valeur!.Value;

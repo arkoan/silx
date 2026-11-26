@@ -91,8 +91,10 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
 - **Bancs de test en calques** : le circuit sous test ne contient que le montage ; chaque banc est un
   calque posé dessus (sources, charges, analyses, gabarits). Depuis un banc, la **topologie** du circuit
   est verrouillée (câblage, ajout ou retrait de composants : onglet « Circuit sous test »), mais ses
-  **valeurs restent modifiables** pour la mise au point : clic sur un composant estompé (bulle d'édition)
-  ou liste « Valeurs du circuit » du panneau du banc. Une valeur modifiée vaut pour tous les bancs.
+  **valeurs restent modifiables** pour la mise au point : clic sur un composant estompé, dans la bulle
+  d'édition. Une valeur modifiée vaut pour tous les bancs.
+- **Bulle d'édition** d'un composant (double-clic, ou clic sur un composant du circuit depuis un banc) :
+  boutons **OK** et **Annuler** ; Entrée valide, Échap annule (retour à l'état d'ouverture de la bulle).
 
 ### 3.4 Campagnes de test
 Détail : `docs/specs/balayages_dispersion.md` (validé le 25/11/2026, livré dans l'ordre balayage,

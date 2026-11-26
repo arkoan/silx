@@ -1381,8 +1381,6 @@ public sealed partial class MainWindow : Window
         _benchPanel.Children.Add(_resumePlan);
         _benchPanel.Children.Add(_gabarits);
         _benchPanel.Children.Add(Ui.Hint("Gabarits dessinés : sous les courbes, « Limite haute » ou « Limite basse ». Réglages du banc (nom, analyse) : roue dentée de sa pastille."));
-        _benchPanel.Children.Add(Ui.Rule());
-        _benchPanel.Children.Add(ValeursCircuit());
         RefreshGabarits();
     }
 
@@ -1556,7 +1554,27 @@ public sealed partial class MainWindow : Window
         _bulleComposant = c; _bulleCircuit = circuit;
         _bulleContenu = new StackPanel { Spacing = 6, Width = 280, Margin = new Thickness(4) };
         _cible = _bulleContenu; _composantCible = c; Proprietes(); _cible = _props; _composantCible = _canvas.Selected;
-        _bulle = new Flyout { Content = _bulleContenu, Placement = PlacementMode.Pointer, ShowMode = FlyoutShowMode.Standard };
+        // OK / Annuler : les champs s'appliquent en direct ; Annuler rétablit l'état d'ouverture. Entrée = OK, Échap = Annuler.
+        var (ref0, val0, tol0) = (c.Ref, c.Value, c.Tolerance);
+        var ok = new Button { Content = "OK", Padding = new Thickness(14, 3), Background = Ui.AccentBrush, Foreground = Brushes.White, IsDefault = false };
+        var annuler = new Button { Content = "Annuler", Padding = new Thickness(10, 3) };
+        var boutons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(4, 2, 4, 4) };
+        boutons.Children.Add(annuler); boutons.Children.Add(ok);
+        var cadre = new StackPanel { Spacing = 4 }; cadre.Children.Add(_bulleContenu); cadre.Children.Add(boutons);
+        _bulle = new Flyout { Content = cadre, Placement = PlacementMode.Pointer, ShowMode = FlyoutShowMode.Standard };
+        var bulle = _bulle;
+        void Valider() { ok.Focus(); bulle.Hide(); }   // le focus quitte le champ en cours : sa valeur est enregistrée
+        void Annuler()
+        {
+            ok.Focus();
+            if (c.Ref != ref0 || c.Value != val0) EditerComposant(c, ref0, val0);
+            if (c.Tolerance != tol0) { c.Tolerance = tol0; OublierCampagne(); }
+            bulle.Hide(); _status.Text = $"{c.Ref} : modification annulée.";
+        }
+        ok.Click += (_, _) => Valider(); annuler.Click += (_, _) => Annuler();
+        cadre.AddHandler(KeyDownEvent, (_, e) => { if (e.Key == Key.Escape) { e.Handled = true; Annuler(); } }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+        cadre.AddHandler(KeyDownEvent, (_, e) => { if (e.Key == Key.Enter && e.Source is TextBox) { e.Handled = true; Avalonia.Threading.Dispatcher.UIThread.Post(Valider); } }, Avalonia.Interactivity.RoutingStrategies.Bubble);
+        _bulleValider = Valider; _bulleAnnuler = Annuler;
         _bulle.ShowAt(_canvas, showAtPointer: true);
         // Première zone de saisie active : on tape directement la nouvelle valeur.
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
@@ -1566,66 +1584,33 @@ public sealed partial class MainWindow : Window
         });
     }
     public bool BulleOuverte => _bulle?.IsOpen == true;
-    public void ModifierComposantDeLaBulle(string reference, string valeur) { if (_bulleComposant != null) { _composantCible = _bulleComposant; EditerSelection(reference, valeur); _composantCible = _canvas.Selected; } }
+    Action? _bulleValider, _bulleAnnuler;
+    public IEnumerable<TextBox> ChampsBulle => _bulleContenu?.GetLogicalDescendants().OfType<TextBox>() ?? [];
+    /// <summary>Boutons de la bulle d'édition (tests).</summary>
+    public void ValiderBulle() => _bulleValider?.Invoke();
+    public void AnnulerBulle() => _bulleAnnuler?.Invoke();
+    public void ModifierComposantDeLaBulle(string reference, string valeur) { if (_bulleComposant != null) EditerComposant(_bulleComposant, reference, valeur); }
 
     /// <summary>Vrai pendant la reconstruction d'un panneau : les zones de saisie retirées perdent le focus et ne doivent rien réécrire.</summary>
     bool _reconstruction;
+    /// <summary>Modifie la référence et la valeur du composant de la sélection, ou de la bulle (voir <see cref="EditerComposant"/>).</summary>
+    void EditerSelection(string reference, string valeur) { if (_composantCible is { } c) EditerComposant(c, reference, valeur); }
+
     /// <summary>
-    /// Depuis un banc : valeurs des composants du circuit sous test, modifiables (on est en conception) ;
-    /// la topologie du circuit reste verrouillée. La modification vaut pour tous les bancs.
+    /// Modifie un composant. Composant sélectionné : par le canevas (annulable). Composant du circuit sous test ouvert depuis
+    /// un banc (non sélectionnable, topologie verrouillée) : sa valeur change directement et vaut pour tous les bancs.
     /// </summary>
-    Control ValeursCircuit()
-    {
-        var sp = new StackPanel { Spacing = 4 };
-        sp.Children.Add(Ui.Title("Valeurs du circuit"));
-        var modifiables = _etude.Schema.Components.Where(k => k.Kind is ComponentKind.Resistor or ComponentKind.Capacitor or ComponentKind.Inductor or ComponentKind.Diode
-                                                            or ComponentKind.VoltageSource or ComponentKind.CurrentSource or ComponentKind.Spice)
-            .OrderBy(k => k.Ref, StringComparer.Ordinal).ToList();
-        if (modifiables.Count == 0) { sp.Children.Add(Ui.Hint("Le circuit sous test n'a pas de valeur à régler.")); return sp; }
-        foreach (var k in modifiables)
-        {
-            var g = new Grid { ColumnDefinitions = new("60,*") };
-            g.Children.Add(new TextBlock { Text = k.Ref, FontWeight = FontWeight.SemiBold, FontSize = Ui.Texte, VerticalAlignment = VerticalAlignment.Center });
-            var t = new TextBox { Text = k.Value, FontSize = 12, PlaceholderText = k.Kind == ComponentKind.Spice ? "paramètres d'instance" : "" };
-            var kk = k;
-            void Ok() { if (!_reconstruction && (t.Text ?? "") != kk.Value) ModifierValeurCircuit(kk, t.Text ?? ""); }
-            t.KeyDown += (_, e) => { if (e.Key == Key.Enter) Ok(); }; t.LostFocus += (_, _) => Ok();
-            Grid.SetColumn(t, 1); g.Children.Add(t);
-            sp.Children.Add(g);
-        }
-        sp.Children.Add(Ui.Hint("Modifiables depuis chaque banc, pour la mise au point : la valeur change pour tous les bancs. Un clic sur un composant estompé du schéma ouvre aussi sa bulle. Le câblage du circuit, lui, se modifie depuis « Circuit sous test »."));
-        return sp;
-    }
-
-    /// <summary>Change la valeur d'un composant du circuit sous test sans quitter le banc (vaut pour tous les bancs).</summary>
-    public void ModifierValeurCircuit(PlacedComponent c, string valeur)
-    {
-        if (c.Value == valeur) return;
-        c.Value = valeur;
-        _results.Clear(); SetVerdict(null); _canvas.InvalidateVisual();
-        RefreshGabarits(); RefreshBenchBar();
-        _status.Text = $"{c.Ref} = {valeur} dans le circuit sous test (tous les bancs).";
-        ResultatsPerimes();
-        if (_bulle?.IsOpen == true && _bulleContenu != null && _bulleComposant == c) { _cible = _bulleContenu; Proprietes(); _cible = _props; }
-        Avalonia.Threading.Dispatcher.UIThread.Post(RefreshSide);   // liste « Valeurs du circuit » à jour, après la fin de la saisie
-    }
-
-    void EditerSelection(string reference, string valeur)
+    void EditerComposant(PlacedComponent c, string reference, string valeur)
     {
         if (_reconstruction) return;
-        if (_bulleCircuit && _composantCible is { } c && c != _canvas.Selected)
-        {
-            // Composant du circuit sous test modifié depuis un banc : vaut pour tous les bancs, résultats à refaire.
-            if (c.Ref == reference.Trim() && c.Value == valeur) return;
-            c.Ref = reference.Trim(); c.Value = valeur;
-            _results.Clear(); SetVerdict(null); _canvas.InvalidateVisual();
-            RefreshGabarits(); RefreshBenchBar(); RefreshPlot();
-            _status.Text = $"{c.Ref} modifié dans le circuit sous test.";
-            ResultatsPerimes();
-            if (_bulle?.IsOpen == true && _bulleContenu != null) { _cible = _bulleContenu; Proprietes(); _cible = _props; }
-            return;
-        }
-        _canvas.EditSelected(reference, valeur);
+        if (c == _canvas.Selected) { _canvas.EditSelected(reference, valeur); return; }
+        if (c.Ref == reference.Trim() && c.Value == valeur) return;
+        c.Ref = reference.Trim(); c.Value = valeur;
+        _results.Clear(); SetVerdict(null); _canvas.InvalidateVisual();
+        RefreshGabarits(); RefreshBenchBar(); RefreshPlot();
+        _status.Text = $"{c.Ref} = {c.Value} dans le circuit sous test (vaut pour tous les bancs).";
+        ResultatsPerimes();
+        if (_bulle?.IsOpen == true && _bulleContenu != null && _bulleComposant == c) { _cible = _bulleContenu; _composantCible = c; Proprietes(); _cible = _props; _composantCible = _canvas.Selected; }
     }
 
     void Proprietes()
@@ -1665,18 +1650,18 @@ public sealed partial class MainWindow : Window
         if (c.Kind == ComponentKind.Diode)
         {
             var cb = new ComboBox { ItemsSource = DiodeModels.All.Keys.ToList(), SelectedItem = DiodeModels.All.Keys.FirstOrDefault(k => k.Equals(c.Value, StringComparison.OrdinalIgnoreCase)), HorizontalAlignment = HorizontalAlignment.Stretch };
-            cb.SelectionChanged += (_, _) => EditerSelection(refBox.Text ?? c.Ref, cb.SelectedItem as string ?? c.Value);
+            cb.SelectionChanged += (_, _) => EditerComposant(c, refBox.Text ?? c.Ref, cb.SelectedItem as string ?? c.Value);
             valueEditor = cb; value = () => cb.SelectedItem as string ?? c.Value;
         }
         else
         {
             var vb = new TextBox { Text = c.Value };
-            vb.KeyDown += (_, e) => { if (e.Key == Key.Enter) EditerSelection(refBox.Text ?? c.Ref, vb.Text ?? ""); };
-            vb.LostFocus += (_, _) => EditerSelection(refBox.Text ?? c.Ref, vb.Text ?? "");
+            vb.KeyDown += (_, e) => { if (e.Key == Key.Enter) EditerComposant(c, refBox.Text ?? c.Ref, vb.Text ?? ""); };
+            vb.LostFocus += (_, _) => EditerComposant(c, refBox.Text ?? c.Ref, vb.Text ?? "");
             valueEditor = vb; value = () => vb.Text ?? "";
         }
-        refBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) EditerSelection(refBox.Text ?? c.Ref, value()); };
-        refBox.LostFocus += (_, _) => EditerSelection(refBox.Text ?? c.Ref, value());
+        refBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) EditerComposant(c, refBox.Text ?? c.Ref, value()); };
+        refBox.LostFocus += (_, _) => EditerComposant(c, refBox.Text ?? c.Ref, value());
 
         if (c.Kind != ComponentKind.Label) { _cible.Children.Add(Ui.Label("Référence")); _cible.Children.Add(refBox); }
         _cible.Children.Add(Ui.Label(c.Kind switch { ComponentKind.Label => "Nom du nœud", ComponentKind.Diode => "Modèle", _ => "Valeur" }));
@@ -1715,7 +1700,7 @@ public sealed partial class MainWindow : Window
     {
         bool courant = c.Kind == ComponentKind.CurrentSource;
         var st = Stimulus.Lire(c.Value);
-        void Appliquer() => EditerSelection(refBox.Text ?? c.Ref, st.VersSpice());
+        void Appliquer() => EditerComposant(c, refBox.Text ?? c.Ref, st.VersSpice());
         refBox.KeyDown += (_, e) => { if (e.Key == Key.Enter) Appliquer(); }; refBox.LostFocus += (_, _) => Appliquer();
         _cible.Children.Add(Ui.Label("Référence")); _cible.Children.Add(refBox);
         var formes = Enum.GetValues<FormeStimulus>().ToList();
@@ -1762,7 +1747,7 @@ public sealed partial class MainWindow : Window
         _cible.Children.Add(new TextBlock { Text = d == null ? "Composant SPICE" : $"{d.Nom} · {d.Description}", FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
         var refBox = new TextBox { Text = c.Ref };
         var vb = new TextBox { Text = c.Value, PlaceholderText = d?.Type == TypeModele.SousCircuit ? d.Parametres : "" };
-        void Commit() => EditerSelection(refBox.Text ?? c.Ref, vb.Text ?? "");
+        void Commit() => EditerComposant(c, refBox.Text ?? c.Ref, vb.Text ?? "");
         foreach (var t in new[] { refBox, vb }) { t.KeyDown += (_, e) => { if (e.Key == Key.Enter) Commit(); }; t.LostFocus += (_, _) => Commit(); }
         _cible.Children.Add(Ui.Label("Référence")); _cible.Children.Add(refBox);
         _cible.Children.Add(Ui.Label("Paramètres d'instance (facultatifs)")); _cible.Children.Add(vb);
