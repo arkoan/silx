@@ -789,4 +789,32 @@ public class UiTests
         var r = w.DansLaZone(new Avalonia.Point(5000, -500));
         Assert.True(r.X > q.X && r.Y < q.Y);
     }
+
+    /// <summary>
+    /// Courbes de campagne : une teinte par signal, conformes estompées (pastel), non conformes en avant bordées de rouge ;
+    /// un clic sur une courbe choisit son tirage et affiche sa valeur.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Courbes_de_balayage_par_signal_et_clic_sur_un_tirage()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var banc = w.EtudeCourante.Bancs[0];
+        w.SelectBanc(banc);
+        banc.Campagne = new() { Mode = Silx.Etude.ModeCampagne.Balayage, Cible = "R1", Debut = 500, Fin = 2000, Points = 6 };
+        await w.SimulateAsync();
+        var r = w.ResultatCampagne!;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Assert.Equal(MainWindow.Estompage.Conformes, w.EstompageTirages);
+        Shot(w, "62-balayage-teintes.png");
+        // Clic sur la courbe V(OUT) du tirage R1 = 2 k (dernier) au milieu du graphique.
+        var t = r.Tirages[^1]; var c = t.Courbes["OUT"]; int k = Array.FindIndex(c.X, x => x >= 3e-3);
+        var plot = w.PlotControl; var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(c.X[k] * 1e3, c.Y[k]));
+        var pos = new Avalonia.Point(px.X / plot.DisplayScale, px.Y / plot.DisplayScale);
+        Assert.Same(t, w.TirageSous(pos));
+        w.ChoisirTirage(w.TirageSous(pos));
+        Assert.Contains("R1 = 2", w.Statut);
+        w.EstompageTirages = MainWindow.Estompage.NonConformes;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Shot(w, "63-balayage-tirage-choisi.png");
+    }
 }

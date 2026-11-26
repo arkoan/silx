@@ -18,6 +18,7 @@ public partial class MainWindow
     readonly ProgressBar _progCampagne = new() { Width = 160, Height = 6, Minimum = 0, IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
     readonly Button _annulerCampagne = new() { Content = "Annuler", FontSize = Ui.Aide, Padding = new Thickness(8, 1), IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
     ResultatTirage? _tirageChoisi;
+    readonly Button _boutonEstomper = new() { FontSize = Ui.Aide, Padding = new Thickness(8, 3), Background = Brushes.Transparent, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), IsVisible = false, VerticalAlignment = VerticalAlignment.Center };
 
     /// <summary>Résultat de la campagne du banc actif (null : pas de campagne, ou résultats périmés).</summary>
     public ResultatCampagne? ResultatCampagne => _banc != null && _campagnes.TryGetValue(_banc, out var c) ? c : null;
@@ -28,7 +29,7 @@ public partial class MainWindow
         ModeCampagne.Balayage => "Balayage", ModeCampagne.MonteCarlo => "Monte-Carlo", ModeCampagne.Coins => "Coins (pire cas)", _ => "Valeur nominale"
     };
 
-    void OublierCampagne() { if (_banc != null && _campagnes.Remove(_banc)) { _tirageChoisi = null; if (_detailOuvert == Detail.Campagne) OuvrirDetail(Detail.Campagne); } }
+    void OublierCampagne() { if (_banc != null && _campagnes.Remove(_banc)) { _tirageChoisi = null; RefreshPlotToolbar(); if (_detailOuvert == Detail.Campagne) OuvrirDetail(Detail.Campagne); } }
 
     /// <summary>Lance la campagne du banc actif (après la simulation nominale), sur tous les cœurs, annulable.</summary>
     public async Task LancerCampagneAsync(CancellationToken ct)
@@ -47,7 +48,7 @@ public partial class MainWindow
         {
             var r = await Campagnes.RunAsync(_etude, banc, signaux, prog, ct);
             fini = true;
-            _campagnes[banc] = r; _tirageChoisi = null;
+            _campagnes[banc] = r; _tirageChoisi = null; RefreshPlotToolbar();
             _status.Text = $"{NomMode(r.Mode)} : {r.Tirages.Count} simulation(s) en {sw.Elapsed.TotalSeconds:0.0} s · {r.Taux * 100:0.#} % conforme ({r.Conformes}/{r.Tirages.Count})"
                 + (r.PireCas is { } p ? $" · pire cas : {p.Tirage.Libelle}" : "") + (r.Avertissement != null ? " · ⚠ " + r.Avertissement : "");
             if (banc == _banc) SetVerdict(r.Conformes == r.Tirages.Count ? Verdict.Pass : Verdict.Fail);
@@ -203,30 +204,112 @@ public partial class MainWindow
     }
 
     // ───────────────────────── courbes superposées ─────────────────────────
-    /// <summary>Courbes des tirages sous les courbes nominales : dégradé pour un balayage, gris (rouge si non conforme) sinon.</summary>
+    /// <summary>Ce que le rendu des tirages estompe : les conformes (défaut) ou les non conformes.</summary>
+    public enum Estompage { Conformes, NonConformes }
+    Estompage _estompage = Estompage.Conformes;
+    public Estompage EstompageTirages { get => _estompage; set { _estompage = value; RefreshPlotToolbar(); RefreshPlot(keepLimits: true); } }
+
+    /// <summary>Un tirage franchit-il une contrainte portant sur ce signal ? (Sans contrainte sur le signal : verdict global du tirage.)</summary>
+    static bool EchecSur(ResultatTirage t, string noeud)
+    {
+        bool concerne = false, echec = false;
+        foreach (var (c, r) in t.Criteres) if (string.Equals(c.Noeud, noeud, StringComparison.OrdinalIgnoreCase)) { concerne = true; echec |= r.Verdict == Verdict.Fail; }
+        foreach (var (g, r) in t.Traces) if (string.Equals(g.Noeud, noeud, StringComparison.OrdinalIgnoreCase)) { concerne = true; echec |= r.Verdict == Verdict.Fail; }
+        return concerne ? echec : !t.Conforme;
+    }
+
+    static ScottPlot.Color Eclaircir(ScottPlot.Color c, double vers) =>
+        new((byte)(c.R + (255 - c.R) * vers), (byte)(c.G + (255 - c.G) * vers), (byte)(c.B + (255 - c.B) * vers), c.A);
+    static ScottPlot.Color Assombrir(ScottPlot.Color c, double f) => new((byte)(c.R * (1 - f)), (byte)(c.G * (1 - f)), (byte)(c.B * (1 - f)), c.A);
+
+    /// <summary>
+    /// Courbes des tirages sous les courbes nominales : une teinte par signal (celle de sa pastille) pour tous ses tirages,
+    /// plus ou moins claire selon la valeur balayée ; les tirages estompés (conformes par défaut) en pastel et trait fin,
+    /// les autres dans la teinte du signal, trait épais bordé de rouge s'ils sont non conformes. Le tirage choisi est
+    /// en bleu avec sa valeur.
+    /// </summary>
     (double Min, double Max) DessinerCampagne(ScottPlot.Plot p, Pane pane, IReadOnlyList<string> nodes, Func<double, double> X, ScottPlot.Color[] couleurs)
     {
         double lo = double.PositiveInfinity, hi = double.NegativeInfinity;
         if (ResultatCampagne is not { } r || VueFft) return (lo, hi);
         var tirages = r.Tirages.Where(t => t.Erreur == null).Take(400).ToList();
-        var cmap = new ScottPlot.Colormaps.Viridis();
         var rouge = Parametres.VersPlot(Parametres.Courant.NonConforme);
+        bool sombre = Ui.Sombre;
+        var avant = new List<(double[] X, double[] Y, ScottPlot.Color C, bool Echec)>();
         for (int i = 0; i < tirages.Count; i++)
         {
             var t = tirages[i];
+            // Balayage : du plus clair (première valeur) au plus foncé (dernière) ; sinon la teinte du signal.
+            double k = r.Mode == ModeCampagne.Balayage && tirages.Count > 1 ? (double)i / (tirages.Count - 1) : 0.5;
             for (int j = 0; j < nodes.Count && j < couleurs.Length; j++)
             {
                 if (!t.Courbes.TryGetValue(nodes[j], out var c) && !t.Courbes.TryGetValue(nodes[j].ToUpperInvariant(), out c)) continue;
-                var sc = p.Add.ScatterLine(c.X.Select(X).ToArray(), c.Y);
-                bool choisi = t == _tirageChoisi;
-                sc.Color = choisi ? Parametres.VersPlot(((ISolidColorBrush)Ui.AccentBrush).Color)
-                    : r.Mode == ModeCampagne.Balayage ? cmap.GetColor(tirages.Count == 1 ? 0 : (double)i / (tirages.Count - 1)).WithAlpha(0.85)
-                    : t.Conforme ? couleurs[j].WithAlpha(0.16) : rouge.WithAlpha(0.45);
-                sc.LineWidth = choisi ? 2.5f : r.Mode == ModeCampagne.Balayage ? 1.4f : 1f;
                 lo = Math.Min(lo, c.Y.Min()); hi = Math.Max(hi, c.Y.Max());
+                var xs = c.X.Select(X).ToArray();
+                var teinte = r.Mode == ModeCampagne.Balayage ? (k < 0.5 ? Eclaircir(couleurs[j], (0.5 - k) * 0.9) : Assombrir(couleurs[j], (k - 0.5) * 0.6)) : couleurs[j];
+                bool echec = EchecSur(t, nodes[j]);
+                bool estompe = _estompage == Estompage.Conformes ? !echec : echec;
+                if (t == _tirageChoisi) continue;   // dessiné en dernier
+                if (estompe)
+                {
+                    var sc = p.Add.ScatterLine(xs, c.Y);
+                    sc.Color = sombre ? teinte.WithAlpha(0.28) : Eclaircir(teinte, 0.62).WithAlpha(0.85); sc.LineWidth = 1f;
+                }
+                else avant.Add((xs, c.Y, teinte, echec));
             }
         }
+        // Courbes mises en avant par-dessus les estompées ; liseré rouge sous les non conformes.
+        foreach (var (xs, ys, teinte, echec) in avant)
+        {
+            if (echec) { var bord = p.Add.ScatterLine(xs, ys); bord.Color = rouge.WithAlpha(0.75); bord.LineWidth = 4.5f; }
+            var sc = p.Add.ScatterLine(xs, ys); sc.Color = teinte; sc.LineWidth = echec ? 2f : 1.6f;
+        }
+        if (_tirageChoisi is { Erreur: null } choisi)
+        {
+            var bleu = Parametres.VersPlot(((ISolidColorBrush)Ui.AccentBrush).Color);
+            foreach (var n in nodes)
+                if (choisi.Courbes.TryGetValue(n, out var c) || choisi.Courbes.TryGetValue(n.ToUpperInvariant(), out c))
+                {
+                    var xs = c.X.Select(X).ToArray();
+                    var sc = p.Add.ScatterLine(xs, c.Y); sc.Color = bleu; sc.LineWidth = 2.8f;
+                    var lt = p.Add.Text(choisi.Tirage.Libelle, xs[^1], c.Y[^1]);
+                    lt.LabelFontColor = ScottPlot.Colors.White; lt.LabelBackgroundColor = bleu; lt.LabelFontSize = 11; lt.LabelBold = true;
+                    lt.LabelAlignment = ScottPlot.Alignment.LowerRight; lt.LabelOffsetY = -6; lt.LabelPadding = 3;
+                }
+        }
         return (lo, hi);
+    }
+
+    /// <summary>Clic sur le graphique : tirage dont une courbe passe à moins de 6 px du pointeur (null si aucun).</summary>
+    public ResultatTirage? TirageSous(Point pos)
+    {
+        if (ResultatCampagne is not { } r || _active == null || VueFft) return null;
+        bool ac = Shown == AnalyseKind.Ac;
+        double X(double x) => ac ? Math.Log10(x) : x * 1e3;
+        var sc = _plot.DisplayScale; var px = new ScottPlot.Pixel((float)(pos.X * sc), (float)(pos.Y * sc));
+        ResultatTirage? meilleur = null; double dmin = 6 * sc;
+        foreach (var t in r.Tirages.Where(t => t.Erreur == null).Take(400))
+            foreach (var n in _active.Signaux)
+            {
+                if (!t.Courbes.TryGetValue(n, out var c) && !t.Courbes.TryGetValue(n.ToUpperInvariant(), out c)) continue;
+                for (int i = 0; i + 1 < c.X.Length; i++)
+                {
+                    var a = _plot.Plot.GetPixel(new ScottPlot.Coordinates(X(c.X[i]), c.Y[i]));
+                    var b = _plot.Plot.GetPixel(new ScottPlot.Coordinates(X(c.X[i + 1]), c.Y[i + 1]));
+                    if (Math.Max(a.X, b.X) < px.X - dmin || Math.Min(a.X, b.X) > px.X + dmin) continue;
+                    double d = DistanceSegment(px.X, px.Y, a.X, a.Y, b.X, b.Y);
+                    if (d < dmin) { dmin = d; meilleur = t; }
+                }
+            }
+        return meilleur;
+    }
+
+    static double DistanceSegment(double px, double py, double ax, double ay, double bx, double by)
+    {
+        double dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy;
+        double u = l2 <= 0 ? 0 : Math.Clamp(((px - ax) * dx + (py - ay) * dy) / l2, 0, 1);
+        double ex = ax + u * dx - px, ey = ay + u * dy - py;
+        return Math.Sqrt(ex * ex + ey * ey);
     }
 
     // ───────────────────────── vue « Campagne » du tiroir ─────────────────────────

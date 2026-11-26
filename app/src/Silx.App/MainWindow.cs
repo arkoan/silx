@@ -870,6 +870,9 @@ public sealed partial class MainWindow : Window
         bar.Children.Add(probes); bar.Children.Add(Ui.Separator());
         bar.Children.Add(seg); bar.Children.Add(Ui.Separator()); bar.Children.Add(view); bar.Children.Add(Ui.Separator());
         bar.Children.Add(curs); bar.Children.Add(Ui.Separator()); bar.Children.Add(_testTools);
+        _boutonEstomper.Click += (_, _) => EstompageTirages = _estompage == Estompage.Conformes ? Estompage.NonConformes : Estompage.Conformes;
+        ToolTip.SetTip(_boutonEstomper, "Campagne : tirages estompés (pastel, trait fin). Cliquer pour estomper plutôt les autres. Un clic sur une courbe affiche sa valeur.");
+        bar.Children.Add(_boutonEstomper);
 
         var dock = new DockPanel();
         _overlay.Children.Add(_zoomRect);
@@ -984,6 +987,8 @@ public sealed partial class MainWindow : Window
             _viewTran.Opacity = _viewTran.IsEnabled ? 1 : 0.3; _viewFft.Opacity = _viewFft.IsEnabled ? 1 : 0.3; _viewAc.Opacity = _viewAc.IsEnabled ? 1 : 0.3;
         }
         _testTools.IsVisible = _modeTest && _banc != null && !VueFft;
+        _boutonEstomper.IsVisible = ResultatCampagne != null && !VueFft;
+        _boutonEstomper.Content = _estompage == Estompage.Conformes ? "Estomper : conformes" : "Estomper : non conformes";
         Ui.SetActive(_drawHigh, _drawing?.Limite == Limite.Haute); Ui.SetActive(_drawLow, _drawing?.Limite == Limite.Basse);
         _drawHint.Text = _drawing == null ? "" : _drawing.Points.Count == 0
             ? "Cliquez près de la courbe à contraindre pour poser le premier point (de gauche à droite)…"
@@ -1091,6 +1096,9 @@ public sealed partial class MainWindow : Window
             e.Handled = true; _dragCursor = hc; _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
             return;
         }
+        // Campagne : un clic sur la courbe d'un tirage la met en avant avec sa valeur (re-clic : désélection).
+        if (e.ClickCount == 1 && !_cursorMode && TirageSous(e.GetPosition(_plot)) is { } tir)
+        { e.Handled = true; ChoisirTirage(tir == _tirageChoisi ? null : tir); return; }
         // Curseurs sans mode : double-clic sur la courbe (ou mode curseurs, gardé pour les tests).
         if ((_cursorMode || e.ClickCount >= 2) && CourbeProche(e.GetPosition(_plot)) is { } sig)
         {

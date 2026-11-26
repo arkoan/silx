@@ -52,8 +52,12 @@ projet (`BancF.Campagne`, absent du fichier en mode nominal).
   Chaque critère montre μ, σ, extrêmes, Cpk et nombre d'échecs (balayage : plage de la mesure et
   échecs) ; chaque gabarit dessiné, le nombre de tirages qui le franchissent. Le badge d'une contrainte
   passe en échec dès qu'un tirage la franchit ; le verdict global de la barre d'outils aussi.
-- **Courbes** : les tirages sont dessinés sous les courbes nominales (gris translucide si conforme, rouge
-  si non conforme ; dégradé pour un balayage), 400 tirages au plus.
+- **Courbes** : les tirages sont dessinés sous les courbes nominales, 400 au plus. Chaque signal garde sa
+  teinte (celle de sa pastille) pour tous ses tirages ; en balayage, la clarté suit la valeur balayée (clair
+  pour la première, foncé pour la dernière). Les tirages **estompés** (les conformes par défaut) sont en pastel,
+  trait fin ; les autres dans la teinte du signal, trait épais, **bordés de rouge** s'ils franchissent une
+  contrainte de ce signal. Le bouton « Estomper : conformes / non conformes » inverse la mise en avant. Un
+  **clic sur une courbe** choisit son tirage : courbe en bleu avec sa valeur (« R1 = 2,00 k », « Tirage 12 »).
 - **Vue « Campagne »** (tiroir Détails) : un graphique par critère chiffré (histogramme ou mesure selon le
   paramètre) et la liste des tirages, non conformes d'abord puis du plus défavorable au plus sûr, avec le
   pire cas signalé. **Un clic sur un tirage** met ses courbes en avant (bleu, épais) et affiche les valeurs
