@@ -157,6 +157,8 @@ public sealed partial class MainWindow : Window
         };
         var statusRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
         statusRow.Children.Add(_status); statusRow.Children.Add(_undoDelete);
+        statusRow.Children.Add(_progCampagne); statusRow.Children.Add(_annulerCampagne);
+        _annulerCampagne.Click += (_, _) => _cts?.Cancel();
         var status = new Border { Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(12, 2), Child = statusRow };
         DockPanel.SetDock(status, Dock.Bottom); root.Children.Add(status);
         var explo = BuildExplorateur(); DockPanel.SetDock(explo, Dock.Left); root.Children.Add(explo);
@@ -196,7 +198,7 @@ public sealed partial class MainWindow : Window
                 Ui.AppliquerTheme(app.ActualThemeVariant == Avalonia.Styling.ThemeVariant.Dark); AppliquerParametres();
             };
         if (Environment.GetEnvironmentVariable("SILX_SIM_AUTO") == "0") _auto.IsChecked = false;   // tests : pas de relance en arrière-plan
-        _relance.Tick += async (_, _) => { _relance.Stop(); if (!_simEnCours) await SimulerAsync(keepLimits: true); };
+        _relance.Tick += async (_, _) => { _relance.Stop(); if (!_simEnCours) await SimulerAsync(keepLimits: true, campagne: false); };   // la campagne ne se relance pas toute seule
         _veille.Start();
         Closing += async (_, e) =>
         {
@@ -741,7 +743,7 @@ public sealed partial class MainWindow : Window
     }
 
     // ───────────────────────── tiroir « Détails » ─────────────────────────
-    public enum Detail { Netlist, Verifications, Journal }
+    public enum Detail { Netlist, Verifications, Journal, Campagne }
     Detail? _detailOuvert;
     readonly ContentControl _detailsContenu = new() { Height = 200, IsVisible = false };
     readonly Dictionary<Detail, Button> _boutonsDetails = new();
@@ -751,7 +753,7 @@ public sealed partial class MainWindow : Window
     {
         var barre = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, Margin = new Thickness(6, 1) };
         barre.Children.Add(new TextBlock { Text = "Détails", FontSize = Ui.Aide, FontWeight = FontWeight.SemiBold, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(4, 0, 8, 0) });
-        foreach (var (d, nom) in new[] { (Detail.Netlist, "Netlist"), (Detail.Verifications, "Vérifications"), (Detail.Journal, "Journal ngspice") })
+        foreach (var (d, nom) in new[] { (Detail.Netlist, "Netlist"), (Detail.Verifications, "Vérifications"), (Detail.Journal, "Journal ngspice"), (Detail.Campagne, "Campagne") })
         {
             var b = new Button { Content = nom, FontSize = Ui.Aide, Padding = new Thickness(8, 2), Background = Brushes.Transparent, CornerRadius = new CornerRadius(4) };
             var dd = d; b.Click += (_, _) => OuvrirDetail(_detailOuvert == dd ? null : dd);
@@ -770,7 +772,7 @@ public sealed partial class MainWindow : Window
         _detailsContenu.IsVisible = d != null;
         _detailsContenu.Content = d switch
         {
-            Detail.Netlist => _netlist, Detail.Verifications => new ScrollViewer { Content = _ercList }, Detail.Journal => _journal, _ => null
+            Detail.Netlist => _netlist, Detail.Verifications => new ScrollViewer { Content = _ercList }, Detail.Journal => _journal, Detail.Campagne => VueCampagne(), _ => null
         };
         foreach (var (k, b) in _boutonsDetails) Ui.SetActive(b, k == d);
     }
@@ -1431,6 +1433,9 @@ public sealed partial class MainWindow : Window
         sp.Children.Add(Ui.Rule());
         sp.Children.Add(Ui.Title("Analyse"));
         sp.Children.Add(BuildAnalysisPanel());
+        sp.Children.Add(Ui.Rule());
+        sp.Children.Add(Ui.Title("Campagne"));
+        sp.Children.Add(EditeurCampagne());
         var fly = new Flyout { Content = sp, Placement = PlacementMode.BottomEdgeAlignedLeft };
         _bulleBanc = fly;
         fly.ShowAt(ancre);
@@ -1644,6 +1649,23 @@ public sealed partial class MainWindow : Window
             ComponentKind.Diode => "Modèles génériques intégrés (indicatifs), en attendant les bibliothèques fabricant.",
             _ => "Le nœud prend ce nom dans la netlist, les courbes et les gabarits. Deux étiquettes identiques relient leurs nœuds."
         }));
+        if (Campagnes.Variable(c)) _cible.Children.Add(ChampTolerance(c));
+    }
+
+    /// <summary>Tolérance du composant (± %) pour les campagnes Monte-Carlo et coins ; vide = défaut du type (Paramètres).</summary>
+    Control ChampTolerance(PlacedComponent c)
+    {
+        var defaut = Campagnes.ToleranceParDefaut(c.Kind);
+        return Ui.Field("Tolérance (± %)", c.Tolerance is { } t ? t.ToString("0.###", System.Globalization.CultureInfo.CurrentCulture) : "", v =>
+        {
+            if (_reconstruction) return;
+            v = v.Replace("%", "").Replace("±", "").Trim();
+            double? n = v.Length == 0 ? null : SpiceNumber.ParseOrNull(v);
+            if (v.Length > 0 && n is not >= 0) return;
+            if (n == c.Tolerance) return;
+            c.Tolerance = n; OublierCampagne(); RefreshGabarits();
+            _status.Text = $"{c.Ref} : tolérance {(n is { } x ? $"± {x:0.###} %" : defaut is { } d ? $"par défaut (± {d:0.###} %)" : "aucune")}.";
+        }, defaut is { } dd ? $"{dd:0.###} (défaut du type)" : "aucune (défaut)");
     }
 
     /// <summary>Source : forme du stimulus et champs en clair (notation ingénieur) ; l'expression SPICE est générée.</summary>
@@ -1689,6 +1711,7 @@ public sealed partial class MainWindow : Window
                 : "Le banc est temporel si c'est son premier stimulus. ") + "Valeurs en notation ingénieur : 4,7k · 100n · 1meg." + (courant ? " Courant de la broche 1 vers la broche 2 dans la source." : "")));
         }
         _cible.Children.Add(new TextBlock { Text = "SPICE : " + st.VersSpice(), FontSize = 11, Foreground = Ui.Muted, FontFamily = new FontFamily("Menlo, Consolas, monospace"), TextWrapping = TextWrapping.Wrap });
+        if (st.Forme == FormeStimulus.Continu) _cible.Children.Add(ChampTolerance(c));
     }
 
     void ProprietesSpice(PlacedComponent c)
@@ -1729,6 +1752,7 @@ public sealed partial class MainWindow : Window
         if (_banc == null) return;
         int n = Banc.CriteresActifs.Count() + Banc.TracesActives.Count();
         _resumePlan.Text = n == 0 ? "Aucune contrainte : ajoutez un critère ou dessinez un gabarit sur les courbes."
+            : ResumeCampagne() is { } rc ? rc
             : _last is { Erreur: null } r && r.Nombre > 0 ? $"{r.Respectes}/{r.Nombre} respectée(s) · banc {(Banc.Type == AnalyseKind.Ac ? "fréquentiel" : "temporel")}"
             : $"{n} contrainte(s) · pas encore simulé";
         var nodes = Connectivity.Build(SchemaCourant).AllNodes.ToList();
@@ -1742,7 +1766,7 @@ public sealed partial class MainWindow : Window
                 (double a, null) => $"≥ {SpiceNumber.Format(a, unit)}", (null, double b) => $"≤ {SpiceNumber.Format(b, unit)}", _ => "sans borne"
             };
             string mesure = res == null ? "pas encore simulé" : res.Valeur is { } v ? $"mesuré {SpiceNumber.Format(v, unit)}" + Marge(g, v) : res.Detail ?? "non évaluable";
-            var ligne = LignePlan(res?.Verdict, $"{g.Info.Nom} · V({g.Noeud})", $"{bornes} · {mesure}", g, () => { Banc.Gabarits.Remove(g); Invalidate(); }, "Retirer ce critère");
+            var ligne = LignePlan(VerdictPlan(g, res?.Verdict), $"{g.Info.Nom} · V({g.Noeud})", $"{bornes} · {mesure}{StatCritere(g)}", g, () => { Banc.Gabarits.Remove(g); Invalidate(); }, "Retirer ce critère");
             _gabarits.Children.Add(ligne);
             if (_ligneOuverte == g) _gabarits.Children.Add(EditeurCritere(g, nodes));
         }
@@ -1754,7 +1778,8 @@ public sealed partial class MainWindow : Window
                 : res.Detail ?? "non évaluable";
             var titre = $"Gabarit {(g.Limite == Limite.Haute ? "haut" : "bas")} · {(g.Analyse == AnalyseKind.Ac ? $"|V({g.Noeud})|" : $"V({g.Noeud})")}";
             if (g.Relatif) detail += $" · suit le front (t0 = {SpiceNumber.Format(Banc.InstantFront, "s")})";
-            _gabarits.Children.Add(LignePlan(res?.Verdict, titre, detail, g, () => { Banc.GabaritsTraces.Remove(g); _ligneOuverte = null; ReevaluateTraces(); RefreshGabarits(); RefreshPlot(keepLimits: true); }, "Retirer ce gabarit"));
+            detail += StatTrace(g);
+            _gabarits.Children.Add(LignePlan(VerdictPlan(g, res?.Verdict), titre, detail, g, () => { Banc.GabaritsTraces.Remove(g); _ligneOuverte = null; ReevaluateTraces(); RefreshGabarits(); RefreshPlot(keepLimits: true); }, "Retirer ce gabarit"));
             if (_ligneOuverte == g && g.Analyse == AnalyseKind.Transitoire) _gabarits.Children.Add(EditeurTrace(g));
         }
     }
@@ -1890,7 +1915,7 @@ public sealed partial class MainWindow : Window
     // ───────────────────────── simulation ─────────────────────────
     public async Task SimulateAsync() => await SimulerAsync(keepLimits: false);
 
-    async Task SimulerAsync(bool keepLimits)
+    async Task SimulerAsync(bool keepLimits, bool campagne = true)
     {
         _cts?.Cancel(); _cts = new();
         _simulate.IsEnabled = false; _simEnCours = true; MajEtatResultats();
@@ -1926,9 +1951,11 @@ public sealed partial class MainWindow : Window
             {
                 _status.Text = $"« {Banc.Nom} » simulé en {sw.ElapsedMilliseconds} ms ({string.Join(" + ", res.Resultats.Keys.Select(k => k == AnalyseKind.Ac ? "AC" : "transitoire"))}) · {res.Respectes}/{res.Nombre} contrainte(s) respectée(s)";
                 SetVerdict(res.Nombre == 0 ? null : res.Global);
-                    }
+            }
             RefreshGabarits(); RefreshPlot(keepLimits); RefreshBenchBar();
             _dureeDerniere = sw.ElapsedMilliseconds;
+            // Campagne du banc (balayage, Monte-Carlo, coins) : après le nominal, sur demande explicite seulement.
+            if (campagne && res.Erreur == null && Banc.Campagne.Mode != ModeCampagne.Aucune) await LancerCampagneAsync(_cts.Token);
         }
         catch (OperationCanceledException) { }
         finally { _simulate.IsEnabled = true; _simEnCours = false; MajEtatResultats(); }
@@ -1945,6 +1972,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Résultats périmés : relance automatique si le dernier calcul était court, sinon « à relancer ».</summary>
     void ResultatsPerimes()
     {
+        OublierCampagne();
         MajEtatResultats();
         if (_simAuto && _dureeDerniere < 1000 && !_chargement) { _relance.Stop(); _relance.Start(); }
     }
@@ -2004,6 +2032,8 @@ public sealed partial class MainWindow : Window
         var palette = new ScottPlot.Palettes.Category10();
         double yMin = double.PositiveInfinity, yMax = double.NegativeInfinity, xLo = double.PositiveInfinity, xHi = double.NegativeInfinity;
         int idx = 0;
+        // Tirages de la campagne sous les courbes nominales.
+        var (cLo, cHi) = DessinerCampagne(p, pane, nodes.Take(8).ToList(), X, Enumerable.Range(0, 8).Select(i => palette.GetColor(i)).ToArray());
         foreach (var n in nodes.Take(8))
         {
             var (xs, ys) = Verification.Courbe(Shown, raw, n);
@@ -2021,6 +2051,7 @@ public sealed partial class MainWindow : Window
             }
             idx++;
         }
+        if (double.IsFinite(cLo)) { yMin = Math.Min(yMin, cLo); yMax = Math.Max(yMax, cHi); }
         if (ac)
         {
             p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic

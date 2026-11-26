@@ -738,4 +738,41 @@ public class UiTests
         var r = relu.Bancs[0].GabaritsTraces.Single(g => g.Relatif);
         Assert.Equal(2e-3, r.Ancrage, 9);
     }
+
+    /// <summary>Campagnes depuis l'interface : Monte-Carlo (taux de conformité, histogrammes), balayage (dégradé), rapport, projet.</summary>
+    [AvaloniaFact]
+    public async Task Campagnes_monte_carlo_et_balayage_dans_l_interface()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var banc = w.EtudeCourante.Bancs[0];
+        w.SelectBanc(banc);
+        w.EtudeCourante.Schema.Components.Single(k => k.Ref == "C1").Tolerance = 20;   // condensateur ± 20 % : des échecs attendus
+        banc.Campagne = new() { Mode = Silx.Etude.ModeCampagne.MonteCarlo, Tirages = 60, Graine = 3 };
+        await w.SimulateAsync();
+        var r = w.ResultatCampagne!;
+        Assert.Equal(60, r.Tirages.Count);
+        Assert.InRange(r.Taux, 0.3, 0.999);
+        Assert.NotNull(r.PireCas);
+        w.OuvrirDetail(MainWindow.Detail.Campagne);
+        w.ChoisirTirage(r.PireCas);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Shot(w, "51-monte-carlo.png");
+        // Rapport : section de campagne avec statistiques et pire cas.
+        var dir = Directory.CreateTempSubdirectory("silx-rapport").FullName;
+        var md = await w.ExporterRapportVers(Path.Combine(dir, "rapport.md"));
+        Assert.Contains("Monte-Carlo", md); Assert.Contains("Cpk", md); Assert.Contains("Pire cas", md);
+        Assert.True(File.Exists(Path.Combine(dir, "rapport_courbes", "campagne-1.png")));
+        // Projet : la campagne et la tolérance sont enregistrées.
+        var relu = Silx.Etude.Projet.DepuisJson(Silx.Etude.Projet.VersJson(w.EtudeCourante));
+        Assert.Equal(Silx.Etude.ModeCampagne.MonteCarlo, relu.Bancs[0].Campagne.Mode);
+        Assert.Equal(20, relu.Schema.Components.Single(k => k.Ref == "C1").Tolerance);
+        // Balayage de R1 : courbes en dégradé, mesure en fonction de R1.
+        banc.Campagne = new() { Mode = Silx.Etude.ModeCampagne.Balayage, Cible = "R1", Debut = 500, Fin = 2000, Points = 6 };
+        await w.SimulateAsync();
+        Assert.Equal(6, w.ResultatCampagne!.Tirages.Count);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Shot(w, "52-balayage.png");
+        w.OuvrirReglagesBanc(w.Schema);
+        Shot(w, "53-reglages-campagne.png");
+    }
 }

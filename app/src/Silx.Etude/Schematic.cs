@@ -43,7 +43,9 @@ public sealed class PlacedComponent
 
     /// <summary>Symétrie gauche-droite du symbole (appliquée avant la rotation).</summary>
     public bool Miroir { get; set; }
-    public PlacedComponent Clone() => new() { Ref = Ref, Kind = Kind, Position = Position, Rotation = Rotation, Miroir = Miroir, Value = Value, Definition = Definition };
+    /// <summary>Tolérance en % (± autour de la valeur) pour les campagnes ; null = tolérance par défaut du type.</summary>
+    public double? Tolerance { get; set; }
+    public PlacedComponent Clone() => new() { Ref = Ref, Kind = Kind, Position = Position, Rotation = Rotation, Miroir = Miroir, Value = Value, Definition = Definition, Tolerance = Tolerance };
 
     /// <summary>Lettre SPICE attendue en tête de référence.</summary>
     public string Prefix => Kind == ComponentKind.Spice ? Definition?.Lettre ?? "X" : Schematic.Prefix(Kind);

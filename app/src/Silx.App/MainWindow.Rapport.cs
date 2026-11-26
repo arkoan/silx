@@ -26,7 +26,7 @@ public sealed partial class MainWindow
         foreach (var b in _etude.Bancs.Where(b => !_results.ContainsKey(b)).ToList())
             _results[b] = await Verification.RunAsync(_etude, b, []);
         var dossier = Path.Combine(Path.GetDirectoryName(chemin)!, Path.GetFileNameWithoutExtension(chemin) + "_courbes");
-        var md = GenererRapport(_etude, _projet?.Nom ?? "Silx", _results, dossier, Path.GetFileName(dossier));
+        var md = GenererRapport(_etude, _projet?.Nom ?? "Silx", _results, dossier, Path.GetFileName(dossier), _campagnes);
         await File.WriteAllTextAsync(chemin, md);
         _status.Text = $"Rapport exporté : {chemin}";
         RefreshBenchBar(); if (_banc == null) RefreshSide();
@@ -36,7 +36,8 @@ public sealed partial class MainWindow
     static string Fmt(double? v, string u) => v is { } x ? SpiceNumber.Format(x, u) : "—";
 
     /// <summary>Contenu du rapport. Les images sont écrites dans <paramref name="dossierImages"/>.</summary>
-    public static string GenererRapport(EtudeModel e, string nom, IReadOnlyDictionary<Banc, ResultatEtude> res, string dossierImages, string lienImages)
+    public static string GenererRapport(EtudeModel e, string nom, IReadOnlyDictionary<Banc, ResultatEtude> res, string dossierImages, string lienImages,
+        IReadOnlyDictionary<Banc, ResultatCampagne>? campagnes = null)
     {
         Directory.CreateDirectory(dossierImages);
         var sb = new StringBuilder();
@@ -75,6 +76,7 @@ public sealed partial class MainWindow
                 }
                 sb.AppendLine();
             }
+            if (campagnes?.GetValueOrDefault(b) is { } rc) i = SectionCampagne(sb, b, rc, dossierImages, lienImages, i);
             if (r != null && r.Resultats.TryGetValue(b.Type, out var raw))
             {
                 var fichier = $"banc-{++i}.png";
@@ -83,6 +85,36 @@ public sealed partial class MainWindow
             }
         }
         return sb.ToString();
+    }
+
+    /// <summary>Campagne d'un banc : taux de conformité, statistiques par mesure, pire cas et graphiques de dispersion.</summary>
+    static int SectionCampagne(StringBuilder sb, Banc b, ResultatCampagne rc, string dossierImages, string lienImages, int i)
+    {
+        sb.AppendLine($"### {NomMode(rc.Mode)}").AppendLine();
+        sb.AppendLine($"{rc.Tirages.Count} simulation(s) · **{rc.Taux * 100:0.#} % conforme** ({rc.Conformes}/{rc.Tirages.Count})."
+            + (rc.Mode == ModeCampagne.MonteCarlo ? $" Loi {(b.Campagne.Loi == LoiTirage.Gauss ? "gaussienne (± tolérance = 3σ)" : "uniforme")}, graine {b.Campagne.Graine}." : "")
+            + (rc.Avertissement != null ? $" {rc.Avertissement}" : "")).AppendLine();
+        if (rc.Stats.Count > 0)
+        {
+            sb.AppendLine("| Mesure | Signal | Moyenne | Écart-type | Min | Max | Cpk | Échecs |").AppendLine("| --- | --- | --- | --- | --- | --- | --- | --- |");
+            foreach (var s in rc.Stats)
+            {
+                var u = s.Critere.Info.Unite;
+                sb.AppendLine($"| {s.Critere.Info.Nom} | V({s.Critere.Noeud}) | {Fmt(s.N > 0 ? s.Moyenne : null, u)} | {Fmt(s.N > 0 ? s.EcartType : null, u)} | {Fmt(s.N > 0 ? s.Min : null, u)} | {Fmt(s.N > 0 ? s.Max : null, u)} | {(s.Cpk is { } k && rc.Mode != ModeCampagne.Balayage ? Cpk(k) : "—")} | {s.Echecs} |");
+            }
+            sb.AppendLine();
+        }
+        if (rc.PireCas is { } pc)
+            sb.AppendLine($"Pire cas : **{pc.Tirage.Libelle}** ({(pc.Conforme ? "conforme" : $"{pc.Echecs} contrainte(s) franchie(s)")}) — {ValeursTirage(pc)}.").AppendLine();
+        foreach (var s in rc.Stats.Where(s => s.N > 0))
+        {
+            var p = new ScottPlot.Plot();
+            RemplirGraphe(p, rc, s, b.Campagne.Echelle);
+            var fichier = $"campagne-{++i}.png";
+            p.SavePng(Path.Combine(dossierImages, fichier), 640, 320);
+            sb.AppendLine($"![{s.Critere.Info.Nom} — {NomMode(rc.Mode)}]({Uri.EscapeDataString(lienImages)}/{fichier})").AppendLine();
+        }
+        return i;
     }
 
     static string TexteVerdict(ResultatEtude? r) => r == null ? "non simulé" : r.Erreur != null ? "erreur" : r.Nombre == 0 ? "—" : TexteVerdict(r.Global);

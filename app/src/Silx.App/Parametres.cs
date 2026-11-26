@@ -20,6 +20,11 @@ public sealed class Parametres
     public string CouleurConforme { get; set; } = "#15803d";
     public string CouleurNonConforme { get; set; } = "#b91c1c";
     public double EpaisseurCourbes { get; set; } = 2.5;
+    // Dispersion : tolérances par défaut (± %) utilisées par Monte-Carlo et les coins quand un composant n'a pas la sienne.
+    public double ToleranceResistance { get; set; } = 1;
+    public double ToleranceCondensateur { get; set; } = 10;
+    public double ToleranceInductance { get; set; } = 10;
+    public double ToleranceSource { get; set; } = 0;
 
     public static Parametres Courant { get; private set; } = Charger();
 
@@ -51,6 +56,7 @@ public sealed class Parametres
         SimulationAuto = d.SimulationAuto; NiveauZoom = d.NiveauZoom; Theme = d.Theme;
         CouleurBanc = d.CouleurBanc; CouleurGabarit = d.CouleurGabarit; CouleurConforme = d.CouleurConforme; CouleurNonConforme = d.CouleurNonConforme;
         EpaisseurCourbes = d.EpaisseurCourbes;
+        ToleranceResistance = d.ToleranceResistance; ToleranceCondensateur = d.ToleranceCondensateur; ToleranceInductance = d.ToleranceInductance; ToleranceSource = d.ToleranceSource;
     }
 
     public static Color Lire(string hex, string defaut) => Color.TryParse(hex, out var c) ? c : Color.Parse(defaut);
@@ -66,6 +72,12 @@ public sealed class Parametres
     /// <summary>Recolore les pinceaux partagés : tout ce qui les utilise suit sans reconstruction.</summary>
     public void Appliquer()
     {
+        Silx.Etude.Campagnes.ToleranceParDefaut = k => (k switch
+        {
+            Silx.Etude.ComponentKind.Resistor => ToleranceResistance, Silx.Etude.ComponentKind.Capacitor => ToleranceCondensateur,
+            Silx.Etude.ComponentKind.Inductor => ToleranceInductance,
+            Silx.Etude.ComponentKind.VoltageSource or Silx.Etude.ComponentKind.CurrentSource => ToleranceSource, _ => 0
+        }) is > 0 and var t ? t : null;
         if (Avalonia.Application.Current is { } app)
         {
             app.RequestedThemeVariant = Theme switch { "sombre" => Avalonia.Styling.ThemeVariant.Dark, "systeme" => Avalonia.Styling.ThemeVariant.Default, _ => Avalonia.Styling.ThemeVariant.Light };

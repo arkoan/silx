@@ -27,11 +27,13 @@ public static class Projet
     {
         public string Ref { get; set; } = ""; public ComponentKind Type { get; set; } public int X { get; set; } public int Y { get; set; }
         public int Rotation { get; set; } public bool Miroir { get; set; } public string Valeur { get; set; } = ""; public string? Composant { get; set; }
+        public double? Tolerance { get; set; }
     }
     public sealed class BancF
     {
         public string Nom { get; set; } = ""; public AnalyseKind TypeParDefaut { get; set; }
         public string? Couleur { get; set; }
+        public Campagne? Campagne { get; set; }
         public SchemaF Calque { get; set; } = new();
         public double Pas { get; set; } public double Duree { get; set; }
         public double FDebut { get; set; } public double FFin { get; set; } public int PointsParDecade { get; set; }
@@ -64,7 +66,7 @@ public static class Projet
         {
             Composants = s.Components.Select(k => new ComposantF
             {
-                Ref = k.Ref, Type = k.Kind, X = k.Position.X, Y = k.Position.Y, Rotation = k.Rotation, Miroir = k.Miroir, Valeur = k.Value,
+                Ref = k.Ref, Type = k.Kind, X = k.Position.X, Y = k.Position.Y, Rotation = k.Rotation, Miroir = k.Miroir, Valeur = k.Value, Tolerance = k.Tolerance,
                 Composant = k.Definition != null ? noms[k.Definition] : null
             }).ToList(),
             Fils = s.Wires.Select(w => new[] { w.A.X, w.A.Y, w.B.X, w.B.Y }).ToList(),
@@ -75,7 +77,7 @@ public static class Projet
             Circuit = S(e.Schema),
             Bancs = e.Bancs.Select(b => new BancF
             {
-                Nom = b.Nom, TypeParDefaut = b.TypeParDefaut, Couleur = b.Couleur, Calque = S(b.Calque),
+                Nom = b.Nom, TypeParDefaut = b.TypeParDefaut, Couleur = b.Couleur, Campagne = b.Campagne.Mode == ModeCampagne.Aucune ? null : b.Campagne, Calque = S(b.Calque),
                 Pas = b.Transitoire.Pas, Duree = b.Transitoire.Duree, FDebut = b.Ac.FDebut, FFin = b.Ac.FFin, PointsParDecade = b.Ac.PointsParDecade,
                 Criteres = b.Gabarits.ToList(),
                 GabaritsDessines = b.GabaritsTraces.Select(g => new TraceF { Analyse = g.Analyse, Relatif = g.Relatif, Ancrage = g.Ancrage, Noeud = g.Noeud, Limite = g.Limite, Points = g.Points.Select(p => new[] { p.X, p.Y }).ToList() }).ToList(),
@@ -99,7 +101,7 @@ public static class Projet
                 DefinitionComposant? d = null;
                 if (c.Composant != null && !defs.TryGetValue(c.Composant, out d))
                     throw new InvalidDataException($"{c.Ref} : composant « {c.Composant} » absent du projet.");
-                r.Components.Add(new PlacedComponent { Ref = c.Ref, Kind = c.Type, Position = new(c.X, c.Y), Rotation = c.Rotation, Miroir = c.Miroir, Value = c.Valeur, Definition = d });
+                r.Components.Add(new PlacedComponent { Ref = c.Ref, Kind = c.Type, Position = new(c.X, c.Y), Rotation = c.Rotation, Miroir = c.Miroir, Value = c.Valeur, Definition = d, Tolerance = c.Tolerance });
             }
             foreach (var w in s.Fils.Where(w => w.Length == 4)) r.Wires.Add(new(new(w[0], w[1]), new(w[2], w[3])));
             return r;
@@ -107,7 +109,7 @@ public static class Projet
         var e = new Etude { Schema = S(f.Circuit) };
         foreach (var bf in f.Bancs)
         {
-            var b = new Banc { Nom = bf.Nom, Calque = S(bf.Calque), TypeParDefaut = bf.TypeParDefaut, Couleur = bf.Couleur };
+            var b = new Banc { Nom = bf.Nom, Calque = S(bf.Calque), TypeParDefaut = bf.TypeParDefaut, Couleur = bf.Couleur, Campagne = bf.Campagne ?? new() };
             b.Transitoire.Pas = bf.Pas; b.Transitoire.Duree = bf.Duree;
             b.Ac.FDebut = bf.FDebut; b.Ac.FFin = bf.FFin; b.Ac.PointsParDecade = bf.PointsParDecade;
             b.Gabarits.AddRange(bf.Criteres);

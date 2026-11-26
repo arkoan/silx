@@ -45,10 +45,14 @@ public static class Verification
         return "ngspice";
     }
 
-    public static async Task<ResultatEtude> RunAsync(Etude circuit, Banc etude, IEnumerable<AnalyseKind> toujours, CancellationToken ct = default)
+    /// <param name="variante">Modifie le schéma fusionné (copie) avant la simulation : valeurs d'une campagne.</param>
+    /// <param name="directives">Directives ajoutées à la netlist (ex. « .options temp=85 »).</param>
+    public static async Task<ResultatEtude> RunAsync(Etude circuit, Banc etude, IEnumerable<AnalyseKind> toujours, CancellationToken ct = default,
+        Action<Schematic>? variante = null, IReadOnlyList<string>? directives = null)
     {
-        etude.RecalerGabarits();   // gabarits relatifs : suivent le front du stimulus
+        if (variante == null) etude.RecalerGabarits();   // gabarits relatifs : suivent le front du stimulus (fait une fois avant une campagne)
         var schema = etude.Fusion(circuit.Schema);
+        variante?.Invoke(schema);
         var conn = Connectivity.Build(schema);
         var erc = Erc.Check(schema, conn);
         if (erc.Any(i => i.Severity == Severity.Error))
@@ -65,6 +69,7 @@ public static class Verification
             var tasks = kinds.Select(async k =>
             {
                 var c = CircuitBuilder.Build(schema, conn, CircuitBuilder.AnalysisFor(etude, k), $"Silx {etude.Nom} {k}");
+                foreach (var d in directives ?? []) c.Directive(d);
                 return (k, await runner.RunAsync(c, ct));
             }).ToList();
             foreach (var (k, r) in await Task.WhenAll(tasks))

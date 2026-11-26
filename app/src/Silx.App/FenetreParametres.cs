@@ -12,12 +12,13 @@ namespace Silx.App;
 /// </summary>
 public sealed class FenetreParametres : Window
 {
-    public enum Section { General, Affichage, Navigation, Composants }
+    public enum Section { General, Affichage, Navigation, Dispersion, Composants }
     static readonly (Section S, string Nom, string Icone)[] Sections =
     [
         (Section.General, "Général", Icones.Reglages),
         (Section.Affichage, "Affichage", Icones.VueMixte),
         (Section.Navigation, "Zoom et navigation", Icones.ZoomPlus),
+        (Section.Dispersion, "Tolérances", Icones.Graphique),
         (Section.Composants, "Composants", Icones.OutilBroche),
     ];
     public static readonly string[] Nuancier = ["#7c3aed", "#2563eb", "#0891b2", "#15803d", "#ca8a04", "#ea580c", "#b91c1c", "#db2777", "#475569"];
@@ -95,6 +96,22 @@ public sealed class FenetreParametres : Window
                     Valider(); Afficher(Section.Affichage);
                 };
                 sp.Children.Add(raz);
+                break;
+            case Section.Dispersion:
+                Control Tol(Func<double> lire, Action<double> ecrire)
+                {
+                    var t = new TextBox { Text = lire().ToString("0.###", System.Globalization.CultureInfo.CurrentCulture), Width = 70, HorizontalContentAlignment = HorizontalAlignment.Right };
+                    void Ok() { if (Silx.Etude.SpiceNumber.ParseOrNull((t.Text ?? "").Replace("%", "").Trim()) is >= 0 and var x && x != lire()) { ecrire(x); Valider(); } }
+                    t.KeyDown += (_, e) => { if (e.Key == Key.Enter) Ok(); }; t.LostFocus += (_, _) => Ok();
+                    var sp2 = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 }; sp2.Children.Add(new TextBlock { Text = "±", VerticalAlignment = VerticalAlignment.Center }); sp2.Children.Add(t); sp2.Children.Add(new TextBlock { Text = "%", VerticalAlignment = VerticalAlignment.Center });
+                    return sp2;
+                }
+                sp.Children.Add(Carte(
+                    Ligne("Résistances", null, Tol(() => _p.ToleranceResistance, x => _p.ToleranceResistance = x)),
+                    Ligne("Condensateurs", null, Tol(() => _p.ToleranceCondensateur, x => _p.ToleranceCondensateur = x)),
+                    Ligne("Inductances", null, Tol(() => _p.ToleranceInductance, x => _p.ToleranceInductance = x)),
+                    Ligne("Sources continues", "0 = valeur exacte (alimentation régulée).", Tol(() => _p.ToleranceSource, x => _p.ToleranceSource = x))));
+                sp.Children.Add(Ui.Hint("Tolérances par défaut des campagnes Monte-Carlo et coins. Un composant peut avoir la sienne (bulle d'édition du composant)."));
                 break;
             case Section.Composants:
                 var dossier = new SelectableTextBlock { Text = _dossier, FontSize = Ui.Aide, Foreground = Ui.Muted, TextWrapping = TextWrapping.Wrap, MaxWidth = 300 };

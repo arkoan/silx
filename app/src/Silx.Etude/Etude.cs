@@ -74,6 +74,8 @@ public sealed class Banc
     public AnalyseKind TypeParDefaut { get => _type; set => _type = value; }
     /// <summary>Couleur propre du banc (« #rrggbb ») ; null = couleur des bancs choisie dans les paramètres.</summary>
     public string? Couleur { get; set; }
+    /// <summary>Campagne lancée avec « Simuler » : balayage, Monte-Carlo ou coins (Aucune = valeur nominale seule).</summary>
+    public Campagne Campagne { get; set; } = new();
     /// <summary>Source qui fixe le type du banc (null s'il n'y en a pas).</summary>
     public PlacedComponent? PremierStimulus => Calque.Components.FirstOrDefault(k => k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource);
     public IEnumerable<CritereGabarit> CriteresActifs => Gabarits.Where(g => g.Info.Analyse == Type);
