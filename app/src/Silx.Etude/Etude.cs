@@ -23,7 +23,7 @@ public sealed class ReglagesAc
     public bool Auto { get; set; } = true;
 }
 
-public enum TypeMesure { Depassement, TempsDeMontee, TempsEtablissement, ValeurFinale, BandePassante3dB, GainDc, MargeDePhase, MargeDeGain, Frequence, AmplitudeCreteACrete, GainMax, LargeurBande3dB, ValeurEfficace, ValeurMoyenne, Thd, MaximumDc, MinimumDc, SeuilDc, PenteMaxDc }
+public enum TypeMesure { Depassement, TempsDeMontee, TempsEtablissement, ValeurFinale, BandePassante3dB, GainDc, MargeDePhase, MargeDeGain, Frequence, AmplitudeCreteACrete, GainMax, LargeurBande3dB, ValeurEfficace, ValeurMoyenne, Thd, MaximumDc, MinimumDc, SeuilDc, PenteMaxDc, BruitSortieTotal, BruitEntreeTotal, DensiteBruit1k }
 
 public static class TypesAnalyse
 {
@@ -52,6 +52,9 @@ public static class TypesMesure
         new(TypeMesure.LargeurBande3dB, "Largeur de bande à −3 dB (passe-bande)", "Hz", AnalyseKind.Ac),
         new(TypeMesure.MargeDePhase, "Marge de phase (gain de boucle)", "°", AnalyseKind.Ac),
         new(TypeMesure.MargeDeGain, "Marge de gain (gain de boucle)", "dB", AnalyseKind.Ac),
+        new(TypeMesure.BruitSortieTotal, "Bruit total en sortie (sur la plage)", "V", AnalyseKind.Ac),
+        new(TypeMesure.BruitEntreeTotal, "Bruit total ramené à l'entrée (sur la plage)", "V", AnalyseKind.Ac),
+        new(TypeMesure.DensiteBruit1k, "Densité de bruit en sortie à 1 kHz", "V/√Hz", AnalyseKind.Ac),
         new(TypeMesure.MaximumDc, "Valeur maximale sur le balayage", "V", AnalyseKind.Dc),
         new(TypeMesure.MinimumDc, "Valeur minimale sur le balayage", "V", AnalyseKind.Dc),
         new(TypeMesure.SeuilDc, "Seuil de basculement (mi-excursion)", "V", AnalyseKind.Dc),

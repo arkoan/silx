@@ -997,4 +997,21 @@ public class UiTests
         await w.AfficherPointFonctionnementAsync(false);
         Assert.Null(w.Canevas.PointFonctionnement);
     }
+
+    /// <summary>Vue bruit d'un banc fréquentiel : densités en sortie et ramenée à l'entrée.</summary>
+    [AvaloniaFact]
+    public async Task Vue_bruit()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        w.SelectBanc(w.EtudeCourante.Bancs[1]);
+        await w.SimulateAsync();
+        w.AfficherBruit(true);
+        Assert.True(w.VueBruit);
+        for (int i = 0; i < 100 && w.PlotControl.Plot.Axes.Left.Label.Text != "Densité de bruit (V/√Hz)"; i++) { await Task.Delay(50); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+        for (int i = 0; i < 100 && w.PlotControl.Plot.GetPlottables().Count() < 2; i++) { await Task.Delay(50); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+        Assert.True(w.PlotControl.Plot.GetPlottables().Count() >= 2);
+        Shot(w, "82-vue-bruit.png");
+        w.AfficherBruit(false);
+        Assert.False(w.VueBruit);
+    }
 }

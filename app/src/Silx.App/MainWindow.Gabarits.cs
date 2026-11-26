@@ -158,7 +158,7 @@ public sealed partial class MainWindow
         if (_banc != null && _last is { Erreur: null } r)
         {
             var crit = Banc.CriteresActifs.Where(g => r.Resultats.ContainsKey(g.Info.Analyse))
-                .Select(g => new ResultatCritere(g, Verification.Evaluer(g, r.Resultats[g.Info.Analyse], SchemaCourant))).ToList();
+                .Select(g => new ResultatCritere(g, Verification.Evaluer(g, r.Resultats[g.Info.Analyse], SchemaCourant, r.Bruit))).ToList();
             _last = r with { Criteres = crit };
             SetVerdict(_last.Nombre == 0 ? null : _last.Global);
         }

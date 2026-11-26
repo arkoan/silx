@@ -19,6 +19,8 @@ public sealed record ResultatEtude(
     string Journal,
     string? Erreur)
 {
+    /// <summary>Bruit des nœuds contrôlés par un critère de bruit (banc fréquentiel), calculé avec la simulation.</summary>
+    public IReadOnlyDictionary<string, CourbeBruit> Bruit { get; init; } = new Dictionary<string, CourbeBruit>();
     public int Nombre => Criteres.Count + Traces.Count;
     public int Respectes => Criteres.Count(c => c.Resultat.Verdict == Verdict.Pass) + Traces.Count(t => t.Resultat.Verdict == Verdict.Pass);
     public Verdict Global
@@ -108,9 +110,17 @@ public static class Verification
         // Une analyse qui ne produit qu'un point (plage trop étroite, trop peu de points) ne se trace ni ne se mesure.
         if (raws.Values.FirstOrDefault(r => r.PointCount < 2) is { } court)
             return new(raws, [], [], erc, journal.ToString(), $"L'analyse n'a produit que {court.PointCount} point : élargissez la plage ou augmentez le nombre de points (bande étroite : balayage linéaire).");
-        var criteres = etude.CriteresActifs.Select(g => new ResultatCritere(g, Evaluer(g, raws[g.Info.Analyse], schema))).ToList();
+        // Critères de bruit : une analyse .noise par nœud contrôlé.
+        IReadOnlyDictionary<string, CourbeBruit> bruit = new Dictionary<string, CourbeBruit>();
+        var noeudsBruit = etude.CriteresActifs.Where(g => EstBruit(g.Mesure)).Select(g => g.Noeud).ToList();
+        if (noeudsBruit.Count > 0)
+        {
+            var (b, err) = await Bruit.CalculerAsync(circuit, etude, noeudsBruit, ct);
+            bruit = b; if (err != null) journal.AppendLine("── bruit : " + err);
+        }
+        var criteres = etude.CriteresActifs.Select(g => new ResultatCritere(g, Evaluer(g, raws[g.Info.Analyse], schema, bruit))).ToList();
         var traces = etude.TracesActives.Select(g => new ResultatTrace(g, EvaluerTrace(g, raws[g.Analyse], schema))).ToList();
-        return new(raws, criteres, traces, erc, journal.ToString(), null);
+        return new(raws, criteres, traces, erc, journal.ToString(), null) { Bruit = bruit };
     }
 
     public static ResultatGabaritGraphique EvaluerTrace(GabaritTrace g, RawFile raw, Schematic? f = null)
@@ -139,10 +149,29 @@ public static class Verification
     /// Évalue un critère chiffré sur un signal : tension de nœud, ou courant de broche (« I(R1:2) ») résolu sur le schéma
     /// fusionné <paramref name="f"/> ; l'unité suit le signal (V ou A).
     /// </summary>
-    public static ResultatGabarit Evaluer(CritereGabarit g, RawFile raw, Schematic? f = null)
+    public static bool EstBruit(TypeMesure m) => m is TypeMesure.BruitSortieTotal or TypeMesure.BruitEntreeTotal or TypeMesure.DensiteBruit1k;
+
+    public static ResultatGabarit Evaluer(CritereGabarit g, RawFile raw, Schematic? f = null, IReadOnlyDictionary<string, CourbeBruit>? bruit = null)
     {
         var info = g.Info;
         var bornes = new Bornes(g.Min, g.Max);
+        if (EstBruit(g.Mesure))
+        {
+            if (Signaux.EstCourant(g.Noeud)) return new(info.Nom, Verdict.NonEvaluable, null, info.Unite, bornes, "Le bruit se mesure sur une tension de nœud.");
+            if (bruit == null || !bruit.TryGetValue(g.Noeud, out var cb)) return new(info.Nom, Verdict.NonEvaluable, null, info.Unite, bornes, "Bruit non calculé : relancez la simulation.");
+            var m = new Mesure<CourbeBruit>(info.Nom, info.Unite, c => g.Mesure switch
+            {
+                TypeMesure.BruitSortieTotal => c.TotalSortie,
+                TypeMesure.BruitEntreeTotal => c.TotalEntree,
+                _ => c.SortieA(1e3) ?? throw new MesureImpossibleException("1 kHz est hors de la plage du banc."),
+            });
+            if (bornes.Min is null && bornes.Max is null)
+            {
+                try { var v = m.Mesurer(cb); return new(info.Nom, Verdict.NonEvaluable, double.IsFinite(v) ? v : null, info.Unite, bornes, "Aucune borne saisie."); }
+                catch (MesureImpossibleException ex) { return new(info.Nom, Verdict.NonEvaluable, null, info.Unite, bornes, ex.Message); }
+            }
+            return new Gabarit<CourbeBruit>(info.Nom, m, bornes).Evaluer(cb);
+        }
         var unite = Signaux.EstCourant(g.Noeud) && info.Unite == "V" ? "A" : info.Unite;
         if (!Signaux.Disponible(raw, g.Noeud, f))
             return new(info.Nom, Verdict.NonEvaluable, null, unite, bornes, $"Signal « {Signaux.Nom(g.Noeud, f)} » absent des résultats.");

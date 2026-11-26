@@ -21,6 +21,7 @@ public static class NetlistWriter
             OpAnalysis => ".op",
             DcAnalysis a => $".dc {a.Source} {F(a.Start)} {F(a.Stop)} {F(a.Step)}",
             AcAnalysis a => $".ac {a.Sweep.ToString().ToLowerInvariant()} {a.PointsPerSweep} {F(a.FStart)} {F(a.FStop)}",
+            NoiseAnalysis a => $".noise v({a.Output}{(a.Reference is { } r ? "," + r : "")}) {a.Source} {a.Sweep.ToString().ToLowerInvariant()} {a.PointsPerSweep} {F(a.FStart)} {F(a.FStop)}",
             TranAnalysis a => $".tran {F(a.Step)} {F(a.Stop)} {F(a.Start)}" + (a.MaxStep is { } m ? " " + F(m) : ""),
             null => throw new InvalidOperationException("Aucune analyse définie."),
             _ => throw new NotSupportedException()

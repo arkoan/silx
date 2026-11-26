@@ -100,6 +100,15 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
     **courant de chaque composant** (étiquette verte : entrant par la broche 1 ; collecteur / drain pour un
     transistor), sans chevauchement. Avec un banc actif, ses stimuli sont à leur valeur continue (début du
     balayage, valeur à t = 0, polarisation du petit signal) ; recalculé à chaque modification tant qu'il est affiché.
+- **Analyse de bruit** (.noise) — **faite** : sur un banc **fréquentiel**, bouton « bruit » de la barre des courbes
+  (à côté de Bode). Pour chaque tension de nœud affichée (les courants sont ignorés), une analyse .noise sur la plage
+  du banc (20 points par décade), entrée = la source petit signal du banc ; les nœuds sont calculés en parallèle,
+  en tâche de fond. Tracé : densité de bruit **en sortie** (trait plein) et **ramenée à l'entrée** (tirets), en
+  V/√Hz sur échelle logarithmique (120 dB de dynamique au plus). Sous le graphique : bruit total en sortie et ramené
+  à l'entrée (V efficaces intégrés sur la plage), densité à 1 kHz. Curseurs : fréquence et densité. Critères (banc
+  fréquentiel) : bruit total en sortie, bruit total ramené à l'entrée, densité de bruit en sortie à 1 kHz ; calculés
+  avec la simulation (une analyse .noise par nœud contrôlé), et aussi en campagne. Vérifié : √(4kTR) et √(kT/C)
+  d'un filtre RC.
 - **Échantillonnage adaptatif (mode « Auto », par défaut)** :
   - *Temporel* : ngspice choisit son pas (pas maximal = durée / 200) ; il pose un point d'arrêt à chaque coin des
     stimuli (fronts) et y resserre ses points, puis les espace sur les paliers. Tous les points calculés sont

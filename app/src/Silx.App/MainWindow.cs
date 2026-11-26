@@ -61,11 +61,17 @@ public sealed partial class MainWindow : Window
     readonly Button _modeSim = new(), _modeTestBtn = new();
     readonly StackPanel _testTools = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
     readonly Button _drawHigh = new(), _drawLow = new();
-    Button _viewTran = null!, _viewAc = null!, _viewFft = null!, _viewDc = null!, _boutonOp = null!;
+    Button _viewTran = null!, _viewAc = null!, _viewFft = null!, _viewDc = null!, _viewBruit = null!, _boutonOp = null!;
     bool _vueFft;
     /// <summary>Vue spectrale (FFT) d'un banc temporel : amplitude en dBV selon la fréquence.</summary>
     public bool VueFft => _vueFft && _banc?.Type == AnalyseKind.Transitoire;
     public void AfficherFft(bool fft) { if (_vueFft != fft) _cursors.Clear(); _vueFft = fft; if (fft) EndDrawing(false); RefreshPlotToolbar(); RefreshPlot(); }
+    bool _vueBruit;
+    /// <summary>Vue bruit d'un banc fréquentiel : densité de bruit en sortie et ramenée à l'entrée (analyse .noise).</summary>
+    public bool VueBruit => _vueBruit && _banc?.Type == AnalyseKind.Ac;
+    public void AfficherBruit(bool bruit) { if (_vueBruit != bruit) _cursors.Clear(); _vueBruit = bruit; if (bruit) EndDrawing(false); RefreshPlotToolbar(); RefreshPlot(); }
+    /// <summary>Vue annexe (spectre FFT ou bruit) : pas de gabarit ni de campagne.</summary>
+    bool VueAnnexe => VueFft || VueBruit;
     // Édition des points d'un gabarit : survol (grossit) puis glisser.
     (GabaritTrace G, int I)? _hoverVertex, _dragVertex;
     // Curseurs de mesure : deux au plus par courbe (A, B), ils suivent la courbe.
