@@ -7,6 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Projets de démonstration dessinés dans Silx (schémas lisibles), lus au démarrage. -->
+    <EmbeddedResource Include="Demos\*.silx" LogicalName="Silx.Etude.Demos.%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\socle-ngspice\src\Silx.Core\Silx.Core.csproj" />
     <ProjectReference Include="..\..\..\mesures\src\Silx.Mesures\Silx.Mesures.csproj" />
   </ItemGroup>

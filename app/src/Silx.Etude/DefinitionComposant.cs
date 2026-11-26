@@ -56,18 +56,21 @@ public sealed class BrocheSymbole
 
 /// <summary>Gabarit de dessin d'un symbole.</summary>
 /// <summary>Gabarit de dessin d'un symbole. Nmos/Pmos : 4 broches (substrat B) ; Nmos3/Pmos3 : substrat relié à la source.</summary>
-public enum GabaritSymbole { Boite, Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf, Nmos3, Pmos3, Personnalise }
+public enum GabaritSymbole { Boite, Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf, Nmos3, Pmos3, Personnalise, Logique, Quartz }
 
 public sealed class Symbole
 {
     public GabaritSymbole Gabarit { get; set; } = GabaritSymbole.Boite;
+    /// <summary>Version du dessin : 2 = grille fine (transistors à 2 pas) ; 3 = transistors affinés, diode sur 3 pas ; 4 = MOSFET compact (1 case de large). Absente des fichiers anciens (0).</summary>
+    public int Version { get; set; }
+    public const int VersionCourante = 4;
     /// <summary>MOS 3 broches : dessiner la diode de corps entre drain et source.</summary>
     public bool DiodeCorps { get; set; }
     /// <summary>Corps rectangulaire (gabarit Boîte) : les broches hors du corps y sont reliées par un trait, et leur nom est écrit à l'intérieur.</summary>
     public double[]? Corps { get; set; }
     public List<Primitive> Traits { get; set; } = new();
     public List<BrocheSymbole> Broches { get; set; } = new();
-    public Symbole Clone() => new() { Gabarit = Gabarit, DiodeCorps = DiodeCorps, Corps = Corps?.ToArray(), Traits = Traits.Select(t => t.Clone()).ToList(), Broches = Broches.Select(b => b.Clone()).ToList() };
+    public Symbole Clone() => new() { Gabarit = Gabarit, Version = Version, DiodeCorps = DiodeCorps, Corps = Corps?.ToArray(), Traits = Traits.Select(t => t.Clone()).ToList(), Broches = Broches.Select(b => b.Clone()).ToList() };
 
     /// <summary>Encombrement en pas de grille : (xmin, ymin, xmax, ymax), broches et dessin compris.</summary>
     public (double X0, double Y0, double X1, double Y1) Encombrement()
@@ -116,6 +119,10 @@ public sealed class DefinitionComposant
     /// </summary>
     public Dictionary<string, string> BrochesCachees { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Symbole Symbole { get; set; } = new();
+    /// <summary>Composant logique : modèle de code XSPICE (d_and, d_dff…). Null pour un composant analogique.</summary>
+    public string? CodeXspice { get; set; }
+    /// <summary>Composant logique : tension d'alimentation de la famille (seuils à 30 % et 70 %, sorties 0 / Vcc).</summary>
+    public double TensionLogique { get; set; } = 5;
 
     /// <summary>Nom d'une broche du symbole : celui donné par l'utilisateur, sinon le libellé du fichier, sinon la broche du modèle.</summary>
     public string NomBroche(BrocheSymbole b) => !string.IsNullOrWhiteSpace(b.Nom) ? b.Nom.Trim()
@@ -130,7 +137,8 @@ public sealed class DefinitionComposant
     {
         Nom = Nom, Type = Type, Modele = Modele, TexteSpice = TexteSpice, BrochesModele = BrochesModele.ToList(),
         Parametres = Parametres, Description = Description, Symbole = Symbole.Clone(),
-        Libelles = new(Libelles, StringComparer.OrdinalIgnoreCase), Notes = Notes, BrochesCachees = new(BrochesCachees, StringComparer.OrdinalIgnoreCase)
+        Libelles = new(Libelles, StringComparer.OrdinalIgnoreCase), Notes = Notes, BrochesCachees = new(BrochesCachees, StringComparer.OrdinalIgnoreCase),
+        CodeXspice = CodeXspice, TensionLogique = TensionLogique
     };
 
     /// <summary>Crée une définition depuis un modèle importé, avec le symbole par défaut de son type et la correspondance automatique.</summary>
@@ -141,6 +149,13 @@ public sealed class DefinitionComposant
             Nom = m.Nom, Type = m.Type, Modele = m.Nom, TexteSpice = m.Texte, BrochesModele = m.Broches.ToList(), Parametres = m.Parametres,
             Description = ModelesSpice.Libelle(m.Type),
         };
+        if (m.Type == TypeModele.Logique && m.Code is { } code)
+        {
+            d.CodeXspice = code; d.Description = ModelesSpice.CodesLogiques[code] + $" (XSPICE {code})";
+            d.Notes = "Composant numérique : Silx place un pont analogique → numérique sur chaque entrée et numérique → analogique sur chaque sortie (seuils 30 % / 70 % de la tension logique, sortie 0 / Vcc derrière 50 Ω).";
+            d.Symbole = GabaritsSymboles.Logique(code, d.BrochesModele);
+            return d;
+        }
         var infos = m.Infos ?? InfosModele.Vide;
         foreach (var (k, v) in infos.Libelles) d.Libelles[k] = v;
         d.Notes = string.Join(" — ", new[] { infos.Description, infos.Composition }.Where(x => x.Length > 0));
@@ -181,6 +196,12 @@ public sealed class DefinitionComposant
     /// </summary>
     public void AppliquerGabarit(GabaritSymbole g, bool diodeCorps = false, IReadOnlyDictionary<string, string>? rolesParBroche = null)
     {
+        if (g == GabaritSymbole.Logique)
+        {
+            Symbole = CodeXspice is { } code ? GabaritsSymboles.Logique(code, BrochesModele) : GabaritsSymboles.Boite(BrochesModele);
+            if (CodeXspice == null) RelierAutomatiquement();
+            return;
+        }
         if (g == GabaritSymbole.Personnalise)
         {
             // Dessin libre : on part du symbole actuel, dont le corps de boîte devient des éléments modifiables.
@@ -270,10 +291,20 @@ public sealed class BibliothequeComposants
 
     public static BibliothequeComposants Charger(string dossier)
     {
+        // Composants intégrés (bipolaires, JFET, MOSFET, quartz, portes et bascules XSPICE) : toujours présents ; un fichier de même nom les remplace.
         var b = new BibliothequeComposants { Dossier = dossier };
+        b.Definitions.AddRange(BibliothequeBase.Definitions());
+        b.Definitions.AddRange(BibliothequeLogique.Definitions());
         if (!Directory.Exists(dossier)) return b;
         foreach (var f in Directory.GetFiles(dossier, "*" + Extension).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
-            try { b.Definitions.Add(DefinitionComposant.DepuisJson(File.ReadAllText(f))); } catch (Exception) { /* fichier illisible : ignoré */ }
+            try
+            {
+                var d = DefinitionComposant.DepuisJson(File.ReadAllText(f));
+                b.Definitions.RemoveAll(x => string.Equals(x.Nom, d.Nom, StringComparison.OrdinalIgnoreCase));   // remplace un composant logique intégré
+                b.Definitions.Add(d);
+                if (GabaritsSymboles.MettreAJour(d.Symbole)) File.WriteAllText(f, d.VersJson());   // gabarits redessinés sur la grille fine
+            }
+            catch (Exception) { /* fichier illisible : ignoré */ }
         return b;
     }
 

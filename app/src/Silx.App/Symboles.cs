@@ -34,7 +34,7 @@ public static class Symboles
                 g.LineTo(new Point(box.Left, box.Top)); g.LineTo(new Point(box.Right - 5, box.Top));
                 g.LineTo(new Point(box.Right, box.Center.Y)); g.LineTo(new Point(box.Right - 5, box.Bottom)); g.EndFigure(true);
             }
-            ctx.DrawGeometry(new SolidColorBrush(Color.Parse("#fff7ed")), new Pen(brush, 1), geo);
+            ctx.DrawGeometry(Ui.LabelFill, new Pen(brush, 1), geo);
             ctx.DrawText(t, new Point(box.Left + 3, box.Top + 2));
             ctx.DrawEllipse(brush, null, a, 2.5, 2.5);
             return;
@@ -46,9 +46,9 @@ public static class Symboles
         {
             case ComponentKind.Resistor:
                 {
-                    // Symbole IEC : rectangle.
-                    ctx.DrawLine(pen, At(0), At(.22)); ctx.DrawLine(pen, At(.78), At(1));
-                    var poly = new[] { At(.22, h * .38), At(.78, h * .38), At(.78, -h * .38), At(.22, -h * .38), At(.22, h * .38) };
+                    // Symbole IEC : rectangle de proportions 1 × 2,5 (1,5 pas × 0,6 pas) sur un dipôle de 3 pas.
+                    ctx.DrawLine(pen, At(0), At(.25)); ctx.DrawLine(pen, At(.75), At(1));
+                    var poly = new[] { At(.25, h * .43), At(.75, h * .43), At(.75, -h * .43), At(.25, -h * .43), At(.25, h * .43) };
                     for (int i = 0; i < 4; i++) ctx.DrawLine(pen, poly[i], poly[i + 1]);
                     break;
                 }
@@ -98,8 +98,9 @@ public static class Symboles
     }
 
     /// <summary>Repère d'un symbole importé : pas de grille (réels, repère du symbole) → écran, rotation comprise.</summary>
-    public static Func<double, double, Point> Repere(Point origine, int rotation, double d) => (x, y) =>
+    public static Func<double, double, Point> Repere(Point origine, int rotation, double d, bool miroir = false) => (x, y) =>
     {
+        if (miroir) x = -x;
         for (int i = 0; i < ((rotation % 4) + 4) % 4; i++) (x, y) = (-y, x);
         return new Point(origine.X + x * d, origine.Y + y * d);
     };
@@ -120,7 +121,7 @@ public static class Symboles
                         var a = map(t.X1, t.Y1); var b = map(t.X2, t.Y2);
                         ctx.DrawLine(pen, a, b);
                         var v = b - a; var l = Math.Sqrt(v.X * v.X + v.Y * v.Y); if (l < 1e-6) break;
-                        var u = new Point(v.X / l, v.Y / l); var n = new Point(-u.Y, u.X); var h = d * 0.45; var m = new Point(b.X - u.X * h * 0.2, b.Y - u.Y * h * 0.2);
+                        var u = new Point(v.X / l, v.Y / l); var n = new Point(-u.Y, u.X); var h = Math.Min(d * 0.45, l * 0.35); var m = new Point(b.X - u.X * h * 0.2, b.Y - u.Y * h * 0.2);
                         var geo = new StreamGeometry();
                         using (var g = geo.Open())
                         {
@@ -149,7 +150,7 @@ public static class Symboles
             }
         if (s.Corps is { } c)
         {
-            ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#fffdf5")), pen, new Rect(map(c[0], c[1]), map(c[2], c[3])).Normalize());
+            ctx.DrawRectangle(Ui.SymbolFill, pen, new Rect(map(c[0], c[1]), map(c[2], c[3])).Normalize());
             foreach (var b in s.Broches)
             {
                 // Trait de la broche jusqu'au bord du corps, et nom à l'intérieur.
@@ -177,7 +178,7 @@ public static class Symboles
         public required ComponentKind Kind { get; init; }
         /// <summary>Symbole d'un composant SPICE importé (Kind = Spice).</summary>
         public Silx.Etude.Symbole? Symbole { get; set; }
-        public IBrush Brush { get; set; } = new SolidColorBrush(Color.Parse("#1c1f26"));
+        public IBrush Brush { get; set; } = Ui.Ink;
         public override void Render(DrawingContext ctx)
         {
             var w = Bounds.Width; var h = Bounds.Height; var pen = new Pen(Brush, 1.5);

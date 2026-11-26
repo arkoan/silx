@@ -57,7 +57,7 @@ public class ModelesFabricantTests
         Assert.Equal(3, d.Symbole.Broches.Count);
         Assert.True(d.Symbole.DiodeCorps);                                // Dbody dans le modèle
         string Sur(int x, int y) => d.Symbole.Broches.Single(b => b.X == x && b.Y == y).BrocheModele!;
-        Assert.Equal("10", Sur(0, 0)); Assert.Equal("20", Sur(3, -3)); Assert.Equal("30", Sur(3, 3));
+        Assert.Equal("10", Sur(0, 0)); Assert.Equal("20", Sur(1, -2)); Assert.Equal("30", Sur(1, 2));
         Assert.Equal("DC 25", d.BrochesCachees["50"]);
         Assert.Equal("20 (DRAIN)", d.NomAffiche("20"));
         Assert.DoesNotContain(d.Verifier(), p => p.Severity == Severity.Error);
@@ -86,15 +86,16 @@ public class ModelesFabricantTests
     public async Task Mosfet_fabricant_en_interrupteur_avec_ngspice(string nom)
     {
         var e = new Silx.Etude.Etude(); var banc = new Banc(); var s = e.Schema;
-        s.Components.Add(new() { Ref = "X1", Kind = ComponentKind.Spice, Definition = DefinitionComposant.Depuis(Modele(nom)), Position = new(0, 0) }); // G(0,0) D(3,-3) S(3,3)
-        s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(3, 3) });
-        s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(3, -3), Value = "OUT" });
+        s.Components.Add(new() { Ref = "X1", Kind = ComponentKind.Spice, Definition = DefinitionComposant.Depuis(Modele(nom)), Position = new(0, 0) }); // G(0,0) D(1,-2) S(1,2)
+        s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(1, 2) });
+        s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(1, -2), Value = "OUT" });
         banc.Calque.Components.Add(new() { Ref = "VG", Kind = ComponentKind.VoltageSource, Position = new(0, 0), Rotation = 1, Value = "DC 5" });   // (0,0)-(0,4)
         banc.Calque.Components.Add(new() { Ref = "GND2", Kind = ComponentKind.Ground, Position = new(0, 4) });
-        banc.Calque.Components.Add(new() { Ref = "RL", Kind = ComponentKind.Resistor, Position = new(3, -3), Rotation = 3, Value = "1k" });      // (3,-3)-(3,-7)
-        banc.Calque.Components.Add(new() { Ref = "VDD", Kind = ComponentKind.VoltageSource, Position = new(3, -7), Rotation = 3, Value = "DC 5" }); // + (3,-7), − (3,-11)
-        banc.Calque.Components.Add(new() { Ref = "GND3", Kind = ComponentKind.Ground, Position = new(3, -11) });
+        banc.Calque.Components.Add(new() { Ref = "RL", Kind = ComponentKind.Resistor, Position = new(1, -2), Rotation = 3, Value = "1k" });      // (3,-3)-(3,-7)
+        banc.Calque.Components.Add(new() { Ref = "VDD", Kind = ComponentKind.VoltageSource, Position = new(1, -6), Rotation = 3, Value = "DC 5" }); // + (3,-7), − (3,-11)
+        banc.Calque.Components.Add(new() { Ref = "GND3", Kind = ComponentKind.Ground, Position = new(1, -10) });
         banc.Transitoire.Duree = 1e-4; banc.Transitoire.Pas = 1e-6;
+        Ancien.Raccorder(s, banc);   // tracé au pas de 4
         var r = await Verification.RunAsync(e, banc, [], TestContext.Current.CancellationToken);
         Assert.True(r.Erreur == null, r.Erreur + "\n" + r.Journal);
         Assert.InRange(r.Resultats[AnalyseKind.Transitoire].Vector("v(out)")[^1], 0, 0.1);

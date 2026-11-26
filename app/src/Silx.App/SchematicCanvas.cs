@@ -17,7 +17,31 @@ public sealed class SchematicCanvas : Control
     Schematic? _underlay;
     /// <summary>Texte affiché en haut à gauche du canevas.</summary>
     public string Caption { get; set; } = "";
-    public Tool Tool { get => _tool; set { _tool = value; _wireStart = null; ToolChanged?.Invoke(); InvalidateVisual(); } }
+    /// <summary>Couleur du calque affiché (celle du banc sélectionné).</summary>
+    public IBrush CouleurCalque { get; set; } = BenchBrush;
+    public Tool Tool
+    {
+        get => _tool;
+        set
+        {
+            _tool = value; _wireStart = null;
+            // Curseur de souris propre à chaque mode : on voit d'un coup d'œil ce que fera le prochain clic.
+            Cursor = value switch { Tool.Select => Cursor.Default, Tool.Probe => new Cursor(StandardCursorType.Hand), _ => new Cursor(StandardCursorType.Cross) };
+            ToolChanged?.Invoke(); InvalidateVisual();
+        }
+    }
+    /// <summary>Nom lisible du composant en cours de placement (puce de mode).</summary>
+    public string NomPlacement { get; set; } = "";
+
+    /// <summary>Texte de la puce de mode (vide en sélection).</summary>
+    public string TexteMode => _tool switch
+    {
+        Tool.Wire => "Fil — clic pour chaque coin, double-clic ou arrivée sur une broche pour finir · Échap",
+        Tool.Place => $"Placement : {NomPlacement} — Maj+clic pour en poser plusieurs · ⌘R pivoter · Échap",
+        Tool.Probe => "Sonde — cliquez un fil ou une broche pour tracer sa tension · Échap",
+        Tool.ZoomWindow => "Zoom fenêtre — tracez un rectangle · Échap",
+        _ => ""
+    };
     public ComponentKind PlaceKind { get; private set; }
     /// <summary>Le schéma a changé (topologie, valeurs).</summary>
     public event Action? Changed;
@@ -25,6 +49,10 @@ public sealed class SchematicCanvas : Control
     public event Action? ToolChanged;
     /// <summary>Sonde posée : nom du nœud (équipotentiel) cliqué.</summary>
     public event Action<string>? Probed;
+    /// <summary>Double-clic sur un composant (outil Sélection) : édition sur place.</summary>
+    public event Action<PlacedComponent>? DoubleClic;
+    /// <summary>Double-clic, depuis un banc, sur un composant du circuit sous test affiché dessous.</summary>
+    public event Action<PlacedComponent>? DoubleClicCircuit;
     /// <summary>Calques des bancs de test posés sur le circuit édité : quand une broche du circuit bouge, leurs fils suivent
     /// (et l'annulation les restaure avec le circuit).</summary>
     public IReadOnlyList<Schematic> CalquesLies { get; set; } = [];
@@ -34,10 +62,71 @@ public sealed class SchematicCanvas : Control
     public DefinitionComposant? PlaceDefinition { get; private set; }
     Schematic? _dragOrigin; GridPoint _dragStart;
     string? _probeNode;
+    (PlacedComponent C, int I)? _probePin;
+    bool _sondeImplicite;
+    /// <summary>
+    /// Sonde implicite : le graphique a la main (zone des courbes active) ; survoler le schéma montre ce que l'on
+    /// sonderait (net : tension, broche : courant) et un clic l'ajoute au graphique, sans changer d'outil.
+    /// </summary>
+    public bool SondeImplicite { get => _sondeImplicite; set { if (_sondeImplicite == value) return; _sondeImplicite = value; _probeNode = null; _probePin = null; InvalidateVisual(); } }
+    bool SondeActive => _tool == Tool.Probe || (_sondeImplicite && _tool == Tool.Select);
+    /// <summary>Un net ou une broche est visé par la sonde : un clic l'ajoute au graphique.</summary>
+    public bool SondeVisee => SondeActive && _inside && (_probePin != null || _probeNode is { } n && n != "0");
+
+    /// <summary>Broche d'un composant électrique sous le pointeur (à un tiers de pas près) : sonde de courant.</summary>
+    (PlacedComponent C, int I)? BrocheSonde(Point pos)
+    {
+        var d = Grid * _zoom * 0.35;
+        foreach (var c in AllComponents.Where(c => c.IsElectrical).Reverse())
+        {
+            var pins = c.Pins;
+            for (int i = 0; i < pins.Count; i++)
+            { var sp = ToScreen(pins[i]); if (Math.Abs(sp.X - pos.X) < d && Math.Abs(sp.Y - pos.Y) < d) return (c, i); }
+        }
+        return null;
+    }
+
+    void Viser(Point pos)
+    {
+        _probePin = BrocheSonde(pos);
+        _probeNode = _probePin == null ? NodeAt(pos) : null;
+    }
+
+    /// <summary>Envoie la cible de la sonde : nom de nœud (tension) ou « I(R1:2) » (courant entrant dans la broche).</summary>
+    bool Sonder()
+    {
+        if (_probePin is { } bp) { Probed?.Invoke(Signaux.Courant(bp.C, bp.I)); return true; }
+        if (_probeNode is { } node && node != "0") { Probed?.Invoke(node); return true; }
+        return false;
+    }
 
     Tool _tool = Tool.Select;
     readonly Stack<(Schematic S, List<List<Wire>> Calques)> _undo = new(), _redo = new();
-    double _zoom = 2.6; Point _pan = new(60, -60);
+    double _zoom = 1.6; Point _pan = new(60, 0);
+    GridPoint? _filDepuisBroche, _brocheSurvol;
+    /// <summary>Broche (point de grille) sous le pointeur, à 0,35 pas près.</summary>
+    GridPoint? BrocheSous(Point pos)
+    {
+        double tol = Grid * _zoom * 0.35;
+        foreach (var c in AllComponents.Where(c => c.IsElectrical))
+            foreach (var p in c.Pins)
+            {
+                var sp = ToScreen(p);
+                if (Math.Abs(sp.X - pos.X) <= tol && Math.Abs(sp.Y - pos.Y) <= tol) return p;
+            }
+        return null;
+    }
+
+    /// <summary>Trace un fil en L (horizontal puis vertical) de a à b dans le schéma édité ; renvoie les segments ajoutés.</summary>
+    public List<Wire> TracerFil(GridPoint a, GridPoint b)
+    {
+        var segs = new List<Wire>();
+        if (a.X != b.X && a.Y != b.Y) { var m = new GridPoint(b.X, a.Y); segs.Add(new(a, m)); segs.Add(new(m, b)); }
+        else if (!a.Equals(b)) segs.Add(new(a, b));
+        if (segs.Count > 0) { Commit(); Schematic.Wires.AddRange(segs); Done(); }
+        return segs;
+    }
+
     GridPoint _cursor; GridPoint? _wireStart; bool _panning; Point _panLast; bool _inside;
     PlacedComponent? _selected; Wire? _selectedWire; PlacedComponent? _dragging; GridPoint _dragOffset; bool _dragMoved;
     // Sélection multiple : composants et fils ; rectangle de sélection tracé depuis le fond.
@@ -46,16 +135,25 @@ public sealed class SchematicCanvas : Control
     List<PlacedComponent>? _dragGroup;
     int _ghostRotation;
 
-    static readonly IBrush Ink = new SolidColorBrush(Color.Parse("#1c1f26"));
-    static readonly IBrush Accent = new SolidColorBrush(Color.Parse("#2563eb"));
-    static readonly IBrush WireBrush = new SolidColorBrush(Color.Parse("#1f6f43"));
-    static readonly IBrush LabelBrush = new SolidColorBrush(Color.Parse("#b45309"));
-    static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#5b6170"));
-    static readonly IBrush GridDot = new SolidColorBrush(Color.Parse("#c9ccd3"));
+    static IBrush Ink => Ui.Ink;
+    static IBrush Accent => Ui.AccentBrush;
+    static IBrush WireBrush => Ui.Wire;
+    static IBrush LabelBrush => Ui.NodeLabel;
+    static IBrush Muted => Ui.Muted;
+    static IBrush GridDot => Ui.GridDot;
     public static readonly IBrush BenchBrush = new SolidColorBrush(Color.Parse("#7c3aed"));
-    static readonly IBrush Line = new SolidColorBrush(Color.Parse("#dfe2e8"));
+    static IBrush Line => Ui.Line;
 
-    public SchematicCanvas() { Focusable = true; ClipToBounds = true; }
+    public SchematicCanvas()
+    {
+        Focusable = true; ClipToBounds = true;
+        // Pincement : pavé tactile (macOS) et écran tactile ; zoom autour du point entre les doigts.
+        AddHandler(PointerTouchPadGestureMagnifyEvent, (_, e) => { ZoomPincement(e.GetPosition(this), e.Delta.X); e.Handled = true; });
+        GestureRecognizers.Add(new PinchGestureRecognizer());
+        double echelle = 1;
+        AddHandler(InputElement.PinchEvent, (_, e) => { ZoomAt(e.ScaleOrigin, Math.Clamp(e.Scale / echelle, 0.5, 2)); echelle = e.Scale; e.Handled = true; });
+        AddHandler(InputElement.PinchEndedEvent, (_, _) => echelle = 1);
+    }
 
     public void Load(Schematic s, Schematic? underlay = null)
     {
@@ -91,11 +189,11 @@ public sealed class SchematicCanvas : Control
         _pan = pos - before * _zoom; InvalidateVisual();
     }
     /// <summary>Cadre le schéma entier (circuit et calque) dans la vue.</summary>
-    public void FitAll()
+    public void FitAll(double zoomMax = ZoomCadrageMax)
     {
         var pts = AllComponents.SelectMany(c => c.Pins).Concat(AllWires.SelectMany(w => new[] { w.A, w.B })).ToList();
         if (pts.Count == 0 || Bounds.Width < 10) return;
-        FitGrid(pts.Min(p => p.X) - 3, pts.Min(p => p.Y) - 4, pts.Max(p => p.X) + 5, pts.Max(p => p.Y) + 3, 3.2);
+        FitGrid(pts.Min(p => p.X) - 3, pts.Min(p => p.Y) - 4, pts.Max(p => p.X) + 5, pts.Max(p => p.Y) + 3, zoomMax);
     }
     void FitGrid(double x0, double y0, double x1, double y1, double maxZoom)
     {
@@ -109,11 +207,18 @@ public sealed class SchematicCanvas : Control
     IEnumerable<Wire> AllWires => _underlay == null ? Schematic.Wires : _underlay.Wires.Concat(Schematic.Wires);
     string NextRef(ComponentKind k)
     {
-        var merged = new Schematic { Components = AllComponents.ToList() };
+        // Circuit sous test : les références des bancs liés comptent aussi (V1 d'un banc et V1 du circuit se heurteraient).
+        var merged = new Schematic { Components = AllComponents.Concat(_underlay == null ? CalquesLies.SelectMany(c => c.Components) : []).ToList() };
         return k == ComponentKind.Spice && PlaceDefinition != null ? merged.NextRef(PlaceDefinition.Lettre) : merged.NextRef(k);
     }
-    public void BeginPlace(ComponentKind k) { PlaceKind = k; PlaceDefinition = null; Tool = Tool.Place; Focus(); }
-    public void BeginPlace(DefinitionComposant d) { PlaceKind = ComponentKind.Spice; PlaceDefinition = d; Tool = Tool.Place; Focus(); }
+    public void BeginPlace(ComponentKind k) { PlaceKind = k; PlaceDefinition = null; NomPlacement = NomDe(k); Tool = Tool.Place; Focus(); }
+    public void BeginPlace(DefinitionComposant d) { PlaceKind = ComponentKind.Spice; PlaceDefinition = d; NomPlacement = d.Nom; Tool = Tool.Place; Focus(); }
+    static string NomDe(ComponentKind k) => k switch
+    {
+        ComponentKind.Resistor => "résistance", ComponentKind.Capacitor => "condensateur", ComponentKind.Inductor => "inductance",
+        ComponentKind.VoltageSource => "source de tension", ComponentKind.CurrentSource => "source de courant", ComponentKind.Diode => "diode",
+        ComponentKind.Ground => "masse", ComponentKind.Label => "étiquette de nœud", _ => "composant"
+    };
 
     // ---- transformations ----
     Point ToScreen(GridPoint p) => new(p.X * Grid * _zoom + _pan.X, p.Y * Grid * _zoom + _pan.Y);
@@ -137,7 +242,9 @@ public sealed class SchematicCanvas : Control
     void SuivreCalques(IReadOnlyDictionary<GridPoint, GridPoint> moves)
     {
         if (IsLayer || moves.Count == 0) return;
-        foreach (var c in CalquesLies) Elastique.SuivreCalque(c, moves);
+        // Circuit d'avant l'opération : le dernier instantané d'annulation (pris au début de chaque modification).
+        var avant = _undo.TryPeek(out var snap) ? snap.S : null;
+        foreach (var c in CalquesLies) Elastique.SuivreCalque(c, moves, avant, Schematic);
     }
 
     /// <summary>Déplace un composant du schéma édité comme un glisser à la souris (fils élastiques, une entrée d'annulation).</summary>
@@ -208,6 +315,63 @@ public sealed class SchematicCanvas : Control
         SelectionChanged?.Invoke(); InvalidateVisual();
     }
 
+    // ---- presse-papiers (interne à l'application : copier d'un projet ou d'un banc à l'autre) ----
+    static (List<PlacedComponent> Comps, List<Wire> Fils)? _pressePapiers;
+    public static bool PressePapiersPlein => _pressePapiers != null;
+
+    public void CopySelection()
+    {
+        var comps = Selection.ToList();
+        var pins = comps.SelectMany(c => c.Pins).ToHashSet();
+        // Fils sélectionnés, plus ceux qui relient deux broches copiées.
+        var fils = FilsSelectionnes.Concat(Schematic.Wires.Where(w => pins.Contains(w.A) && pins.Contains(w.B))).Distinct().ToList();
+        if (comps.Count + fils.Count == 0) return;
+        _pressePapiers = (comps.Select(c => c.Clone()).ToList(), fils);
+    }
+
+    public void CutSelection() { CopySelection(); DeleteSelected(); }
+
+    /// <summary>Colle le presse-papiers : coin haut-gauche sous le pointeur (ou décalé de 2 pas), références renumérotées.</summary>
+    public void Paste(GridPoint? ou = null)
+    {
+        if (_pressePapiers is not { } pp) return;
+        var pts = pp.Comps.SelectMany(c => c.Pins).Concat(pp.Fils.SelectMany(w => new[] { w.A, w.B })).ToList();
+        if (pts.Count == 0) return;
+        int x0 = pts.Min(p => p.X), y0 = pts.Min(p => p.Y);
+        var cible = ou ?? new GridPoint(x0 + 2, y0 + 2);
+        int dx = cible.X - x0, dy = cible.Y - y0;
+        Commit();
+        _multi.Clear(); _multiWires.Clear();
+        foreach (var c in pp.Comps)
+        {
+            var n = c.Clone();
+            n.Position = new GridPoint(c.Position.X + dx, c.Position.Y + dy);
+            if (n.IsElectrical) n.Ref = n.Kind == ComponentKind.Spice && n.Definition != null ? new Schematic { Components = AllComponents.ToList() }.NextRef(n.Definition.Lettre) : NextRef(n.Kind);
+            else if (n.Kind == ComponentKind.Ground) n.Ref = NextRef(n.Kind);
+            else n.Ref = NextRef(ComponentKind.Label);   // une étiquette garde son nom de nœud (même équipotentiel)
+            Schematic.Components.Add(n); _multi.Add(n);
+        }
+        foreach (var w in pp.Fils)
+        {
+            var n = new Wire(new GridPoint(w.A.X + dx, w.A.Y + dy), new GridPoint(w.B.X + dx, w.B.Y + dy));
+            Schematic.Wires.Add(n); _multiWires.Add(n);
+        }
+        _selected = _multi.FirstOrDefault(); _selectedWire = null;
+        Done(); SelectionChanged?.Invoke();
+    }
+
+    public void DuplicateSelection() { var sauve = _pressePapiers; CopySelection(); Paste(); _pressePapiers = sauve ?? _pressePapiers; }
+
+    /// <summary>Miroir gauche-droite de chaque composant sélectionné ; les fils suivent.</summary>
+    public void MirrorSelected()
+    {
+        if (Selection.Count == 0) return;
+        Commit();
+        bool sur = true;
+        foreach (var c in Selection.ToList()) sur &= Elastique.Retourner(Schematic, c);
+        DernierDeplacementSur = sur; Done();
+    }
+
     /// <summary>Déplace la sélection (fils élastiques, fils sélectionnés entraînés), une entrée d'annulation.</summary>
     public bool MoveSelection(GridPoint delta)
     {
@@ -264,7 +428,7 @@ public sealed class SchematicCanvas : Control
         switch (_tool)
         {
             case Tool.Probe:
-                if (NodeAt(pos) is { } node && node != "0") Probed?.Invoke(node);
+                Viser(pos); Sonder();
                 break;
             case Tool.ZoomWindow:
                 _zoomStart = pos; break;
@@ -283,9 +447,23 @@ public sealed class SchematicCanvas : Control
                 }
                 break;
             case Tool.Select:
-                var hit = Schematic.Components.LastOrDefault(c => HitTest(c, pos));
+                // Sonde implicite (graphique actif) : un clic sur un net ou une broche l'ajoute au graphique.
+                if (_sondeImplicite && pt.Properties.IsLeftButtonPressed) { Viser(pos); if (Sonder()) { InvalidateVisual(); break; } }
+                // Glisser depuis une broche (du schéma édité ou du circuit dessous) : tracé d'un fil, sans changer d'outil.
+                if (!e.KeyModifiers.HasFlag(KeyModifiers.Shift) && e.ClickCount == 1 && BrocheSous(pos) is { } broche)
+                {
+                    _filDepuisBroche = broche; _wireStart = broche;
+                    break;
+                }
+                // Un composant électrique l'emporte sur une étiquette ou une masse qui le chevauche.
+                var touches = Schematic.Components.Where(c => HitTest(c, pos)).ToList();
+                var hit = touches.LastOrDefault(c => c.IsElectrical) ?? touches.LastOrDefault();
                 var wire = hit == null ? Schematic.Wires.LastOrDefault(w => HitWire(w, pos)) : null;
                 bool maj = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+                // Depuis un banc : un clic sur un composant du circuit sous test ouvre ses valeurs (la topologie reste verrouillée).
+                if (hit == null && wire == null && _underlay != null && !maj
+                    && _underlay.Components.Where(c => c.IsElectrical && HitTest(c, pos)).LastOrDefault() is { } duCircuit)
+                { DoubleClicCircuit?.Invoke(duCircuit); break; }
                 if (hit == null && wire == null)
                 {
                     // Fond : rectangle de sélection (Maj : ajoute à la sélection).
@@ -294,6 +472,7 @@ public sealed class SchematicCanvas : Control
                     break;
                 }
                 if (maj) { Basculer(hit, wire); break; }
+                if (e.ClickCount >= 2 && hit != null) { Select(hit); DoubleClic?.Invoke(hit); break; }   // édition sur place
                 bool groupe = hit != null && _multi.Contains(hit) && _multi.Count + _multiWires.Count > 1;
                 if (!groupe) Select(hit, wire);
                 if (hit != null)
@@ -326,7 +505,19 @@ public sealed class SchematicCanvas : Control
         var pos = e.GetPosition(this); _inside = true; _lastPos = pos;
         if (_panning) { _pan += pos - _panLast; _panLast = pos; }
         _cursor = Snap(pos);
-        if (_tool == Tool.Probe) _probeNode = NodeAt(pos);
+        if (SondeActive)
+        {
+            var (n0, p0) = (_probeNode, _probePin);
+            Viser(pos);
+            if (_sondeImplicite && _tool == Tool.Select) Cursor = _probePin != null || _probeNode != null ? new Cursor(StandardCursorType.Hand) : Cursor.Default;
+            if (n0 != _probeNode || !Nullable.Equals(p0, _probePin)) InvalidateVisual();
+        }
+        if (_tool == Tool.Select && _dragging == null && _boxStart == null)
+        {
+            // Broche survolée : on peut en tirer un fil (anneau et pointeur en croix).
+            var b = BrocheSous(pos);
+            if (!Nullable.Equals(b, _brocheSurvol)) { _brocheSurvol = b; Cursor = b != null ? new Cursor(StandardCursorType.Cross) : Cursor.Default; }
+        }
         if (_dragging != null && _dragOrigin != null)
         {
             var np = new GridPoint(_cursor.X - _dragOffset.X, _cursor.Y - _dragOffset.Y);
@@ -352,6 +543,19 @@ public sealed class SchematicCanvas : Control
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         _panning = false;
+        if (_filDepuisBroche is { } fa)
+        {
+            var fb = Snap(e.GetPosition(this));
+            _filDepuisBroche = null; _wireStart = null;
+            if (!fb.Equals(fa)) TracerFil(fa, fb);
+            else
+            {
+                // Simple clic sur une broche : sélection du composant comme avant.
+                var touches = Schematic.Components.Where(c => c.Pins.Contains(fa)).ToList();
+                Select(touches.LastOrDefault(c => c.IsElectrical) ?? touches.LastOrDefault());
+            }
+            InvalidateVisual(); return;
+        }
         if (_boxStart is { } b0)
         {
             var b1 = e.GetPosition(this); _boxStart = null;
@@ -384,13 +588,35 @@ public sealed class SchematicCanvas : Control
             _dragging = null; _dragOrigin = null; _dragGroup = null; _dragFilsOrigine = null; Done();
         }
     }
-    protected override void OnPointerWheelChanged(PointerWheelEventArgs e) => ZoomAt(e.GetPosition(this), e.Delta.Y > 0 ? 1.12 : 1 / 1.12);
+    /// <summary>Zoom maximal quand on cadre tout le schéma : les composants gardent une taille raisonnable.</summary>
+    public const double ZoomCadrageMax = 1.7;
+    public double Zoom => _zoom;
+
+    /// <summary>Molette ou pavé tactile : zoom proportionnel à l'amplitude du geste (un pavé envoie beaucoup de petits pas).</summary>
+    protected override void OnPointerWheelChanged(PointerWheelEventArgs e) => ZoomAt(e.GetPosition(this), FacteurMolette(e.Delta.Y));
+    /// <summary>
+    /// Pincement : facteur d'agrandissement d'un pas du geste (pavé tactile macOS : variation relative, ex. +0,02 ;
+    /// écran tactile : rapport d'échelle − 1), modulé par la sensibilité du zoom (Paramètres), borné à ×0,5…×2.
+    /// </summary>
+    public static double FacteurPincement(double variation) =>
+        Math.Clamp(1 + variation * GainPincement * Math.Log(Parametres.Courant.BaseZoom) / Math.Log(1.06), 0.5, 2);
+    /// <summary>Amplification du geste de pincement (1,6 : réglé sur le pavé du MacBook de Régis, « un peu plus rapide »).</summary>
+    public const double GainPincement = 1.6;
+
+    public void ZoomPincement(Point pos, double variation) => ZoomAt(pos, FacteurPincement(variation));
+
+    public static double FacteurMolette(double delta) => Math.Pow(Parametres.Courant.BaseZoom, Math.Clamp(delta, -3, 3));
     protected override void OnKeyDown(KeyEventArgs e)
     {
         bool cmd = e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta);
         if (cmd && e.Key == Key.Z) { if (e.KeyModifiers.HasFlag(KeyModifiers.Shift)) Redo(); else Undo(); }
         else if (cmd && e.Key == Key.Y) Redo();
         else if (cmd && e.Key == Key.R) RotateSelected();
+        else if (cmd && e.Key == Key.C) CopySelection();
+        else if (cmd && e.Key == Key.X) CutSelection();
+        else if (cmd && e.Key == Key.V) Paste(_inside ? _cursor : null);
+        else if (cmd && e.Key == Key.D) DuplicateSelection();
+        else if (!cmd && e.Key == Key.X && Selection.Count > 0) MirrorSelected();
         else if (cmd) return;
         else if (e.Key is Key.Delete or Key.Back) DeleteSelected();
         else if (e.Key == Key.Escape) { if (_wireStart != null) _wireStart = null; else Tool = Tool.Select; }
@@ -430,7 +656,7 @@ public sealed class SchematicCanvas : Control
     {
         if (c.Definition == null) return new Rect(ToScreen(c.Position), new Size(1, 1)).Inflate(Grid * _zoom);
         var (x0, y0, x1, y1) = c.Definition.Symbole.Encombrement();
-        var map = Symboles.Repere(ToScreen(c.Position), c.Rotation, Grid * _zoom);
+        var map = Symboles.Repere(ToScreen(c.Position), c.Rotation, Grid * _zoom, c.Miroir);
         return new Rect(map(x0, y0), map(x1, y1)).Normalize().Inflate(Grid * _zoom * 0.3);
     }
 
@@ -441,9 +667,70 @@ public sealed class SchematicCanvas : Control
     }
 
     // ---- rendu ----
+    // ---- erreurs de cohérence sur le schéma ----
+    public sealed record Erreur(Point Ecran, string Message);
+    /// <summary>Erreurs placées sur le schéma : broche non reliée, référence en double, valeur manquante.</summary>
+    public IReadOnlyList<Erreur> Erreurs { get; private set; } = [];
+    /// <summary>Message global (ex. masse absente), affiché en puce rouge.</summary>
+    public string? ErreurGlobale { get; private set; }
+
+    void CalculerErreurs()
+    {
+        var m = Merged(); var conn = Connectivity.Build(m);
+        var l = new List<Erreur>();
+        bool circuitSeul = _underlay == null && !SimulationPossible;
+        foreach (var c in m.Components.Where(c => c.IsElectrical))
+        {
+            for (int i = 0; i < c.Pins.Count; i++)
+            {
+                if (c.Kind == ComponentKind.Spice && c.Definition?.Symbole.Broches.ElementAtOrDefault(i)?.BrocheModele == null) continue;
+                if (!conn.NodeOf.TryGetValue(c.Pins[i], out var n) || n == "0") continue;
+                if (conn.PinCount.GetValueOrDefault(n) == 1 && !(circuitSeul && conn.NamedNodes.Contains(n)))
+                    l.Add(new(ToScreen(c.Pins[i]), $"{c.Ref} : broche non reliée"));
+            }
+            if (c.Kind != ComponentKind.Spice && string.IsNullOrWhiteSpace(c.Value)) l.Add(new(ToScreen(c.Position), $"{c.Ref} : valeur manquante"));
+        }
+        foreach (var g in m.Components.Where(c => c.IsElectrical).GroupBy(c => c.Ref, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
+            foreach (var c in g) l.Add(new(ToScreen(c.Position), $"Référence {c.Ref} en double"));
+        Erreurs = l;
+        ErreurGlobale = !circuitSeul && m.Components.Any(c => c.IsElectrical) && !m.Components.Any(c => c.Kind == ComponentKind.Ground)
+            ? "Aucune masse : posez une masse (G) pour pouvoir simuler" : null;
+    }
+
+    /// <summary>Vrai quand le schéma affiché est simulable seul (banc actif) : masse et broches libres sont alors des erreurs.</summary>
+    public bool SimulationPossible { get; set; }
+
+    void DessinerErreurs(DrawingContext ctx)
+    {
+        CalculerErreurs();
+        var rouge = new SolidColorBrush(Color.Parse("#dc2626"));
+        Erreur? survolee = null;
+        foreach (var e in Erreurs)
+        {
+            ctx.DrawEllipse(null, new Pen(rouge, 2), e.Ecran, 7, 7);
+            var b = new Point(e.Ecran.X + 8, e.Ecran.Y - 12);
+            ctx.DrawEllipse(rouge, null, b, 6, 6);
+            var t = new FormattedText("!", System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.Bold), 10, Brushes.White);
+            ctx.DrawText(t, new Point(b.X - t.Width / 2, b.Y - t.Height / 2));
+            if (_inside && Math.Abs(_lastPos.X - e.Ecran.X) < 14 && Math.Abs(_lastPos.Y - e.Ecran.Y) < 16) survolee = e;
+        }
+        if (survolee is { } s0)
+        {
+            var t = new FormattedText(s0.Message, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, Brushes.White);
+            var r = new Rect(s0.Ecran.X + 16, s0.Ecran.Y - 34, t.Width + 12, t.Height + 6);
+            ctx.DrawRectangle(rouge, null, r, 4, 4); ctx.DrawText(t, new Point(r.X + 6, r.Y + 3));
+        }
+        if (ErreurGlobale is { } g0)
+        {
+            var t = new FormattedText("⛔ " + g0, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, Brushes.White);
+            var r = new Rect(Bounds.Width - t.Width - 26, 10, t.Width + 16, t.Height + 8);
+            ctx.DrawRectangle(rouge, null, r, 4, 4); ctx.DrawText(t, new Point(r.X + 8, r.Y + 4));
+        }
+    }
+
     public override void Render(DrawingContext ctx)
     {
-        ctx.FillRectangle(Brushes.White, new Rect(Bounds.Size));
+        ctx.FillRectangle(Ui.Surface, new Rect(Bounds.Size));
         var step = Grid * _zoom;
         if (step >= 6)
         {
@@ -454,7 +741,7 @@ public sealed class SchematicCanvas : Control
 
         double lw = Math.Max(1.2, 1.6 * _zoom / 2);
         var layer = _underlay != null;
-        var wireBrush = layer ? BenchBrush : WireBrush;
+        var wireBrush = layer ? CouleurCalque : WireBrush;
         var wirePen = new Pen(wireBrush, lw);
         if (_underlay != null)
         {
@@ -474,10 +761,10 @@ public sealed class SchematicCanvas : Control
         foreach (var p in ends.Distinct())
         {
             int n = ends.Count(q => q.Equals(p)) + allWires.Count(w => OnSeg(p, w)) * 2;
-            if (n >= 3) ctx.DrawEllipse(layer ? BenchBrush : WireBrush, null, ToScreen(p), 3.2 * _zoom / 2 + 1, 3.2 * _zoom / 2 + 1);
+            if (n >= 3) ctx.DrawEllipse(layer ? CouleurCalque : WireBrush, null, ToScreen(p), 3.2 * _zoom / 2 + 1, 3.2 * _zoom / 2 + 1);
         }
 
-        if (_tool == Tool.Probe && _probeNode is { } pn && pn != "0" && _inside)
+        if (SondeActive && _probeNode is { } pn && pn != "0" && _inside)
         {
             // Équipotentiel survolé : fils et broches surlignés.
             var conn = Connectivity.Build(Merged());
@@ -486,8 +773,17 @@ public sealed class SchematicCanvas : Control
             foreach (var p in AllComponents.SelectMany(c => c.Pins).Where(p => conn.NodeOf.TryGetValue(p, out var n) && n == pn))
                 ctx.DrawEllipse(new SolidColorBrush(Color.Parse("#f59e0b"), 0.7), null, ToScreen(p), 6, 6);
         }
-        foreach (var c in Schematic.Components) DrawComponent(ctx, c, c == _selected || _multi.Contains(c) ? Accent : layer ? BenchBrush : c.Kind == ComponentKind.Label ? LabelBrush : Ink, 1);
-        if (_tool == Tool.Probe && _inside)
+        foreach (var c in Schematic.Components) DrawComponent(ctx, c, c == _selected || _multi.Contains(c) ? Accent : layer ? CouleurCalque : c.Kind == ComponentKind.Label ? LabelBrush : Ink, 1);
+        if (SondeActive && _inside && _probePin is { } bp)
+        {
+            // Broche visée : sonde de courant (anneau, flèche d'entrée et nom du courant).
+            var p = ToScreen(bp.C.Pins[bp.I]); var or = new SolidColorBrush(Color.Parse("#0e7490"));
+            ctx.DrawEllipse(null, new Pen(or, 2.5), p, 7, 7);
+            var t = new FormattedText(Signaux.Nom(Signaux.Courant(bp.C, bp.I), Merged()) + " entrant", System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, Brushes.White);
+            var r = new Rect(p.X + 12, p.Y - 30, t.Width + 10, t.Height + 4);
+            ctx.DrawRectangle(or, null, r, 3, 3); ctx.DrawText(t, new Point(r.X + 5, r.Y + 2));
+        }
+        else if (SondeActive && _inside)
         {
             // Pointe de sonde + nom du nœud visé.
             var c0 = _lastPos; var tip = new Pen(new SolidColorBrush(Color.Parse("#b45309")), 2);
@@ -499,22 +795,37 @@ public sealed class SchematicCanvas : Control
                 ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#b45309")), null, r, 3, 3); ctx.DrawText(t, new Point(r.X + 5, r.Y + 2));
             }
         }
+        DessinerErreurs(ctx);
         if (_dragging != null && !DernierDeplacementSur)
         {
             var t = new FormattedText("⚠ Ce déplacement modifie des connexions (un fil étiré touche une autre broche)", System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, Brushes.White);
             var r = new Rect(10, Bounds.Height - t.Height - 18, t.Width + 16, t.Height + 8);
             ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#b91c1c")), null, r, 4, 4); ctx.DrawText(t, new Point(r.X + 8, r.Y + 4));
         }
+        // Banc actif : cadre violet autour du canevas et nom du banc dans un coin (au lieu d'un long bandeau).
+        if (layer) ctx.DrawRectangle(null, new Pen(CouleurCalque, 3), new Rect(1.5, 1.5, Bounds.Width - 3, Bounds.Height - 3));
+        double yChip = 10;
         if (Caption.Length > 0)
         {
-            var t = new FormattedText(Caption, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default), 12, layer ? BenchBrush : Muted);
-            var box = new Rect(10, 10, t.Width + 16, t.Height + 8);
-            ctx.DrawRectangle(new SolidColorBrush(Color.Parse(layer ? "#f3effe" : "#f3f4f6")), new Pen(layer ? BenchBrush : Line, 1), box, 4, 4);
-            ctx.DrawText(t, new Point(18, 14));
+            var t = new FormattedText(Caption, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, layer ? CouleurCalque : Muted);
+            var box = new Rect(10, yChip, t.Width + 16, t.Height + 8);
+            ctx.DrawRectangle(layer ? Ui.Teinte(CouleurCalque, 0.1) : Ui.Panel, new Pen(layer ? CouleurCalque : Line, 1), box, 4, 4);
+            ctx.DrawText(t, new Point(18, yChip + 4));
+            yChip = box.Bottom + 6;
+        }
+        if (TexteMode is { Length: > 0 } mode)
+        {
+            // Puce de mode : le mode actif est toujours écrit, avec la façon d'en sortir.
+            var t = new FormattedText(mode, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, Brushes.White);
+            var box = new Rect(10, yChip, t.Width + 16, t.Height + 8);
+            ctx.DrawRectangle(Accent, null, box, 4, 4);
+            ctx.DrawText(t, new Point(18, yChip + 4));
         }
 
         if (_inside && _tool == Tool.Place)
             DrawComponent(ctx, new PlacedComponent { Ref = Schematic.Prefix(PlaceKind) + "?", Kind = PlaceKind, Position = _cursor, Rotation = _ghostRotation, Value = "", Definition = PlaceDefinition }, Accent, 0.45);
+        if (_brocheSurvol is { } bs0 && _inside && _tool == Tool.Select && _filDepuisBroche == null)
+            ctx.DrawEllipse(null, new Pen(Accent, 1.5), ToScreen(bs0), 6, 6);
         if (_wireStart is { } s)
         {
             var dash = new Pen(WireBrush, lw, new DashStyle([4, 3], 0));
@@ -549,7 +860,7 @@ public sealed class SchematicCanvas : Control
         if (c.Kind == ComponentKind.Spice)
         {
             if (c.Definition is { } def)
-                Symboles.DessinerSymbole(ctx, def.Symbole, Symboles.Repere(ToScreen(c.Position), c.Rotation, _zoom * Grid), _zoom * Grid, brush, pen, Text);
+                Symboles.DessinerSymbole(ctx, def.Symbole, Symboles.Repere(ToScreen(c.Position), c.Rotation, _zoom * Grid, c.Miroir), _zoom * Grid, brush, pen, Text);
             if (opacity < 1 && !labels) return;
             var r = SpiceBounds(c);
             var rt = Text(c.Ref, 11, brush, FontWeight.SemiBold);

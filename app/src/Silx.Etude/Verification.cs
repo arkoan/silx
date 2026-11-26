@@ -35,19 +35,32 @@ public sealed record ResultatEtude(
 /// <summary>Orchestration : ERC → circuits → ngspice (analyses en parallèle) → mesures → verdicts.</summary>
 public static class Verification
 {
-    /// <summary>Chemin de ngspice : variable SILX_NGSPICE, sinon emplacements Homebrew, sinon PATH.</summary>
+    /// <summary>Chemin de ngspice : variable SILX_NGSPICE, sinon ngspice embarqué dans l'application, sinon Homebrew, sinon PATH.</summary>
     public static string NgspiceExecutable()
     {
+        if (NgspiceForce.Value is { } force) return force;
         var env = Environment.GetEnvironmentVariable("SILX_NGSPICE");
         if (!string.IsNullOrWhiteSpace(env)) return env;
+        if (NgspiceEmbarque.Executable is { } embarque) return embarque;   // application installée : son propre ngspice
         foreach (var p in new[] { "/opt/homebrew/bin/ngspice", "/usr/local/bin/ngspice", "/usr/bin/ngspice" })
             if (File.Exists(p)) return p;
         return "ngspice";
     }
 
-    public static async Task<ResultatEtude> RunAsync(Etude circuit, Banc etude, IEnumerable<AnalyseKind> toujours, CancellationToken ct = default)
+    /// <param name="variante">Modifie le schéma fusionné (copie) avant la simulation : valeurs d'une campagne.</param>
+    /// <param name="directives">Directives ajoutées à la netlist (ex. « .options temp=85 »).</param>
+    /// <summary>Durée maximale d'une simulation (SILX_DELAI_SIMULATION en secondes pour la changer).</summary>
+    public static TimeSpan DelaiMax => DelaiForce.Value ?? (int.TryParse(Environment.GetEnvironmentVariable("SILX_DELAI_SIMULATION"), out var s) && s > 0 ? TimeSpan.FromSeconds(s) : TimeSpan.FromMinutes(5));
+    /// <summary>Remplacements limités au flux asynchrone courant (tests) : exécutable ngspice et durée maximale.</summary>
+    public static readonly AsyncLocal<string?> NgspiceForce = new();
+    public static readonly AsyncLocal<TimeSpan?> DelaiForce = new();
+
+    public static async Task<ResultatEtude> RunAsync(Etude circuit, Banc etude, IEnumerable<AnalyseKind> toujours, CancellationToken ct = default,
+        Action<Schematic>? variante = null, IReadOnlyList<string>? directives = null)
     {
+        if (variante == null) etude.RecalerGabarits();   // gabarits relatifs : suivent le front du stimulus (fait une fois avant une campagne)
         var schema = etude.Fusion(circuit.Schema);
+        variante?.Invoke(schema);
         var conn = Connectivity.Build(schema);
         var erc = Erc.Check(schema, conn);
         if (erc.Any(i => i.Severity == Severity.Error))
@@ -56,15 +69,27 @@ public static class Verification
         // Un banc = un type d'analyse (temporel ou fréquentiel).
         var kinds = new List<AnalyseKind> { etude.Type };
         // Modèles importés (souvent écrits pour PSpice) : compatibilité PSpice de ngspice (« psa » : tout le fichier, modèles inclus en ligne) ; circuits de base inchangés.
-        var runner = new NgspiceRunner { Executable = NgspiceExecutable(), Compatibilite = schema.Components.Any(k => k.Kind == ComponentKind.Spice) ? "psa" : null };
+        var exe = NgspiceExecutable();
+        var runner = new NgspiceRunner { Executable = exe, Environnement = NgspiceEmbarque.Environnement(exe), Compatibilite = schema.Components.Any(k => k.Kind == ComponentKind.Spice) ? "psa" : null };
         var raws = new Dictionary<AnalyseKind, RawFile>();
         var journal = new System.Text.StringBuilder();
+        // Garde-fou : un circuit qui fait tourner ngspice sans fin est arrêté (processus tué) au bout de DelaiMax.
+        using var delai = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        delai.CancelAfter(DelaiMax);
+        var ctUtilisateur = ct; ct = delai.Token;
         try
         {
             var tasks = kinds.Select(async k =>
             {
-                var c = CircuitBuilder.Build(schema, conn, CircuitBuilder.AnalysisFor(etude, k), $"Silx {etude.Nom} {k}");
-                return (k, await runner.RunAsync(c, ct));
+                Silx.Core.Circuits.Circuit Construire(Silx.Core.Circuits.Analysis a)
+                {
+                    var c = CircuitBuilder.Build(schema, conn, a, $"Silx {etude.Nom} {k}");
+                    foreach (var d in directives ?? []) c.Directive(d);
+                    return c;
+                }
+                // Fréquentiel automatique : balayage grossier puis affinage là où la courbe varie (résonances, coupures).
+                if (k == AnalyseKind.Ac && etude.Ac.Auto) return (k, await Echantillonnage.AcAsync(runner, Construire, etude.Ac.FDebut, etude.Ac.FFin, ct));
+                return (k, await runner.RunAsync(Construire(CircuitBuilder.AnalysisFor(etude, k)), ct));
             }).ToList();
             foreach (var (k, r) in await Task.WhenAll(tasks))
             {
@@ -72,48 +97,74 @@ public static class Verification
                 journal.AppendLine($"── {k} : {r.Raw.PointCount} points, {r.Elapsed.TotalMilliseconds:0} ms").AppendLine(r.Log.Trim());
             }
         }
+        catch (OperationCanceledException) when (!ctUtilisateur.IsCancellationRequested && delai.IsCancellationRequested)
+        { return new(raws, [], [], erc, journal.ToString(), $"Simulation arrêtée au bout de {(DelaiMax.TotalSeconds < 120 ? $"{DelaiMax.TotalSeconds:0} s" : $"{DelaiMax.TotalMinutes:0} min")} : réduisez la durée ou le nombre de points, ou cherchez une instabilité du circuit."); }
         catch (OperationCanceledException) { throw; }
         catch (NgspiceException ex) { return new(raws, [], [], erc, ex.Log, ex.Message); }
+        catch (System.ComponentModel.Win32Exception ex)
+        { return new(raws, [], [], erc, journal.ToString(), $"ngspice introuvable ({runner.Executable}) : installez-le (brew install ngspice) ou indiquez son chemin dans la variable SILX_NGSPICE. Détail : {ex.Message}"); }
         catch (Exception ex) { return new(raws, [], [], erc, journal.ToString(), ex.Message); }
 
-        var criteres = etude.CriteresActifs.Select(g => new ResultatCritere(g, Evaluer(g, raws[g.Info.Analyse]))).ToList();
-        var traces = etude.TracesActives.Select(g => new ResultatTrace(g, EvaluerTrace(g, raws[g.Analyse]))).ToList();
+        // Une analyse qui ne produit qu'un point (plage trop étroite, trop peu de points) ne se trace ni ne se mesure.
+        if (raws.Values.FirstOrDefault(r => r.PointCount < 2) is { } court)
+            return new(raws, [], [], erc, journal.ToString(), $"L'analyse n'a produit que {court.PointCount} point : élargissez la plage ou augmentez le nombre de points (bande étroite : balayage linéaire).");
+        var criteres = etude.CriteresActifs.Select(g => new ResultatCritere(g, Evaluer(g, raws[g.Info.Analyse], schema))).ToList();
+        var traces = etude.TracesActives.Select(g => new ResultatTrace(g, EvaluerTrace(g, raws[g.Analyse], schema))).ToList();
         return new(raws, criteres, traces, erc, journal.ToString(), null);
     }
 
-    public static ResultatGabaritGraphique EvaluerTrace(GabaritTrace g, RawFile raw)
+    public static ResultatGabaritGraphique EvaluerTrace(GabaritTrace g, RawFile raw, Schematic? f = null)
     {
-        string vec = $"v({g.Noeud})";
-        if (!raw.Variables.Any(v => string.Equals(v.Name, vec, StringComparison.OrdinalIgnoreCase)))
-            return new(g.Nom, Verdict.NonEvaluable, null, null, null, $"Nœud « {g.Noeud} » absent des résultats.");
-        var (x, y) = Courbe(g.Analyse, raw, g.Noeud);
+        if (!Signaux.Disponible(raw, g.Noeud, f))
+            return new(g.Nom, Verdict.NonEvaluable, null, null, null, $"Signal « {Signaux.Nom(g.Noeud, f)} » absent des résultats.");
+        var (x, y) = Courbe(g.Analyse, raw, g.Noeud, f);
         try { return new GabaritGraphique(g.Nom, g.Limite, g.Points, g.Analyse == AnalyseKind.Ac).Evaluer(x, y); }
         catch (ArgumentException ex) { return new(g.Nom, Verdict.NonEvaluable, null, null, null, ex.Message); }
     }
 
     /// <summary>Courbe affichée et contrôlée : v(t) en transitoire, |v| en dB en AC.</summary>
-    public static (double[] X, double[] Y) Courbe(AnalyseKind k, RawFile raw, string noeud)
+    public static (double[] X, double[] Y) Courbe(AnalyseKind k, RawFile raw, string noeud) => Courbe(k, raw, noeud, null);
+
+    /// <summary>Courbe d'un signal (tension de nœud, ou courant de broche résolu sur le schéma fusionné <paramref name="f"/>).</summary>
+    public static (double[] X, double[] Y) Courbe(AnalyseKind k, RawFile raw, string signal, Schematic? f)
     {
-        if (k == AnalyseKind.Transitoire) { var c = Temporelle(raw, $"v({noeud})"); return (c.Temps.ToArray(), c.Valeurs.ToArray()); }
-        var r = Frequentielle(raw, $"v({noeud})");
+        var (vec, signe) = Signaux.Vecteur(signal, f) ?? throw new ArgumentException($"Signal « {signal} » indisponible.");
+        if (k == AnalyseKind.Transitoire) { var c = Temporelle(raw, vec); return (c.Temps.ToArray(), c.Valeurs.ToArray().Select(v => v * signe).ToArray()); }
+        var r = Frequentielle(raw, vec);
         return (r.Frequences.ToArray(), r.Valeurs.ToArray().Select(Frequentiel.Db).ToArray());
     }
 
-    public static ResultatGabarit Evaluer(CritereGabarit g, RawFile raw)
+    /// <summary>
+    /// Évalue un critère chiffré sur un signal : tension de nœud, ou courant de broche (« I(R1:2) ») résolu sur le schéma
+    /// fusionné <paramref name="f"/> ; l'unité suit le signal (V ou A).
+    /// </summary>
+    public static ResultatGabarit Evaluer(CritereGabarit g, RawFile raw, Schematic? f = null)
     {
         var info = g.Info;
         var bornes = new Bornes(g.Min, g.Max);
-        if (bornes.Min is null && bornes.Max is null)
-            return new(info.Nom, Verdict.NonEvaluable, null, info.Unite, bornes, "Aucune borne saisie.");
-        string vec = $"v({g.Noeud})";
-        if (!raw.Variables.Any(v => string.Equals(v.Name, vec, StringComparison.OrdinalIgnoreCase)))
-            return new(info.Nom, Verdict.NonEvaluable, null, info.Unite, bornes, $"Nœud « {g.Noeud} » absent des résultats.");
+        var unite = Signaux.EstCourant(g.Noeud) && info.Unite == "V" ? "A" : info.Unite;
+        if (!Signaux.Disponible(raw, g.Noeud, f))
+            return new(info.Nom, Verdict.NonEvaluable, null, unite, bornes, $"Signal « {Signaux.Nom(g.Noeud, f)} » absent des résultats.");
+        var r0 = Evaluer0(g, raw, f, info, bornes);
+        return r0 with { Unite = unite };
+    }
+
+    static ResultatGabarit Evaluer0(CritereGabarit g, RawFile raw, Schematic? f, TypesMesure.Info info, Bornes bornes)
+    {
+        var (vec, signe) = Signaux.Vecteur(g.Noeud, f)!.Value;
+        CourbeTemporelle Temporelle(RawFile r, string v) { var c = Verification.Temporelle(r, v); return signe == 1 ? c : new CourbeTemporelle(c.Temps.ToArray(), c.Valeurs.ToArray().Select(x => x * signe).ToArray()); }
+        ReponseFrequentielle Frequentielle(RawFile r, string v) => Verification.Frequentielle(r, v);
         IMesure<CourbeTemporelle>? mt = g.Mesure switch
         {
             TypeMesure.Depassement => Catalogue.Depassement,
             TypeMesure.TempsDeMontee => Catalogue.TempsDeMontee,
             TypeMesure.TempsEtablissement => Catalogue.TempsEtablissement2Pct,
             TypeMesure.ValeurFinale => new Mesure<CourbeTemporelle>("Valeur finale", "V", c => Transitoire.ValeurFinale(c)),
+            TypeMesure.Frequence => new Mesure<CourbeTemporelle>("Fréquence", "Hz", MesuresEtablies.Frequence),
+            TypeMesure.AmplitudeCreteACrete => new Mesure<CourbeTemporelle>("Amplitude crête à crête", "V", MesuresEtablies.CreteACrete),
+            TypeMesure.ValeurEfficace => new Mesure<CourbeTemporelle>("Valeur efficace", "V", MesuresEtablies.Efficace),
+            TypeMesure.ValeurMoyenne => new Mesure<CourbeTemporelle>("Valeur moyenne", "V", MesuresEtablies.Moyenne),
+            TypeMesure.Thd => new Mesure<CourbeTemporelle>("Distorsion harmonique", "%", MesuresEtablies.Thd),
             _ => null
         };
         IMesure<ReponseFrequentielle>? mf = g.Mesure switch
@@ -122,8 +173,20 @@ public static class Verification
             TypeMesure.GainDc => new Mesure<ReponseFrequentielle>("Gain BF", "dB", r => Frequentiel.Db(r.Valeurs[0])),
             TypeMesure.MargeDePhase => Catalogue.MargeDePhase,
             TypeMesure.MargeDeGain => Catalogue.MargeDeGain,
+            TypeMesure.GainMax => new Mesure<ReponseFrequentielle>("Gain maximal", "dB", r => r.Valeurs.ToArray().Max(z => Frequentiel.Db(z))),
+            TypeMesure.LargeurBande3dB => new Mesure<ReponseFrequentielle>("Largeur de bande à −3 dB", "Hz", MesuresEtablies.LargeurBande3dB),
             _ => null
         };
+        if (bornes.Min is null && bornes.Max is null)
+        {
+            // Sans borne : on mesure quand même, pour aider à choisir les bornes.
+            try
+            {
+                double v = mt != null ? mt.Mesurer(Temporelle(raw, vec)) : mf!.Mesurer(Frequentielle(raw, vec));
+                return new(info.Nom, Verdict.NonEvaluable, double.IsFinite(v) ? v : null, info.Unite, bornes, "Aucune borne saisie.");
+            }
+            catch (Exception ex) when (ex is ArgumentException or MesureImpossibleException) { return new(info.Nom, Verdict.NonEvaluable, null, info.Unite, bornes, "Aucune borne saisie."); }
+        }
         try
         {
             if (mt != null) return new Gabarit<CourbeTemporelle>(info.Nom, mt, bornes).Evaluer(Temporelle(raw, vec));

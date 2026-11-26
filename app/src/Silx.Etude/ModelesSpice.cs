@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace Silx.Etude;
 
 /// <summary>Nature d'un modèle importé : fixe la lettre SPICE de l'instance et l'ordre des broches.</summary>
-public enum TypeModele { Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf, SousCircuit }
+public enum TypeModele { Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf, SousCircuit, Logique }
 
 /// <summary>
 /// Ce qu'on peut lire d'un modèle sans l'ouvrir : description (commentaires qui le précèdent), rôle de chaque broche
@@ -21,7 +21,7 @@ public sealed record InfosModele(
 }
 
 /// <summary>Un .model ou un .subckt trouvé dans un fichier, avec son texte d'origine (recopié tel quel dans la netlist).</summary>
-public sealed record ModeleImporte(string Nom, TypeModele Type, IReadOnlyList<string> Broches, string Texte, string Parametres = "", InfosModele? Infos = null)
+public sealed record ModeleImporte(string Nom, TypeModele Type, IReadOnlyList<string> Broches, string Texte, string Parametres = "", InfosModele? Infos = null, string? Code = null)
 {
     public string Lettre => ModelesSpice.Lettre(Type);
 }
@@ -34,7 +34,44 @@ public static class ModelesSpice
     public static string Lettre(TypeModele t) => t switch
     {
         TypeModele.Diode => "D", TypeModele.Npn or TypeModele.Pnp => "Q", TypeModele.Nmos or TypeModele.Pmos => "M",
-        TypeModele.Njf or TypeModele.Pjf => "J", _ => "X"
+        TypeModele.Njf or TypeModele.Pjf => "J", TypeModele.Logique => "A", _ => "X"
+    };
+
+    /// <summary>
+    /// Modèles numériques XSPICE pris en charge : libellé et broches (entrées puis sorties). Les portes ont 2 entrées par
+    /// défaut (A, B), ou le nombre lu à la fin du nom du modèle (« and3 » → 3). Mise à un / à zéro des bascules : inactives (NULL).
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string> CodesLogiques = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["d_and"] = "Porte ET", ["d_nand"] = "Porte NON-ET", ["d_or"] = "Porte OU", ["d_nor"] = "Porte NON-OU",
+        ["d_xor"] = "Porte OU exclusif", ["d_xnor"] = "Porte NON-OU exclusif", ["d_inverter"] = "Inverseur", ["d_buffer"] = "Tampon",
+        ["d_dff"] = "Bascule D", ["d_jkff"] = "Bascule JK", ["d_tff"] = "Bascule T", ["d_srff"] = "Bascule SR",
+        ["d_dlatch"] = "Verrou D", ["d_srlatch"] = "Verrou SR",
+    };
+
+    public static bool EstPorte(string code) => code.ToLowerInvariant() is "d_and" or "d_nand" or "d_or" or "d_nor" or "d_xor" or "d_xnor";
+    public static bool EstSortieLogique(string broche) => broche.ToUpperInvariant() is "Y" or "Q" or "QB";
+
+    /// <summary>Broches d'un modèle logique, entrées puis sorties.</summary>
+    public static IReadOnlyList<string> BrochesLogiques(string code, int entrees = 2) => code.ToLowerInvariant() switch
+    {
+        "d_inverter" or "d_buffer" => ["A", "Y"],
+        "d_dff" => ["D", "CLK", "Q", "QB"], "d_jkff" => ["J", "K", "CLK", "Q", "QB"], "d_tff" => ["T", "CLK", "Q", "QB"],
+        "d_srff" => ["S", "R", "CLK", "Q", "QB"], "d_dlatch" => ["D", "EN", "Q", "QB"], "d_srlatch" => ["S", "R", "EN", "Q", "QB"],
+        _ => [.. Enumerable.Range(0, Math.Clamp(entrees, 2, 8)).Select(i => ((char)('A' + i)).ToString()), "Y"],
+    };
+
+    /// <summary>
+    /// Ordre des ports sur la ligne d'instance XSPICE : « [A B] » groupe les entrées d'une porte ; « NULL » laisse inactives
+    /// la mise à un et la mise à zéro des bascules.
+    /// </summary>
+    public static IReadOnlyList<string> PortsXspice(string code, IReadOnlyList<string> broches) => code.ToLowerInvariant() switch
+    {
+        "d_inverter" or "d_buffer" => ["A", "Y"],
+        "d_dff" => ["D", "CLK", "NULL", "NULL", "Q", "QB"], "d_jkff" => ["J", "K", "CLK", "NULL", "NULL", "Q", "QB"],
+        "d_tff" => ["T", "CLK", "NULL", "NULL", "Q", "QB"], "d_srff" => ["S", "R", "CLK", "NULL", "NULL", "Q", "QB"],
+        "d_dlatch" => ["D", "EN", "NULL", "NULL", "Q", "QB"], "d_srlatch" => ["S", "R", "EN", "NULL", "NULL", "Q", "QB"],
+        _ => ["[" + string.Join(' ', broches.Where(b => !EstSortieLogique(b))) + "]", "Y"],
     };
 
     /// <summary>Broches dans l'ordre de la ligne d'instance SPICE.</summary>
@@ -51,7 +88,7 @@ public static class ModelesSpice
     {
         TypeModele.Diode => "Diode", TypeModele.Npn => "Transistor NPN", TypeModele.Pnp => "Transistor PNP",
         TypeModele.Nmos => "MOSFET canal N", TypeModele.Pmos => "MOSFET canal P", TypeModele.Njf => "JFET canal N",
-        TypeModele.Pjf => "JFET canal P", _ => "Sous-circuit"
+        TypeModele.Pjf => "JFET canal P", TypeModele.Logique => "Logique (XSPICE)", _ => "Sous-circuit"
     };
 
     static readonly Dictionary<string, TypeModele> TypesModel = new(StringComparer.OrdinalIgnoreCase)
@@ -92,7 +129,15 @@ public static class ModelesSpice
                 var nom = m.Groups[1].Value; var type = m.Groups[2].Value;
                 if (TypesModel.TryGetValue(type, out var tm))
                     modeles.Add(new(nom, tm, BrochesStandard(tm), string.Join('\n', logiques[i].Brut)));
-                else avert.Add($"Modèle « {nom} » de type {type} : pas encore pris en charge (seuls D, NPN, PNP, NMOS, PMOS, NJF, PJF et .subckt le sont).");
+                else if (CodesLogiques.ContainsKey(type))
+                {
+                    // Porte ou bascule XSPICE : nombre d'entrées d'une porte lu à la fin du nom (« and3 »), 2 sinon.
+                    var n = Regex.Match(nom, @"(\d)$") is { Success: true } mn ? int.Parse(mn.Value) : 2;
+                    modeles.Add(new(nom, TypeModele.Logique, BrochesLogiques(type, n is >= 2 and <= 8 ? n : 2), string.Join('\n', logiques[i].Brut), Code: type.ToLowerInvariant()));
+                }
+                else if (type.Equals("adc_bridge", StringComparison.OrdinalIgnoreCase) || type.Equals("dac_bridge", StringComparison.OrdinalIgnoreCase))
+                    avert.Add($"Pont « {nom} » ({type}) ignoré : Silx place lui-même les ponts analogique ↔ numérique autour des portes.");
+                else avert.Add($"Modèle « {nom} » de type {type} : pas encore pris en charge (seuls D, NPN, PNP, NMOS, PMOS, NJF, PJF, les portes et bascules XSPICE d_… et .subckt le sont).");
             }
             else if (l.StartsWith(".subckt", StringComparison.OrdinalIgnoreCase))
             {

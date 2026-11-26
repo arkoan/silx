@@ -50,6 +50,15 @@ public sealed class EditeurSymbole : Window
         var gauche = new StackPanel { Spacing = 6, Margin = new Thickness(10) };
         gauche.Children.Add(Ui.Labeled("Nom dans la palette", nom));
         gauche.Children.Add(Ui.Hint($"{Definition.Description} « {Definition.Modele} », lettre SPICE {Definition.Lettre}"));
+        if (Definition.CodeXspice != null)
+        {
+            // Famille logique : seuils des entrées et niveau des sorties découlent de la tension d'alimentation.
+            gauche.Children.Add(Ui.Field("Tension logique (V)", SpiceNumber.Format(Definition.TensionLogique, ""), v =>
+            {
+                if (SpiceNumber.ParseOrNull(v.Replace("V", "").Trim()) is > 0 and <= 50 and var x) Definition.TensionLogique = x;
+            }));
+            gauche.Children.Add(Ui.Hint("Entrées : bas sous 30 %, haut au-dessus de 70 % de cette tension ; sorties à 0 V ou à cette tension, derrière 50 Ω."));
+        }
         if (Definition.Notes.Length > 0 || Definition.Parametres.Length > 0)
         {
             // Ce que dit le fichier, pour s'y retrouver sans l'ouvrir.
@@ -60,7 +69,7 @@ public sealed class EditeurSymbole : Window
             var voir = new Button { Content = "Voir le texte SPICE", FontSize = 11.5, Padding = new Thickness(6, 2), Background = Brushes.Transparent, Foreground = Ui.AccentBrush };
             voir.Click += (_, _) => new Window { Title = $"Modèle {Definition.Modele}", Width = 640, Height = 520, Content = new TextBox { Text = Definition.TexteSpice, IsReadOnly = true, AcceptsReturn = true, FontFamily = new FontFamily("Menlo, Consolas, monospace"), FontSize = 12 } }.Show(this);
             infos.Children.Add(voir);
-            gauche.Children.Add(new Border { Child = infos, Background = Brushes.White, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 6) });
+            gauche.Children.Add(new Border { Child = infos, Background = Ui.Surface, BorderBrush = Ui.Line, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 6) });
         }
         gauche.Children.Add(Ui.Section("Broches du modèle"));
         gauche.Children.Add(_liste);
@@ -119,7 +128,7 @@ public sealed class EditeurSymbole : Window
         var footB = new Border { Child = foot, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 0) };
 
         // Texte du modèle, à côté du symbole : on s'y retrouve sans ouvrir le fichier.
-        var txt = new TextBox { Text = Definition.TexteSpice, IsReadOnly = true, AcceptsReturn = true, FontFamily = new FontFamily("Menlo, Consolas, monospace"), FontSize = 11.5, TextWrapping = TextWrapping.NoWrap, BorderThickness = new Thickness(0), Background = Brushes.White };
+        var txt = new TextBox { Text = Definition.TexteSpice, IsReadOnly = true, AcceptsReturn = true, FontFamily = new FontFamily("Menlo, Consolas, monospace"), FontSize = 11.5, TextWrapping = TextWrapping.NoWrap, BorderThickness = new Thickness(0), Background = Ui.Surface };
         var txtDock = new DockPanel();
         var txtHead = new TextBlock { Text = $"Modèle SPICE · {Definition.Modele}", FontWeight = FontWeight.SemiBold, FontSize = 12, Margin = new Thickness(10, 6) };
         DockPanel.SetDock(txtHead, Dock.Top); txtDock.Children.Add(txtHead); txtDock.Children.Add(txt);
@@ -248,6 +257,24 @@ public sealed class EditeurSymbole : Window
         BrocheModeleChoisie = null; BrocheSymboleChoisie = null;
     }
 
+    const string PrefixeGlisser = "silx-broche:";
+    PointerPressedEventArgs? _pressePourGlisser;
+
+    /// <summary>Dépôt d'une broche du modèle : sur une broche du symbole (liaison), ou sur la grille d'un symbole boîte / personnalisé (nouvelle broche liée).</summary>
+    public void DeposerBrocheModele(string broche, int? brocheSymbole, int x, int y)
+    {
+        if (!Definition.BrochesModele.Contains(broche, StringComparer.OrdinalIgnoreCase)) return;
+        if (brocheSymbole is null)
+        {
+            if (Definition.Symbole.Gabarit is not (GabaritSymbole.Boite or GabaritSymbole.Personnalise)) return;
+            if (Definition.Symbole.Broches.Any(b => b.X == x && b.Y == y)) return;
+            Memo(); Definition.Symbole.Broches.Add(new BrocheSymbole { X = x, Y = y });
+            brocheSymbole = Definition.Symbole.Broches.Count - 1;
+        }
+        else Memo();
+        BrocheModeleChoisie = broche; BrocheSymboleChoisie = brocheSymbole; Lier(); Rafraichir();
+    }
+
     /// <summary>Raccordement d'une broche du modèle absente du symbole : 0 = sur le symbole (à relier), 1 = masse, 2 = tension fixe.</summary>
     public void RaccorderCachee(string broche, int mode, string valeur)
     {
@@ -307,6 +334,20 @@ public sealed class EditeurSymbole : Window
             var b = new Button { Content = row, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(6, 3), CornerRadius = new CornerRadius(5), Background = BrocheModeleChoisie == n ? Ui.ActiveBg : idx >= 0 && idx == BrocheSymboleChoisie ? new SolidColorBrush(Color.Parse("#fef3c7")) : Brushes.Transparent };
             ToolTip.SetTip(b, $"Broche « {n} » du modèle (position {Definition.BrochesModele.IndexOf(n) + 1} sur la ligne SPICE)");
             var nn = n; b.Click += (_, _) => ChoisirBrocheModele(nn);
+            // Glisser-déposer : tirer la broche du modèle sur une broche du symbole (ou sur la grille pour en créer une).
+            Point? depart = null;
+            b.AddHandler(PointerPressedEvent, (_, e) => { if (e.GetCurrentPoint(b).Properties.IsLeftButtonPressed) depart = e.GetPosition(b); }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            b.AddHandler(PointerReleasedEvent, (_, _) => depart = null, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            b.AddHandler(PointerMovedEvent, async (_, e) =>
+            {
+                if (depart is not { } d0 || !e.GetCurrentPoint(b).Properties.IsLeftButtonPressed) return;
+                var p = e.GetPosition(b);
+                if (Math.Abs(p.X - d0.X) + Math.Abs(p.Y - d0.Y) < 6 || _pressePourGlisser is not { } pe) return;
+                depart = null;
+                var dt = new DataTransfer(); dt.Add(DataTransferItem.CreateText(PrefixeGlisser + nn));
+                await DragDrop.DoDragDropAsync(pe, dt, DragDropEffects.Link);
+            }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            b.AddHandler(PointerPressedEvent, (_, e) => _pressePourGlisser = e, Avalonia.Interactivity.RoutingStrategies.Tunnel);
             _liste.Children.Add(b);
             if (idx < 0)
             {
@@ -358,9 +399,21 @@ public sealed class EditeurSymbole : Window
     {
         readonly EditeurSymbole _e;
         int? _drag; bool _moved; int? _hover;
-        // Dessin : point de départ et point courant (demi-pas de grille) ; déplacement d'un élément.
+        public const int SousPas = 4;
+        // Dessin : point de départ et point courant (quart de pas de grille) ; déplacement d'un élément.
         (double X, double Y)? _p0, _p1; int? _dragPrim; Primitive? _primOrigine; (double X, double Y) _primDepart;
-        public Vue(EditeurSymbole e) { _e = e; ClipToBounds = true; Focusable = true; }
+        public Vue(EditeurSymbole e)
+        {
+            _e = e; ClipToBounds = true; Focusable = true;
+            DragDrop.SetAllowDrop(this, true);
+            AddHandler(DragDrop.DragOverEvent, (_, ev) => { ev.DragEffects = ev.DataTransfer.TryGetText()?.StartsWith(PrefixeGlisser) == true ? DragDropEffects.Link : DragDropEffects.None; });
+            AddHandler(DragDrop.DropEvent, (_, ev) =>
+            {
+                if (ev.DataTransfer.TryGetText() is not { } t || !t.StartsWith(PrefixeGlisser)) return;
+                var pos = ev.GetPosition(this); var (gx, gy) = Grille(pos);
+                _e.DeposerBrocheModele(t[PrefixeGlisser.Length..], Broche(pos), gx, gy);
+            });
+        }
         Symbole S => _e.Definition.Symbole;
 
         (double D, Point O) Cadre()
@@ -372,7 +425,8 @@ public sealed class EditeurSymbole : Window
         }
         Point Ecran(double x, double y) { var (d, o) = Cadre(); return new(o.X + x * d, o.Y + y * d); }
         (int X, int Y) Grille(Point p) { var (d, o) = Cadre(); return ((int)Math.Round((p.X - o.X) / d), (int)Math.Round((p.Y - o.Y) / d)); }
-        (double X, double Y) DemiGrille(Point p) { var (d, o) = Cadre(); return (Math.Round((p.X - o.X) / d * 2) / 2, Math.Round((p.Y - o.Y) / d * 2) / 2); }
+        /// <summary>Grille fine du dessin : quart de pas du schéma (les broches restent sur la grille du schéma).</summary>
+        (double X, double Y) DemiGrille(Point p) { var (d, o) = Cadre(); return (Math.Round((p.X - o.X) / d * SousPas) / SousPas, Math.Round((p.Y - o.Y) / d * SousPas) / SousPas); }
         (double X, double Y) Reel(Point p) { var (d, o) = Cadre(); return ((p.X - o.X) / d, (p.Y - o.Y) / d); }
         bool Libre => _e.Definition.Symbole.Gabarit == GabaritSymbole.Personnalise;
         int? Broche(Point p)
@@ -427,10 +481,13 @@ public sealed class EditeurSymbole : Window
 
         public override void Render(DrawingContext ctx)
         {
-            ctx.FillRectangle(Brushes.White, new Rect(Bounds.Size));
+            ctx.FillRectangle(Ui.Surface, new Rect(Bounds.Size));
             var (d, o) = Cadre();
-            var dot = new SolidColorBrush(Color.Parse("#c9ccd3"));
-            for (double x = o.X % d; x < Bounds.Width; x += d) for (double y = o.Y % d; y < Bounds.Height; y += d) ctx.FillRectangle(dot, new Rect(x - .75, y - .75, 1.5, 1.5));
+            // Grille fine du dessin (quart de pas) en points pâles ; grille du schéma, où se posent les broches, en croix plus marquées.
+            var fin = Ui.Line; var dot = Ui.Muted;
+            double f = d / SousPas;
+            if (f >= 5) for (double x = o.X % f; x < Bounds.Width; x += f) for (double y = o.Y % f; y < Bounds.Height; y += f) ctx.FillRectangle(fin, new Rect(x - .6, y - .6, 1.2, 1.2));
+            for (double x = o.X % d; x < Bounds.Width; x += d) for (double y = o.Y % d; y < Bounds.Height; y += d) { ctx.FillRectangle(dot, new Rect(x - 2.5, y - .5, 5, 1)); ctx.FillRectangle(dot, new Rect(x - .5, y - 2.5, 1, 5)); }
             FormattedText T(string s, double size, IBrush b, FontWeight w) => new(s, System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, w), size * d / 24 + 5, b);
             Symboles.DessinerSymbole(ctx, S, Ecran, d, Ui.Ink, new Pen(Ui.Ink, Math.Max(1.3, d / 14)), T);
             var acc = new Pen(Ui.AccentBrush, Math.Max(1.3, d / 14));   // même épaisseur que le dessin : seule la couleur signale la sélection
@@ -446,9 +503,9 @@ public sealed class EditeurSymbole : Window
             {
                 var b = S.Broches[i]; var p = Ecran(b.X, b.Y);
                 bool sel = _e.BrocheSymboleChoisie == i, hov = _hover == i, lie = b.BrocheModele != null;
-                var col = sel ? Ui.AccentBrush : lie ? new SolidColorBrush(Color.Parse("#1f6f43")) : Ui.FailBrush;
+                var col = sel ? Ui.AccentBrush : lie ? Ui.Wire : Ui.FailBrush;
                 var r = d * (sel || hov ? .32 : .24);
-                ctx.DrawEllipse(sel ? new SolidColorBrush(Color.Parse("#dbe6fe")) : Brushes.White, new Pen(col, 2), p, r, r);
+                ctx.DrawEllipse(sel ? Ui.ActiveBg : Ui.Surface, new Pen(col, 2), p, r, r);
                 var etiquette = !string.IsNullOrWhiteSpace(b.Nom) ? b.Nom.Trim() + (lie ? $" ({b.BrocheModele})" : " · ?") : lie ? _e.Definition.NomAffiche(b.BrocheModele!) : "?";
                 var t = new FormattedText($"{i + 1} · {etiquette}", System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 11.5, col);
                 // Étiquette du côté extérieur du symbole.
@@ -457,7 +514,7 @@ public sealed class EditeurSymbole : Window
                 var at = Math.Abs(dx) >= Math.Abs(dy)
                     ? new Point(dx >= 0 ? p.X + r + 4 : p.X - r - 4 - t.Width, p.Y - t.Height - 2)
                     : new Point(p.X + r + 4, dy >= 0 ? p.Y + 2 : p.Y - t.Height - 2);
-                ctx.DrawRectangle(new SolidColorBrush(Colors.White, 0.85), null, new Rect(at, new Size(t.Width, t.Height)));
+                ctx.DrawRectangle(new SolidColorBrush(((ISolidColorBrush)Ui.Surface).Color, 0.85), null, new Rect(at, new Size(t.Width, t.Height)));
                 ctx.DrawText(t, at);
             }
         }

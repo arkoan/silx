@@ -99,3 +99,23 @@ Une source se règle par sa forme (continu, échelon / impulsion, sinus, petit s
 des champs en notation ingénieur ; l'expression SPICE est générée. Le **premier stimulus** posé dans un banc fixe son type :
 petit signal → fréquentiel (Bode), sinon temporel. Curseurs : en mode curseurs, un clic pose un curseur sur la courbe la plus
 proche (A puis B) ; un gabarit dessiné s'applique à la courbe la plus proche de son premier point.
+
+
+## Projets
+
+Un **projet** (.silx, JSON) contient tout : circuit sous test, bancs de test (calques, réglages, critères, gabarits dessinés,
+graphiques) et les composants SPICE importés (texte du modèle et symbole recopiés : le projet se rouvre et se resimule sans
+la bibliothèque de l'utilisateur). Les résultats ne sont pas enregistrés. Plusieurs projets s'ouvrent en parallèle, un onglet
+chacun (point orange = modifications non enregistrées). ⌘N nouveau, ⌘O ouvrir, ⌘S enregistrer, ⇧⌘S enregistrer sous,
+⌘W fermer ; une confirmation est demandée avant de perdre des modifications.
+
+
+## Ergonomie (lots P1 à P4)
+
+- Navigation : une rangée Circuit sous test / bancs ; Netlist, Vérifications et Journal dans le tiroir « Détails » en bas.
+- Simulation automatique (case « Auto ») quand le dernier calcul a duré moins d'une seconde ; état « À jour » / « À relancer ».
+- Nouveau banc depuis un modèle (échelon, sinus, Bode, vide) : source posée sur l'entrée, premier critère sur la sortie.
+- Erreurs de cohérence affichées sur le schéma (broche non reliée, référence en double, masse manquante).
+- Mesures automatiques sous chaque graphique (min, max, c-c, moyenne, fréquence ; gain BF, fc, pente).
+- ⌘K : palette de commandes ; « ? » : aide-mémoire. Explorateur de projet (icône de la barre). Rapport de test Markdown + images.
+- Éditeur de symbole : glisser une broche du modèle sur une broche du symbole, ou sur la grille pour en créer une.

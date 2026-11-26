@@ -23,10 +23,24 @@ static class Icones
     public const string ModeTest = "M3 5h18 M3 19h18 M3 13c3-6 6 2 9-1s5-3 9 0 M6 5l-2 2 M10 5l-2 2 M14 5l-2 2 M18 5l-2 2";
     public const string Temporel = "M3 19h5V5h13";
     public const string Bode = "M3 7h9c4 0 5 4 9 13";
+    public const string Fft = "M3 20h18M5 20V9M9 20v-6M13 20V5M17 20v-9M21 20v-4";
     public const string LimiteHaute = "M3 13h6l4-4h8 M5 13l3-3 M9 13l3-3 M14 9l3-3 M18 9l3-3";
     public const string LimiteBasse = "M3 11h6l4 4h8 M6 11l-3 3 M10 12l-3 3 M14 15l-3 3 M19 15l-3 3";
     public const string Croix = "M7 7l10 10 M17 7L7 17";
     public const string Plus = "M12 5v14 M5 12h14";
+    public const string Exporter = "M12 3v11 M7 9l5 5 5-5 M4 17v3h16v-3";   // flèche vers le bas, bac
+    public const string Rapport = "M6 3h9l4 4v14H6z M14 3v5h5 M9 17v-3 M12 17v-6 M15 17v-4";
+    public const string Explorateur = "M4 5h6 M4 5v14 M4 11h5 M4 17h5 M12 5h8 M12 11h8 M12 17h8";
+    public const string Chercher = "M4 10.5a6.5 6.5 0 1 0 13 0a6.5 6.5 0 1 0-13 0 M15.5 15.5L21 21";
+    public const string Aide = "M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6 M12 17.5v.01";
+    public const string Reglages = "M19.81 10.29 L22.41 10.64 L22.41 13.36 L19.81 13.71 L18.74 16.31 L20.32 18.40 L18.40 20.32 L16.31 18.74 L13.71 19.81 L13.36 22.41 L10.64 22.41 L10.29 19.81 L7.69 18.74 L5.60 20.32 L3.68 18.40 L5.26 16.31 L4.19 13.71 L1.59 13.36 L1.59 10.64 L4.19 10.29 L5.26 7.69 L3.68 5.60 L5.60 3.68 L7.69 5.26 L10.29 4.19 L10.64 1.59 L13.36 1.59 L13.71 4.19 L16.31 5.26 L18.40 3.68 L20.32 5.60 L18.74 7.69 Z M12 8.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7z";   // roue crantée (8 dents)
+    public const string VueSchema = "M3 4h18v16H3z M7 12h3l2-3 2 6 2-3h1";
+    public const string VueMixte = "M3 4h18v16H3z M3 11h18 M7 8h4 M6 17c2-4 4 2 6-2s3 1 5 0";
+    public const string VueCourbes = "M3 4h18v16H3z M5 16c3-8 5 4 8-2s4-3 6-2";
+    public const string Miroir = "M12 3v18 M9 7L4 12l5 5z M15 7l5 5-5 5z";
+    public const string Dupliquer = "M8 8h12v12H8z M4 16V4h12";
+    public const string Ouvrir = "M3 6h6l2 2h10v11H3z M3 10h18";
+    public const string Enregistrer = "M5 3h11l3 3v15H5z M8 3v5h7V3 M8 21v-7h8v7";
     public const string OutilBroche = "M3 12h9 M14 12a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0";
     public const string OutilLigne = "M5 19L19 5";
     public const string OutilRectangle = "M4 6h16v12H4z";
@@ -49,18 +63,29 @@ static class Icones
     public const string ImporterSpice = "M14 3H6v18h12V7z M14 3v4h4 M12 10v7 M9 14l3 3 3-3";
     public const string EditerSymbole = "M4 5h9v12H4z M1 8h3 M1 14h3 M13 8h2 M14 20l6-6 2 2-6 6h-2z";
 
-    public static Control Make(string data, double size = 18, IBrush? brush = null, bool filled = false) => new Avalonia.Controls.Shapes.Path
+    /// <summary>Taille par défaut d'une icône (px) et épaisseur du trait à l'écran (px, la même quelle que soit la taille).</summary>
+    public const double Taille = 16, Trait = 1.15;
+
+    /// <summary>
+    /// Icône dessinée sur sa grille 24×24 puis mise à l'échelle : toutes les icônes ont le même corps optique (une icône
+    /// petite reste petite) et le même trait fin, au lieu d'être étirées chacune jusqu'au bord.
+    /// </summary>
+    public static Control Make(string data, double size = Taille, IBrush? brush = null, bool filled = false) => new Viewbox
     {
-        Data = Geometry.Parse(data), Width = size, Height = size, Stretch = Stretch.Uniform,
-        Stroke = filled ? null : brush ?? Ui.Ink, Fill = filled ? brush ?? Ui.Ink : null,
-        StrokeThickness = 1.7, StrokeLineCap = PenLineCap.Round, StrokeJoin = PenLineJoin.Round,
+        Width = size, Height = size, Stretch = Stretch.Uniform,
         VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
+        Child = new Avalonia.Controls.Shapes.Path
+        {
+            Data = Geometry.Parse(data), Width = 24, Height = 24, Stretch = Stretch.None,
+            Stroke = filled ? null : brush ?? Ui.Ink, Fill = filled ? brush ?? Ui.Ink : null,
+            StrokeThickness = Trait * 24 / size, StrokeLineCap = PenLineCap.Round, StrokeJoin = PenLineJoin.Round,
+        },
     };
 
     /// <summary>Bouton-icône carré avec info-bulle (le nom et le raccourci y sont).</summary>
-    public static Button Button(string data, string tip, Action click, double size = 18)
+    public static Button Button(string data, string tip, Action click, double size = Taille)
     {
-        var b = new Button { Content = Make(data, size), Padding = new Thickness(7), Background = Brushes.Transparent, CornerRadius = new CornerRadius(6), VerticalAlignment = VerticalAlignment.Center };
+        var b = new Button { Content = Make(data, size), Padding = new Thickness(6), Background = Brushes.Transparent, CornerRadius = new CornerRadius(6), VerticalAlignment = VerticalAlignment.Center };
         ToolTip.SetTip(b, tip); ToolTip.SetShowOnDisabled(b, true);
         b.Click += (_, _) => click();
         return b;

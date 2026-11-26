@@ -176,6 +176,22 @@ public static class Elastique
         return Appliquer(s, avant, moves, fixes);
     }
 
+    /// <summary>Retourne un composant (miroir gauche-droite) ; ses fils suivent. Renvoie faux si les connexions ont changé.</summary>
+    public static bool Retourner(Schematic s, PlacedComponent c)
+    {
+        var avant = s.Clone();
+        var pins0 = c.Pins.ToList();
+        c.Miroir = !c.Miroir;
+        // Retourné sur place : l'encombrement des broches ne bouge pas.
+        var tmp = c.Pins;
+        c.Position = new GridPoint(c.Position.X + pins0.Min(p => p.X) - tmp.Min(p => p.X), c.Position.Y + pins0.Min(p => p.Y) - tmp.Min(p => p.Y));
+        var apres = c.Pins;
+        var moves = new Dictionary<GridPoint, GridPoint>();
+        for (int i = 0; i < pins0.Count; i++) if (!pins0[i].Equals(apres[i])) moves[pins0[i]] = apres[i];
+        var fixes = s.Components.Where(k => k != c).SelectMany(k => k.Pins).ToHashSet();
+        return Appliquer(s, avant, moves, fixes);
+    }
+
     /// <summary>Pivote un composant d'un quart de tour ; ses fils suivent. Renvoie faux si les connexions ont changé.</summary>
     public static bool Pivoter(Schematic s, PlacedComponent c)
     {
@@ -193,11 +209,34 @@ public static class Elastique
     /// Fait suivre un calque (banc de test) quand des broches du circuit sous test bougent : ses fils suivent,
     /// et un élément du calque posé directement sur une broche déplacée y est relié par un fil en L.
     /// </summary>
-    public static void SuivreCalque(Schematic calque, IReadOnlyDictionary<GridPoint, GridPoint> deplacements)
+    /// <summary>
+    /// Les fils d'un calque (banc) suivent les broches déplacées du circuit. Avec le circuit avant et après, chaque fil peut
+    /// faire son coude au coin ou côté broche : on garde la première combinaison qui conserve les connexions du banc
+    /// branché sur le circuit (au plus 64 essais). Renvoie faux si aucune ne les conserve.
+    /// </summary>
+    public static bool SuivreCalque(Schematic calque, IReadOnlyDictionary<GridPoint, GridPoint> deplacements, Schematic? circuitAvant = null, Schematic? circuitApres = null)
     {
         var fixes = calque.Components.SelectMany(c => c.Pins).ToHashSet();
-        var w = Suivre(calque.Wires, deplacements, fixes);
-        calque.Wires.Clear(); calque.Wires.AddRange(w);
+        var avant = calque.Wires.ToList();
+        if (circuitAvant == null || circuitApres == null)
+        {
+            var w = Suivre(avant, deplacements, fixes);
+            calque.Wires.Clear(); calque.Wires.AddRange(w);
+            return true;
+        }
+        static Schematic Fusion(Schematic c, Schematic calque, IEnumerable<Wire> fils) => new() { Components = c.Components.Concat(calque.Components).ToList(), Wires = c.Wires.Concat(fils).ToList() };
+        var orig = Partition(Fusion(circuitAvant, calque, avant));
+        var (w0, n) = Calculer(avant, deplacements, fixes, 0);
+        long essais = Math.Min(1L << Math.Min(n, 62), 64);
+        var ordre = new List<long> { 0, (1L << Math.Min(n, 62)) - 1 };
+        for (long m = 1; m < essais; m++) ordre.Add(m);
+        foreach (var m in ordre.Distinct())
+        {
+            var w = m == 0 ? w0 : Calculer(avant, deplacements, fixes, m).Fils;
+            if (orig.SetEquals(Partition(Fusion(circuitApres, calque, w)))) { calque.Wires.Clear(); calque.Wires.AddRange(w); return true; }
+        }
+        calque.Wires.Clear(); calque.Wires.AddRange(w0);
+        return false;
     }
 
     /// <summary>

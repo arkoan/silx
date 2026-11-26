@@ -29,11 +29,18 @@ public static class NetlistWriter
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Nœuds d'un port : un port XSPICE peut grouper plusieurs nœuds entre crochets (« [a b] ») ; « NULL » (port inutilisé)
+    /// n'est pas un nœud.
+    /// </summary>
+    static IEnumerable<string> Noeuds(string port) => port.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+        .Select(n => n.Trim('[', ']', '~')).Where(n => n.Length > 0 && !n.Equals("NULL", StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Vérifications basiques (cf. spec §3.1) : masse présente, nœuds à une seule connexion.</summary>
     public static void Validate(Circuit c)
     {
         if (c.Components.Count == 0) throw new InvalidOperationException("Circuit vide.");
-        var counts = c.Components.SelectMany(x => x.Nodes).GroupBy(n => n.ToLowerInvariant()).ToDictionary(g => g.Key, g => g.Count());
+        var counts = c.Components.SelectMany(x => x.Nodes).SelectMany(Noeuds).GroupBy(n => n.ToLowerInvariant()).ToDictionary(g => g.Key, g => g.Count());
         if (!counts.ContainsKey("0") && !counts.ContainsKey("gnd"))
             throw new InvalidOperationException("Pas de nœud de masse (0).");
         var floating = counts.Where(kv => kv.Value == 1 && kv.Key is not "0").Select(kv => kv.Key).ToList();

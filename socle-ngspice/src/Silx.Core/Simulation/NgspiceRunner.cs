@@ -5,7 +5,11 @@ using Silx.Core.Raw;
 
 namespace Silx.Core.Simulation;
 
-public sealed record SimulationResult(string RunId, RawFile Raw, string Log, TimeSpan Elapsed, int ExitCode);
+public sealed record SimulationResult(string RunId, RawFile Raw, string Log, TimeSpan Elapsed, int ExitCode)
+{
+    /// <summary>Tous les plots produits (plusieurs analyses dans la netlist) ; <see cref="Raw"/> est le premier.</summary>
+    public IReadOnlyList<RawFile> Plots { get; init; } = [Raw];
+}
 
 public sealed class NgspiceException(string message, string log) : Exception(message)
 {
@@ -28,6 +32,8 @@ public sealed class NgspiceRunner
     /// Écrit un <c>.spiceinit</c> dans le répertoire du run, qui prime sur celui de l'utilisateur.
     /// </summary>
     public int? NumThreads { get; init; }
+    /// <summary>Variables d'environnement propres aux processus ngspice (ex. SPICE_SCRIPTS d'un ngspice embarqué).</summary>
+    public IReadOnlyDictionary<string, string>? Environnement { get; init; }
 
     public Task<SimulationResult> RunAsync(Circuit circuit, CancellationToken ct = default) =>
         RunAsync(circuit, NumThreads, passiveWait: false, ct);
@@ -59,6 +65,7 @@ public sealed class NgspiceRunner
                 RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
                 UseShellExecute = false, WorkingDirectory = dir
             };
+            foreach (var (k, v) in Environnement ?? new Dictionary<string, string>()) psi.Environment[k] = v;
             if (passiveWait && Environment.GetEnvironmentVariable("OMP_WAIT_POLICY") is null)
                 psi.Environment["OMP_WAIT_POLICY"] = "PASSIVE";
             foreach (var a in new[] { "-b", "-r", raw, "-o", log, cir }) psi.ArgumentList.Add(a);
@@ -81,8 +88,8 @@ public sealed class NgspiceRunner
             string logText = File.Exists(log) ? await File.ReadAllTextAsync(log, ct) : await so + await se;
             if (!File.Exists(raw) || new FileInfo(raw).Length == 0)
                 throw new NgspiceException($"ngspice n'a pas produit de .raw (code {p.ExitCode}).", logText);
-            var rf = RawFileReader.Read(raw);
-            return new SimulationResult(runId, rf, logText, sw.Elapsed, p.ExitCode);
+            var plots = RawFileReader.ReadAll(raw);
+            return new SimulationResult(runId, plots[0], logText, sw.Elapsed, p.ExitCode) { Plots = plots };
         }
         finally { try { Directory.Delete(dir, true); } catch { /* best effort */ } }
     }
