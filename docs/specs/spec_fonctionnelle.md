@@ -298,6 +298,10 @@ Chaque démo est conforme sous ngspice (test automatique).
   - `run_simulation_batch`, `run_monte_carlo`, `run_parametric`
   - `get_test_summary`, `get_worst_case`, `get_sensitivity`, `get_raw_curve`
   - `propose_modification`, `apply_and_test`, `optimize_parameter`
+- Premier lot livré (serveur `silx-mcp`, transport stdio, `mcp/README.md`) : `open_project`, `describe_project`,
+  `list_testbenches`, `list_measurements`, `list_signals`, `get_netlist`, `run_simulation`, `run_campaign`
+  (balayage, Monte-Carlo, coins), `get_test_summary`, `get_worst_case`, `get_raw_curve`, `set_component_value`,
+  `save_project`. Les outils de génération, de modification et d'optimisation attendent la structure de l'assistant.
 - Agnostique au modèle LLM utilisé (Claude, Mistral, autres) côté client MCP
 - Option d'exécution locale d'un modèle (Mistral local via Ollama/LM Studio) pour
   usage offline/confidentiel

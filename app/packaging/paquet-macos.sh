@@ -16,10 +16,19 @@ SORTIE="$APPDIR/build"; PUB="$SORTIE/publish-$RID"; APP="$SORTIE/Silx.app"
 echo "▶ Publication .NET autonome ($RID, version $VERSION)"
 rm -rf "$PUB" "$APP"
 dotnet publish "$APPDIR/src/Silx.App" -c Release -r "$RID" --self-contained true -p:Version="$VERSION" -o "$PUB" -v quiet
+echo "▶ Serveur MCP (silx-mcp, à côté de l'application : même runtime, même ngspice embarqué)"
+PUBMCP="$SORTIE/publish-mcp-$RID"; rm -rf "$PUBMCP"
+dotnet publish "$APPDIR/../mcp/src/Silx.Mcp" -c Release -r "$RID" --self-contained true -p:Version="$VERSION" -o "$PUBMCP" -v quiet
 
 echo "▶ Paquet Silx.app"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp -R "$PUB/." "$APP/Contents/MacOS/"
+# Fichiers communs (runtime .NET, cœur Silx) : identiques, on garde ceux de l'application ; une différence est une erreur.
+for f in "$PUBMCP"/*; do
+  n="$(basename "$f")"; d="$APP/Contents/MacOS/$n"
+  if [[ -e "$d" ]]; then cmp -s "$f" "$d" || { echo "✗ $n diffère entre Silx et silx-mcp : versions de dépendances à aligner" >&2; exit 1; }
+  else cp -R "$f" "$d"; fi
+done
 sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$BUILD/" "$ICI/macos/Info.plist" > "$APP/Contents/Info.plist"
 cp "$ICI/macos/Silx.icns" "$APP/Contents/Resources/Silx.icns"
 if [[ -n "${NGSPICE_DIR:-}" ]]; then
