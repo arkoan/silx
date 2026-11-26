@@ -965,6 +965,11 @@ public class UiTests
             Assert.Equal(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, File.ReadAllBytes(png)[..4]);
             if (Environment.GetEnvironmentVariable("SILX_SHOT_DIR") is { } sd) File.Copy(png, Path.Combine(sd, "70-export.png"), true);
             await Assert.ThrowsAsync<ArgumentException>(() => w.ExporterVersAsync(Path.Combine(dir, "x.doc"), MainWindow.ContenuExport.Schema));
+            // Données en CSV : points des courbes et mesures du banc.
+            var cc = Path.Combine(dir, "courbes.csv"); w.ExporterCsvVers(cc, MainWindow.DonneesCsv.Courbes);
+            var tc = File.ReadAllText(cc); Assert.StartsWith("temps (s);", tc); Assert.Contains(";V(OUT) (V)", tc);
+            var cm = Path.Combine(dir, "mesures.csv"); w.ExporterCsvVers(cm, MainWindow.DonneesCsv.Mesures);
+            Assert.Contains("Temps de montée", File.ReadAllText(cm));
         }
         finally { Directory.Delete(dir, true); }
     }

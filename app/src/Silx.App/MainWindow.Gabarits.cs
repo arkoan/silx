@@ -31,7 +31,8 @@ public sealed partial class MainWindow
             : ResumeCampagne() is { } rc ? rc
             : _last is { Erreur: null } r && r.Nombre > 0 ? $"{r.Respectes}/{r.Nombre} respectée(s) · banc {(Banc.Type == AnalyseKind.Ac ? "fréquentiel" : "temporel")}"
             : $"{n} contrainte(s) · pas encore simulé";
-        var nodes = Connectivity.Build(SchemaCourant).AllNodes.ToList();
+        // Signaux contrôlables : nœuds du schéma et courants sondés dans les graphiques du banc.
+        var nodes = Connectivity.Build(SchemaCourant).AllNodes.Concat(_panes.SelectMany(p => p.Signaux).Where(Signaux.EstCourant).Distinct()).ToList();
         foreach (var g in Banc.CriteresActifs.ToList())
         {
             var res = _last?.Criteres.FirstOrDefault(x => x.Critere == g)?.Resultat;
@@ -42,7 +43,7 @@ public sealed partial class MainWindow
                 (double a, null) => $"≥ {SpiceNumber.Format(a, unit)}", (null, double b) => $"≤ {SpiceNumber.Format(b, unit)}", _ => "sans borne"
             };
             string mesure = res == null ? "pas encore simulé" : res.Valeur is { } v ? $"mesuré {SpiceNumber.Format(v, unit)}" + Marge(g, v) : res.Detail ?? "non évaluable";
-            var ligne = LignePlan(VerdictPlan(g, res?.Verdict), $"{g.Info.Nom} · V({g.Noeud})", $"{bornes} · {mesure}{StatCritere(g)}", g, () => { Banc.Gabarits.Remove(g); Invalidate(); }, "Retirer ce critère");
+            var ligne = LignePlan(VerdictPlan(g, res?.Verdict), $"{g.Info.Nom} · {Signaux.Nom(g.Noeud, SchemaCourant)}", $"{bornes} · {mesure}{StatCritere(g)}", g, () => { Banc.Gabarits.Remove(g); Invalidate(); }, "Retirer ce critère");
             _gabarits.Children.Add(ligne);
             if (_ligneOuverte == g) _gabarits.Children.Add(EditeurCritere(g, nodes));
         }
@@ -52,7 +53,7 @@ public sealed partial class MainWindow
             string detail = res == null ? $"{g.Points.Count} points · pas encore simulé" : res.Marge is { } m
                 ? (m >= 0 ? $"marge {SpiceNumber.Format(m, g.Unite)} à {Fx(g.Analyse, res.XPire!.Value)}" : $"franchi de {SpiceNumber.Format(-m, g.Unite)} à {Fx(g.Analyse, res.XPire!.Value)}")
                 : res.Detail ?? "non évaluable";
-            var titre = $"Gabarit {(g.Limite == Limite.Haute ? "haut" : "bas")} · {(g.Analyse == AnalyseKind.Ac ? $"|V({g.Noeud})|" : $"V({g.Noeud})")}";
+            var titre = $"Gabarit {(g.Limite == Limite.Haute ? "haut" : "bas")} · {(g.Analyse == AnalyseKind.Ac ? $"|{Signaux.Nom(g.Noeud, SchemaCourant)}|" : Signaux.Nom(g.Noeud, SchemaCourant))}";
             if (g.Relatif) detail += $" · suit le front (t0 = {SpiceNumber.Format(Banc.InstantFront, "s")})";
             detail += StatTrace(g);
             _gabarits.Children.Add(LignePlan(VerdictPlan(g, res?.Verdict), titre, detail, g, () => { Banc.GabaritsTraces.Remove(g); _ligneOuverte = null; ReevaluateTraces(); RefreshGabarits(); RefreshPlot(keepLimits: true); }, "Retirer ce gabarit"));
@@ -157,7 +158,7 @@ public sealed partial class MainWindow
         if (_banc != null && _last is { Erreur: null } r)
         {
             var crit = Banc.CriteresActifs.Where(g => r.Resultats.ContainsKey(g.Info.Analyse))
-                .Select(g => new ResultatCritere(g, Verification.Evaluer(g, r.Resultats[g.Info.Analyse]))).ToList();
+                .Select(g => new ResultatCritere(g, Verification.Evaluer(g, r.Resultats[g.Info.Analyse], SchemaCourant))).ToList();
             _last = r with { Criteres = crit };
             SetVerdict(_last.Nombre == 0 ? null : _last.Global);
         }

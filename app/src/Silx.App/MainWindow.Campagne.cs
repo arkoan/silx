@@ -380,7 +380,7 @@ public partial class MainWindow
         var rouge = Parametres.VersPlot(Parametres.Courant.NonConforme);
         var accent = Parametres.VersPlot(((ISolidColorBrush)Ui.AccentBrush).Color);
         var pts = r.Tirages.Where(t => t.Criteres.TryGetValue(s.Critere, out var x) && x.Valeur != null).Select(t => (T: t, V: t.Criteres[s.Critere].Valeur!.Value)).ToList();
-        p.Title($"{s.Critere.Info.Nom} · V({s.Critere.Noeud})", size: 11);
+        p.Title($"{s.Critere.Info.Nom} · {Signaux.Nom(s.Critere.Noeud)}", size: 11);
         if (r.Mode == ModeCampagne.Balayage)
         {
             bool log = echelle == EchelleBalayage.Logarithmique;

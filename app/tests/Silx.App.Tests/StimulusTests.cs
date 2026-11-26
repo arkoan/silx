@@ -12,7 +12,11 @@ public class StimulusTests
     [InlineData("DC 5", FormeStimulus.Continu, "DC 5")]
     [InlineData("12", FormeStimulus.Continu, "DC 12")]
     [InlineData("DC 0 AC 1 PULSE(0 1 0 1n 1n 5m 10m)", FormeStimulus.Expression, "DC 0 AC 1 PULSE(0 1 0 1n 1n 5m 10m)")]
-    [InlineData("PWL(0 0 1m 5)", FormeStimulus.Expression, "PWL(0 0 1m 5)")]
+    [InlineData("PWL(0 0 1m 5)", FormeStimulus.Pwl, "PWL(0 0 0.001 5)")]
+    [InlineData("PWL(0 0 1m 0 6m 2)", FormeStimulus.Rampe, "PWL(0 0 0.001 0 0.006 2)")]
+    [InlineData("PRBS(0 5 100k 0 10n)", FormeStimulus.Prbs, "PRBS(0 5 100000 0 1E-08)")]
+    [InlineData("DC 1 TRNOISE(10m 1u 0 0)", FormeStimulus.Bruit, "DC 1 TRNOISE(0.01 1E-06 0 0)")]
+    [InlineData("EXP(0 5 1m 0.2m 3m 0.5m)", FormeStimulus.Expression, "EXP(0 5 1m 0.2m 3m 0.5m)")]
     public void Lecture_et_ecriture_des_stimuli(string spice, FormeStimulus forme, string attendu)
     {
         var s = Stimulus.Lire(spice);

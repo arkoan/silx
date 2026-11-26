@@ -67,12 +67,12 @@ public sealed partial class MainWindow
                 {
                     var u = c.Critere.Info.Unite;
                     var bornes = (c.Critere.Min, c.Critere.Max) switch { (double a, double x) => $"{Fmt(a, u)} … {Fmt(x, u)}", (double a, null) => $"≥ {Fmt(a, u)}", (null, double x) => $"≤ {Fmt(x, u)}", _ => "—" };
-                    sb.AppendLine($"| {c.Critere.Info.Nom} | V({c.Critere.Noeud}) | {bornes} | {Fmt(c.Resultat.Valeur, u)} | {TexteVerdict(c.Resultat.Verdict)} |");
+                    sb.AppendLine($"| {c.Critere.Info.Nom} | {Signaux.Nom(c.Critere.Noeud, b.Fusion(e.Schema))} | {bornes} | {Fmt(c.Resultat.Valeur, u)} | {TexteVerdict(c.Resultat.Verdict)} |");
                 }
                 foreach (var t in r.Traces)
                 {
                     var m = t.Resultat.Marge is { } mm ? (mm >= 0 ? $"marge {SpiceNumber.Format(mm, t.Gabarit.Unite)}" : $"franchi de {SpiceNumber.Format(-mm, t.Gabarit.Unite)}") : "—";
-                    sb.AppendLine($"| Gabarit {(t.Gabarit.Limite == Limite.Haute ? "haut" : "bas")} ({t.Gabarit.Points.Count} points) | V({t.Gabarit.Noeud}) | dessiné | {m} | {TexteVerdict(t.Resultat.Verdict)} |");
+                    sb.AppendLine($"| Gabarit {(t.Gabarit.Limite == Limite.Haute ? "haut" : "bas")} ({t.Gabarit.Points.Count} points) | {Signaux.Nom(t.Gabarit.Noeud, b.Fusion(e.Schema))} | dessiné | {m} | {TexteVerdict(t.Resultat.Verdict)} |");
                 }
                 sb.AppendLine();
             }
@@ -100,7 +100,7 @@ public sealed partial class MainWindow
             foreach (var s in rc.Stats)
             {
                 var u = s.Critere.Info.Unite;
-                sb.AppendLine($"| {s.Critere.Info.Nom} | V({s.Critere.Noeud}) | {Fmt(s.N > 0 ? s.Moyenne : null, u)} | {Fmt(s.N > 0 ? s.EcartType : null, u)} | {Fmt(s.N > 0 ? s.Min : null, u)} | {Fmt(s.N > 0 ? s.Max : null, u)} | {(s.Cpk is { } k && rc.Mode != ModeCampagne.Balayage ? Cpk(k) : "—")} | {s.Echecs} |");
+                sb.AppendLine($"| {s.Critere.Info.Nom} | {Signaux.Nom(s.Critere.Noeud)} | {Fmt(s.N > 0 ? s.Moyenne : null, u)} | {Fmt(s.N > 0 ? s.EcartType : null, u)} | {Fmt(s.N > 0 ? s.Min : null, u)} | {Fmt(s.N > 0 ? s.Max : null, u)} | {(s.Cpk is { } k && rc.Mode != ModeCampagne.Balayage ? Cpk(k) : "—")} | {s.Echecs} |");
             }
             sb.AppendLine();
         }

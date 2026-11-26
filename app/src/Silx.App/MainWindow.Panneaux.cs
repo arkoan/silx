@@ -453,7 +453,35 @@ public sealed partial class MainWindow
             void Ex() { st.Expression = ex.Text ?? ""; Appliquer(); }
             ex.KeyDown += (_, e) => { if (e.Key == Key.Enter) Ex(); }; ex.LostFocus += (_, _) => Ex();
             _cible.Children.Add(Ui.Label("Expression SPICE")); _cible.Children.Add(ex);
-            _cible.Children.Add(Ui.Hint("Pour les formes non prévues (PWL, EXP…). Ex. PWL(0 0 1m 5)."));
+            _cible.Children.Add(Ui.Hint("Pour les formes non prévues (EXP, SFFM, AM…). Ex. EXP(0 5 1m 0,2m 3m 0,5m)."));
+        }
+        else if (st.Forme == FormeStimulus.Pwl)
+        {
+            // Points : une ligne « temps ; valeur » par point, saisis ou importés d'un CSV.
+            var u = courant ? "A" : "V";
+            var pts = new TextBox { Text = string.Join("\n", st.Points.Select(p => $"{SpiceNumber.Format(p.T, "s")} ; {SpiceNumber.Format(p.V, u)}")),
+                AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, MinHeight = 90, MaxHeight = 220, FontFamily = new FontFamily("Menlo, Consolas, monospace"), FontSize = 12 };
+            pts.LostFocus += (_, _) =>
+            {
+                var l = Stimulus.LirePwlCsv(pts.Text ?? "");
+                if (l.Count >= 2 && !l.SequenceEqual(st.Points)) { st.Points = l; Appliquer(); }
+                else if (l.Count < 2) _status.Text = "PWL : au moins deux points « temps ; valeur », temps croissants.";
+            };
+            _cible.Children.Add(Ui.Label($"Points ({st.Points.Count}) : temps ; valeur")); _cible.Children.Add(pts);
+            var imp = new Button { Content = "Importer un CSV…", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 0) };
+            imp.Click += (_, _) => Lancer(async () =>
+            {
+                var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+                { Title = "Points PWL (CSV : temps ; valeur)", AllowMultiple = false, FileTypeFilter = [new("CSV ou texte") { Patterns = ["*.csv", "*.txt", "*.tsv"] }] });
+                if (files.Count == 0 || files[0].TryGetLocalPath() is not { } chemin) return;
+                if (new FileInfo(chemin).Length > 20_000_000) { _status.Text = "Fichier trop volumineux (20 Mo au plus)."; return; }
+                var l = Stimulus.LirePwlCsv(await File.ReadAllTextAsync(chemin));
+                if (l.Count < 2) { _status.Text = $"Aucun point lisible dans {Path.GetFileName(chemin)} (deux colonnes temps et valeur attendues)."; return; }
+                st.Points = l; Appliquer();
+                _status.Text = $"{c.Ref} : {l.Count} points importés de {Path.GetFileName(chemin)}.";
+            }, "import PWL");
+            _cible.Children.Add(imp);
+            _cible.Children.Add(Ui.Hint("Deux colonnes temps et valeur, séparées par « ; », tabulation ou espace ; virgule ou point décimal ; notation ingénieur admise (1m, 3,3). Les lignes d'en-tête sont ignorées."));
         }
         else
         {
@@ -473,7 +501,24 @@ public sealed partial class MainWindow
                 : st.Forme == FormeStimulus.PetitSignal ? "Source petit signal : le banc devient fréquentiel (Bode) si c'est son premier stimulus. "
                 : "Le banc est temporel si c'est son premier stimulus. ") + "Valeurs en notation ingénieur : 4,7k · 100n · 1meg." + (courant ? " Courant de la broche 1 vers la broche 2 dans la source." : "")));
         }
-        _cible.Children.Add(new TextBlock { Text = "SPICE : " + st.VersSpice(), FontSize = 11, Foreground = Ui.Muted, FontFamily = new FontFamily("Menlo, Consolas, monospace"), TextWrapping = TextWrapping.Wrap });
+        var spice = st.VersSpice();
+        _cible.Children.Add(new TextBlock { Text = "SPICE : " + (spice.Length > 160 ? spice[..160] + "…" : spice), FontSize = 11, Foreground = Ui.Muted, FontFamily = new FontFamily("Menlo, Consolas, monospace"), TextWrapping = TextWrapping.Wrap });
+        if (st.Forme == FormeStimulus.Prbs) _cible.Children.Add(Ui.Hint("PRBS7 (x⁷ + x⁶ + 1) : 127 bits puis niveau stable ; développée en PWL dans la netlist."));
+        if (st.Forme == FormeStimulus.Bruit) _cible.Children.Add(Ui.Hint("Bruit blanc gaussien (TRNOISE) en temporel : nouvel échantillon à chaque pas, valeur efficace donnée."));
+        if (st.Echantillons(_banc?.Transitoire.Duree ?? 10e-3) != null && st.Forme != FormeStimulus.Continu)
+        {
+            var exp = new Button { Content = "Exporter la forme d'onde (CSV)…", HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 4, 0, 0) };
+            ToolTip.SetTip(exp, "Points temps ; valeur sur la durée du banc, relisibles comme source PWL.");
+            exp.Click += (_, _) => Lancer(async () =>
+            {
+                var f = await StorageProvider.SaveFilePickerAsync(new Avalonia.Platform.Storage.FilePickerSaveOptions
+                { Title = "Forme d'onde du stimulus", SuggestedFileName = $"{c.Ref} - {Stimulus.Libelle(st.Forme)}.csv", DefaultExtension = "csv", FileTypeChoices = [new("CSV") { Patterns = ["*.csv"] }] });
+                if (f?.TryGetLocalPath() is not { } chemin) return;
+                await File.WriteAllTextAsync(chemin, ExportDonnees.Stimulus(st, _banc?.Transitoire.Duree ?? 10e-3, courant), new System.Text.UTF8Encoding(true));
+                _status.Text = $"Exporté : {chemin}";
+            }, "export stimulus");
+            _cible.Children.Add(exp);
+        }
         if (st.Forme == FormeStimulus.Continu) _cible.Children.Add(ChampTolerance(c));
     }
 

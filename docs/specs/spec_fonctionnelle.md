@@ -78,6 +78,11 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
 - Export du schéma (image, PDF) pour documentation — **fait** : bouton « Exporter » (et palette de commandes) : le
   schéma (cadré en entier, avec le calque du banc affiché), les courbes du banc, ou les deux, en **PDF** (vectoriel,
   une page par vue), **SVG** (vectoriel, vues empilées) ou **PNG** (2× pour l'impression) ; toujours en thème clair.
+- Export des données en **CSV** — **fait** : même bouton, section « Données » : les **points des courbes** du banc
+  (temps ou fréquence, puis une colonne par signal des graphiques ; en fréquentiel, module en dB et phase en °) et les
+  **mesures** (chaque critère et gabarit avec bornes, valeur, unité, verdict ; avec une campagne, les statistiques par
+  critère puis une ligne par tirage : valeurs des composants, température, mesures, marges). Format « à la
+  française » : séparateur « ; », virgule décimale, UTF-8 avec BOM (s'ouvre tel quel dans un tableur).
 
 ### 3.2 Moteur de simulation
 - Backend ngspice (CLI dans un premier temps, `libngspice` si besoin de perf)
@@ -128,6 +133,12 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
   - (extensible : liste ouverte, ajout de nouvelles mesures sans toucher au moteur)
 - Mesures ajoutées : fréquence et amplitude crête à crête en régime établi (dernier quart du signal : oscillateurs,
   signaux périodiques), gain maximal et largeur de bande à −3 dB autour du maximum (passe-bande)
+- Mesures ajoutées (régime établi, sur des périodes entières quand le signal est périodique) : **valeur efficace**,
+  **valeur moyenne**, **THD** (harmoniques 2 à 10, transformée de Fourier exacte sur des périodes entières, sans
+  fenêtre ; au moins 3 périodes dans le dernier quart du signal)
+- **Critères sur les courants** : un critère chiffré ou un gabarit dessiné peut porter sur un courant sondé
+  (« I(R1) », « I(Q1, C) ») : la liste des signaux d'un critère propose les nœuds et les courants présents dans les
+  graphiques du banc ; l'unité suit le signal (A au lieu de V)
 - Évaluation automatique pass/fail contre un ou plusieurs gabarits
 - Gabarits dessinés : leurs points se posent et se déplacent dans la zone de tracé visible seulement (ils
   restent toujours attrapables)
@@ -192,7 +203,20 @@ Chaque démo est conforme sous ngspice (test automatique).
   d'ouvrir l'application par clic droit › Ouvrir.
 
 ### 3.5 Stimuli
-- Bibliothèque de stimuli standards (échelon, rampe, sinus, bruit, PWL, PRBS)
+- Bibliothèque de stimuli standards (échelon, rampe, sinus, bruit, PWL, PRBS) — **fait** : formes du panneau de
+  propriétés d'une source :
+  - continu, impulsion / échelon (PULSE), sinus (SIN), petit signal (AC) ;
+  - **rampe** : départ, arrivée, retard, durée (écrite PWL à 3 points, relue comme rampe) ;
+  - **PWL** : une ligne « temps ; valeur » par point, saisie ou **importée d'un CSV** (deux colonnes ; « ; »,
+    tabulation, espace ou virgule ; virgule ou point décimal ; notation ingénieur ; en-têtes ignorés ; temps
+    strictement croissants, 20 Mo au plus) ;
+  - **PRBS7** (x⁷ + x⁶ + 1, 127 bits) : niveaux bas / haut, débit, retard, transition ; enregistrée en syntaxe Silx
+    `PRBS(v1 v2 débit td tr)` et développée en PWL dans la netlist ;
+  - **bruit blanc** gaussien (TRNOISE de ngspice) : décalage, valeur efficace, pas d'échantillonnage ;
+  - expression SPICE libre pour le reste (EXP, SFFM, AM…).
+  Le front de la rampe et de la PRBS sert d'ancrage aux gabarits relatifs, comme celui d'une impulsion.
+- **Export de la forme d'onde** d'un stimulus déterministe en CSV (« temps ; valeur » sur la durée du banc), relisible
+  comme source PWL ; le bruit (aléatoire) ne s'exporte pas.
 - Génération de stimuli pertinents suggérée par l'IA selon le type de circuit détecté
 - Possibilité de stimulus personnalisé (import de fichier PWL, script)
 

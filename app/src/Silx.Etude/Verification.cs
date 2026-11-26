@@ -108,17 +108,16 @@ public static class Verification
         // Une analyse qui ne produit qu'un point (plage trop étroite, trop peu de points) ne se trace ni ne se mesure.
         if (raws.Values.FirstOrDefault(r => r.PointCount < 2) is { } court)
             return new(raws, [], [], erc, journal.ToString(), $"L'analyse n'a produit que {court.PointCount} point : élargissez la plage ou augmentez le nombre de points (bande étroite : balayage linéaire).");
-        var criteres = etude.CriteresActifs.Select(g => new ResultatCritere(g, Evaluer(g, raws[g.Info.Analyse]))).ToList();
-        var traces = etude.TracesActives.Select(g => new ResultatTrace(g, EvaluerTrace(g, raws[g.Analyse]))).ToList();
+        var criteres = etude.CriteresActifs.Select(g => new ResultatCritere(g, Evaluer(g, raws[g.Info.Analyse], schema))).ToList();
+        var traces = etude.TracesActives.Select(g => new ResultatTrace(g, EvaluerTrace(g, raws[g.Analyse], schema))).ToList();
         return new(raws, criteres, traces, erc, journal.ToString(), null);
     }
 
-    public static ResultatGabaritGraphique EvaluerTrace(GabaritTrace g, RawFile raw)
+    public static ResultatGabaritGraphique EvaluerTrace(GabaritTrace g, RawFile raw, Schematic? f = null)
     {
-        string vec = $"v({g.Noeud})";
-        if (!raw.Variables.Any(v => string.Equals(v.Name, vec, StringComparison.OrdinalIgnoreCase)))
-            return new(g.Nom, Verdict.NonEvaluable, null, null, null, $"Nœud « {g.Noeud} » absent des résultats.");
-        var (x, y) = Courbe(g.Analyse, raw, g.Noeud);
+        if (!Signaux.Disponible(raw, g.Noeud, f))
+            return new(g.Nom, Verdict.NonEvaluable, null, null, null, $"Signal « {Signaux.Nom(g.Noeud, f)} » absent des résultats.");
+        var (x, y) = Courbe(g.Analyse, raw, g.Noeud, f);
         try { return new GabaritGraphique(g.Nom, g.Limite, g.Points, g.Analyse == AnalyseKind.Ac).Evaluer(x, y); }
         catch (ArgumentException ex) { return new(g.Nom, Verdict.NonEvaluable, null, null, null, ex.Message); }
     }
@@ -135,13 +134,26 @@ public static class Verification
         return (r.Frequences.ToArray(), r.Valeurs.ToArray().Select(Frequentiel.Db).ToArray());
     }
 
-    public static ResultatGabarit Evaluer(CritereGabarit g, RawFile raw)
+    /// <summary>
+    /// Évalue un critère chiffré sur un signal : tension de nœud, ou courant de broche (« I(R1:2) ») résolu sur le schéma
+    /// fusionné <paramref name="f"/> ; l'unité suit le signal (V ou A).
+    /// </summary>
+    public static ResultatGabarit Evaluer(CritereGabarit g, RawFile raw, Schematic? f = null)
     {
         var info = g.Info;
         var bornes = new Bornes(g.Min, g.Max);
-        string vec = $"v({g.Noeud})";
-        if (!raw.Variables.Any(v => string.Equals(v.Name, vec, StringComparison.OrdinalIgnoreCase)))
-            return new(info.Nom, Verdict.NonEvaluable, null, info.Unite, bornes, $"Nœud « {g.Noeud} » absent des résultats.");
+        var unite = Signaux.EstCourant(g.Noeud) && info.Unite == "V" ? "A" : info.Unite;
+        if (!Signaux.Disponible(raw, g.Noeud, f))
+            return new(info.Nom, Verdict.NonEvaluable, null, unite, bornes, $"Signal « {Signaux.Nom(g.Noeud, f)} » absent des résultats.");
+        var r0 = Evaluer0(g, raw, f, info, bornes);
+        return r0 with { Unite = unite };
+    }
+
+    static ResultatGabarit Evaluer0(CritereGabarit g, RawFile raw, Schematic? f, TypesMesure.Info info, Bornes bornes)
+    {
+        var (vec, signe) = Signaux.Vecteur(g.Noeud, f)!.Value;
+        CourbeTemporelle Temporelle(RawFile r, string v) { var c = Verification.Temporelle(r, v); return signe == 1 ? c : new CourbeTemporelle(c.Temps.ToArray(), c.Valeurs.ToArray().Select(x => x * signe).ToArray()); }
+        ReponseFrequentielle Frequentielle(RawFile r, string v) => Verification.Frequentielle(r, v);
         IMesure<CourbeTemporelle>? mt = g.Mesure switch
         {
             TypeMesure.Depassement => Catalogue.Depassement,
@@ -150,6 +162,9 @@ public static class Verification
             TypeMesure.ValeurFinale => new Mesure<CourbeTemporelle>("Valeur finale", "V", c => Transitoire.ValeurFinale(c)),
             TypeMesure.Frequence => new Mesure<CourbeTemporelle>("Fréquence", "Hz", MesuresEtablies.Frequence),
             TypeMesure.AmplitudeCreteACrete => new Mesure<CourbeTemporelle>("Amplitude crête à crête", "V", MesuresEtablies.CreteACrete),
+            TypeMesure.ValeurEfficace => new Mesure<CourbeTemporelle>("Valeur efficace", "V", MesuresEtablies.Efficace),
+            TypeMesure.ValeurMoyenne => new Mesure<CourbeTemporelle>("Valeur moyenne", "V", MesuresEtablies.Moyenne),
+            TypeMesure.Thd => new Mesure<CourbeTemporelle>("Distorsion harmonique", "%", MesuresEtablies.Thd),
             _ => null
         };
         IMesure<ReponseFrequentielle>? mf = g.Mesure switch

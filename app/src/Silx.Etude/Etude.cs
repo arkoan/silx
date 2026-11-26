@@ -23,7 +23,7 @@ public sealed class ReglagesAc
     public bool Auto { get; set; } = true;
 }
 
-public enum TypeMesure { Depassement, TempsDeMontee, TempsEtablissement, ValeurFinale, BandePassante3dB, GainDc, MargeDePhase, MargeDeGain, Frequence, AmplitudeCreteACrete, GainMax, LargeurBande3dB }
+public enum TypeMesure { Depassement, TempsDeMontee, TempsEtablissement, ValeurFinale, BandePassante3dB, GainDc, MargeDePhase, MargeDeGain, Frequence, AmplitudeCreteACrete, GainMax, LargeurBande3dB, ValeurEfficace, ValeurMoyenne, Thd }
 
 public static class TypesMesure
 {
@@ -37,6 +37,9 @@ public static class TypesMesure
         new(TypeMesure.ValeurFinale, "Valeur finale", "V", AnalyseKind.Transitoire),
         new(TypeMesure.Frequence, "Fréquence (régime établi)", "Hz", AnalyseKind.Transitoire),
         new(TypeMesure.AmplitudeCreteACrete, "Amplitude crête à crête (régime établi)", "V", AnalyseKind.Transitoire),
+        new(TypeMesure.ValeurEfficace, "Valeur efficace (régime établi)", "V", AnalyseKind.Transitoire),
+        new(TypeMesure.ValeurMoyenne, "Valeur moyenne (régime établi)", "V", AnalyseKind.Transitoire),
+        new(TypeMesure.Thd, "Distorsion harmonique THD (régime établi)", "%", AnalyseKind.Transitoire),
         new(TypeMesure.BandePassante3dB, "Bande passante −3 dB", "Hz", AnalyseKind.Ac),
         new(TypeMesure.GainDc, "Gain basse fréquence", "dB", AnalyseKind.Ac),
         new(TypeMesure.GainMax, "Gain maximal", "dB", AnalyseKind.Ac),
@@ -114,7 +117,7 @@ public sealed class Banc
         get
         {
             var sources = Calque.Components.Where(k => k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource).Select(k => Stimulus.Lire(k.Value)).ToList();
-            var s = sources.FirstOrDefault(x => x.Forme == FormeStimulus.Impulsion) ?? sources.FirstOrDefault(x => x.Forme == FormeStimulus.Sinus);
+            var s = sources.FirstOrDefault(x => x.Forme is FormeStimulus.Impulsion or FormeStimulus.Rampe or FormeStimulus.Prbs) ?? sources.FirstOrDefault(x => x.Forme == FormeStimulus.Sinus);
             return s == null ? 0 : s["td"];
         }
     }

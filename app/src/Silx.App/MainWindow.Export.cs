@@ -32,7 +32,47 @@ public sealed partial class MainWindow
             sp.Children.Add(b);
         }
         if (_banc == null) sp.Children.Add(Ui.Hint("Choisissez un banc pour exporter aussi ses courbes."));
+        else
+        {
+            sp.Children.Add(new Border { Height = 1, Background = Ui.Line, Margin = new Thickness(0, 6) });
+            sp.Children.Add(Ui.Title("Données (CSV, tableur)"));
+            foreach (var (d, nom, dispo) in new[] { (DonneesCsv.Courbes, "Les points des courbes", _last is { Erreur: null }), (DonneesCsv.Mesures, "Les mesures et verdicts", true) })
+            {
+                var b = new Button { Content = nom, IsEnabled = dispo, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Left, Padding = new Thickness(8, 4), Background = Brushes.Transparent };
+                if (!dispo) ToolTip.SetTip(b, "Simulez d'abord le banc.");
+                var dd = d; b.Click += (_, _) => { fly.Hide(); Lancer(() => ExporterCsvAsync(dd), "export CSV"); };
+                sp.Children.Add(b);
+            }
+            sp.Children.Add(Ui.Hint("Séparateur « ; », virgule décimale. Avec une campagne, les mesures comprennent les statistiques et chaque tirage."));
+        }
         fly.ShowAt(ancre);
+    }
+
+    public enum DonneesCsv { Courbes, Mesures }
+
+    async Task ExporterCsvAsync(DonneesCsv d)
+    {
+        var nom = $"{_projet?.Nom ?? "Silx"} - {Banc.Nom} - {(d == DonneesCsv.Courbes ? "courbes" : "mesures")}";
+        var f = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Exporter en CSV", SuggestedFileName = nom + ".csv", DefaultExtension = "csv", FileTypeChoices = [new("CSV") { Patterns = ["*.csv"] }]
+        });
+        if (f?.TryGetLocalPath() is not { } chemin) return;
+        ExporterCsvVers(chemin, d);
+        _status.Text = $"Exporté : {chemin}";
+    }
+
+    /// <summary>Écrit les données du banc actif en CSV (UTF-8 avec BOM, pour que le tableur reconnaisse les accents).</summary>
+    public void ExporterCsvVers(string chemin, DonneesCsv d)
+    {
+        if (_banc == null) throw new InvalidOperationException("Aucun banc actif.");
+        var fusion = SchemaCourant;
+        string texte = d == DonneesCsv.Courbes
+            ? (_last is { Erreur: null } r && r.Resultats.TryGetValue(Banc.Type, out var raw)
+                ? Silx.Etude.ExportDonnees.Courbes(Banc.Type, raw, _panes.SelectMany(p => p.Signaux), fusion)
+                : throw new InvalidOperationException("Simulez d'abord le banc."))
+            : Silx.Etude.ExportDonnees.Mesures(Banc, _last, ResultatCampagne, fusion);
+        File.WriteAllText(chemin, texte, new System.Text.UTF8Encoding(true));
     }
 
     async Task ExporterAsync(ContenuExport c)
