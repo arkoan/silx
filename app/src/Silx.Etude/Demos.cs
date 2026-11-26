@@ -59,34 +59,18 @@ public static class Demos
 
     /// <summary>
     /// Oscillateur Colpitts à émetteur commun (2N3904, L = 10 µH, C1 = C2 = 1 nF) : ≈ 2,2 MHz, ≈ 7 V crête à crête au
-    /// collecteur. Alimentation 9 V dans le circuit ; le banc donne une impulsion de courant de démarrage sur la base.
+    /// collecteur. Schéma dessiné dans Silx par Régis (projet embarqué Demos/OscillateurColpitts.silx) ; alimentation
+    /// 9 V dans le circuit, impulsion de courant de démarrage dans le banc.
     /// </summary>
-    public static Etude Colpitts()
+    public static Etude Colpitts() => Embarque("OscillateurColpitts.silx");
+
+    /// <summary>Projet de démonstration embarqué dans l'assemblage (fichier .silx enregistré depuis Silx).</summary>
+    public static Etude Embarque(string fichier)
     {
-        var e = new Etude(); var p = new Plan(e.Schema);
-        p.Dipole("VCC", ComponentKind.VoltageSource, 0, 2, 1, "DC 9"); p.Net("VCC", 0, 2); p.Masse(0, 5);
-        p.Dipole("R1", ComponentKind.Resistor, 5, 2, 1, "47k"); p.Net("VCC", 5, 2); p.Net("B", 5, 5);
-        p.Dipole("R2", ComponentKind.Resistor, 5, 8, 1, "10k"); p.Net("B", 5, 8); p.Masse(5, 11);
-        p.Spice("Q1", Base("2N3904"), 10, 8); p.Net("B", 10, 8); p.Net("C", 12, 6); p.Net("E", 12, 10);
-        p.Dipole("RC", ComponentKind.Resistor, 16, 2, 1, "2.2k"); p.Net("VCC", 16, 2); p.Net("C", 16, 5);
-        p.Dipole("RE", ComponentKind.Resistor, 16, 10, 1, "1k"); p.Net("E", 16, 10); p.Masse(16, 13);
-        p.Dipole("CE", ComponentKind.Capacitor, 19, 10, 1, "100n"); p.Net("E", 19, 10); p.Masse(19, 13);
-        p.Dipole("C1", ComponentKind.Capacitor, 22, 4, 1, "1n"); p.Net("C", 22, 4); p.Masse(22, 7);
-        p.Dipole("CC", ComponentKind.Capacitor, 25, 4, 0, "100n"); p.Net("C", 25, 4);
-        p.Fil(28, 4, 28, 8);
-        p.Dipole("L1", ComponentKind.Inductor, 25, 8, 0, "10u"); p.Net("B", 25, 8);
-        p.Dipole("C2", ComponentKind.Capacitor, 31, 8, 1, "1n"); p.Net("B", 31, 8); p.Masse(31, 11);
-        var b = new Banc { Nom = "Démarrage" };
-        b.Calque.Components.Add(new() { Ref = "IK", Kind = ComponentKind.CurrentSource, Position = new(35, 11), Rotation = 3, Value = "PULSE(0 1m 2u 10n 10n 100n 1)" });
-        b.Calque.Components.Add(new() { Ref = "GNDB1", Kind = ComponentKind.Ground, Position = new(35, 11) });
-        b.Calque.Components.Add(new() { Ref = "NETB1", Kind = ComponentKind.Label, Position = new(35, 8), Value = "B" });
-        // Oscillateur : pas fixe et fin (≈ 45 points par période) pour suivre la sinusoïde du début à la fin.
-        b.Transitoire.Auto = false; b.Transitoire.Duree = 60e-6; b.Transitoire.Pas = 10e-9;
-        b.Gabarits.Add(new() { Mesure = TypeMesure.Frequence, Noeud = "C", Min = 2.0e6, Max = 2.4e6 });
-        b.Gabarits.Add(new() { Mesure = TypeMesure.AmplitudeCreteACrete, Noeud = "C", Min = 4 });
-        b.Graphiques.Add(["C", "B"]);
-        e.Bancs.Add(b);
-        return e;
+        using var s = typeof(Demos).Assembly.GetManifestResourceStream("Silx.Etude.Demos." + fichier)
+            ?? throw new InvalidOperationException($"Démo « {fichier} » absente de l'assemblage.");
+        using var r = new StreamReader(s);
+        return Projet.DepuisJson(r.ReadToEnd());
     }
 
     /// <summary>

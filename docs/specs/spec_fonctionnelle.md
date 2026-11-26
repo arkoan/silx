@@ -156,10 +156,20 @@ reste-t-il conforme avec des composants réels ? ».
 Ouverts en onglets à chaque démarrage, à côté de l'exemple RC (variété), et depuis la palette de commandes :
 - **Filtre à quartz 4 MHz** : échelle de deux quartz, terminaisons 470 Ω ; critères gain maximal et largeur de
   bande, gabarits de bande passante et de réjection.
-- **Oscillateur Colpitts** : 2N3904 à émetteur commun, ≈ 2,2 MHz ; alimentation dans le circuit de base, impulsion
-  de démarrage dans le banc ; critères de fréquence et d'amplitude.
+- **Oscillateur Colpitts** : 2N3904 à émetteur commun, ≈ 2,2 MHz ; schéma dessiné dans Silx par Régis (projet
+  embarqué) ; alimentation dans le circuit de base, impulsion de démarrage dans le banc ; critères de fréquence et
+  d'amplitude.
 - **Ampli émetteur commun** : BC547B, ≈ 42 dB de 100 Hz à 800 kHz ; campagne Monte-Carlo réglée (résistances ± 5 %).
 Chaque démo est conforme sous ngspice (test automatique).
+
+### 3.4 ter Session et disposition
+- **État conservé** à la fermeture et restauré à l'ouverture : onglets de projets (fichier ; contenu non enregistré,
+  qui reste marqué modifié ; démonstrations non modifiées recréées à jour), onglet et banc affichés, disposition de
+  l'écran, tiroir du bas et sa hauteur (~/Library/Application Support/Silx/session.json). Sans session : l'exemple
+  RC et les démonstrations.
+- En **courbes seules**, la barre des bancs (pastilles et leur roue crantée) reste affichée au-dessus des courbes.
+- Le **tiroir du bas** (netlist, vérifications, journal, campagne) se réduit (« ▾ Réduire », ou re-clic sur l'onglet)
+  et se redimensionne par la poignée au-dessus de lui.
 
 ### 3.5 Stimuli
 - Bibliothèque de stimuli standards (échelon, rampe, sinus, bruit, PWL, PRBS)

@@ -206,6 +206,7 @@ public sealed partial class MainWindow : Window
         _veille.Start();
         Closing += async (_, e) =>
         {
+            CaptureSession().Enregistrer();   // projets ouverts, banc et disposition : retrouvés à la prochaine ouverture
             if (_fermetureConfirmee || !_projets.Any(p => p.Modifie)) return;
             e.Cancel = true;
             var choix = await Demander($"{_projets.Count(p => p.Modifie)} projet(s) ont des modifications non enregistrées.", "Tout enregistrer et quitter", "Quitter sans enregistrer");
@@ -213,11 +214,16 @@ public sealed partial class MainWindow : Window
             if (choix is 0 or 1) { _fermetureConfirmee = true; Close(); }
         };
 
-        // Démarrage : l'exemple RC au premier plan, et les autres démonstrations dans des onglets voisins (variété).
-        var exemple = OuvrirDansOnglet(EtudeModel.Demo(), "Exemple RC", null);
-        foreach (var (nom, creer) in Demos.Toutes) OuvrirDansOnglet(creer(), nom, null);
-        ActiverProjet(exemple);
-        Disposer(Disposition.Mixte);
+        // Démarrage : la session précédente (onglets, banc, disposition), sinon l'exemple RC au premier plan et les autres
+        // démonstrations dans des onglets voisins (variété).
+        if (Session.Charger() is { Onglets.Count: > 0 } session && RestaurerSession(session)) { }
+        else
+        {
+            var exemple = OuvrirDemo("Exemple RC");
+            foreach (var (nom, _) in Demos.Toutes) OuvrirDemo(nom);
+            ActiverProjet(exemple);
+            Disposer(Disposition.Mixte);
+        }
         ActiverZone(Zone.Schema);
         _status.Text = "Clic : placer / sélectionner · glisser : déplacer · clic droit ou molette : vue · ⌘R : pivoter · W : fil · Suppr · ⌘Z / ⇧⌘Z";
     }
@@ -318,6 +324,66 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Ouvre un fichier .silx dans un onglet (ou active l'onglet s'il est déjà ouvert).</summary>
+    /// <summary>Ouvre une démonstration intégrée (« Exemple RC » ou une de <see cref="Demos.Toutes"/>).</summary>
+    public ProjetOuvert OuvrirDemo(string nom)
+    {
+        var e = nom == "Exemple RC" ? EtudeModel.Demo() : Demos.Toutes.Single(d => d.Nom == nom).Creer();
+        var p = OuvrirDansOnglet(e, nom, null); p.Demo = nom;
+        return p;
+    }
+
+    /// <summary>État de travail : onglets, banc et onglet actifs, disposition, tiroir.</summary>
+    public Session CaptureSession()
+    {
+        if (_projet != null) _projet.BancActif = _banc;
+        var s = new Session { Actif = Math.Max(0, _projets.IndexOf(_projet!)), Disposition = _disposition.ToString(), Detail = _detailOuvert?.ToString(), HauteurDetails = _detailsContenu.Height };
+        foreach (var p in _projets)
+        {
+            bool modifie = p.Modifie;
+            s.Onglets.Add(new Session.Onglet
+            {
+                Nom = p.Nom, Chemin = p.Chemin,
+                Demo = p.Demo != null && p.Chemin == null && !modifie ? p.Demo : null,
+                Contenu = (p.Chemin == null && (p.Demo == null || modifie)) || (p.Chemin != null && modifie) ? Projet.VersJson(p.Etude) : null,
+                Banc = p.BancActif != null ? p.Etude.Bancs.IndexOf(p.BancActif) : -1,
+            });
+        }
+        return s;
+    }
+
+    /// <summary>Rouvre les onglets d'une session ; faux si aucun n'a pu l'être (démarrage par défaut).</summary>
+    public bool RestaurerSession(Session s)
+    {
+        var ouverts = new List<ProjetOuvert?>();
+        foreach (var o in s.Onglets)
+        {
+            ProjetOuvert? p = null;
+            try
+            {
+                if (o.Demo != null && (o.Demo == "Exemple RC" || Demos.Toutes.Any(d => d.Nom == o.Demo))) p = OuvrirDemo(o.Demo);
+                else if (o.Contenu != null)
+                {
+                    p = OuvrirDansOnglet(Projet.DepuisJson(o.Contenu), o.Nom, o.Chemin);
+                    // Modifications non enregistrées d'un fichier : la référence reste le fichier, l'onglet apparaît modifié.
+                    if (o.Chemin != null && File.Exists(o.Chemin)) p.Reference = Projet.VersJson(Projet.Ouvrir(o.Chemin));
+                }
+                else if (o.Chemin != null && File.Exists(o.Chemin)) p = OuvrirFichier(o.Chemin);
+            }
+            catch (Exception ex) { SignalerErreur(ex, $"restauration de « {o.Nom} »"); }
+            // Le projet vient d'être activé : on affiche son banc (gardé quand on passe à l'onglet suivant).
+            if (p != null && p == _projet) SelectBanc(o.Banc >= 0 && o.Banc < p.Etude.Bancs.Count ? p.Etude.Bancs[o.Banc] : null);
+            ouverts.Add(p);
+        }
+        var valides = ouverts.OfType<ProjetOuvert>().ToList();
+        if (valides.Count == 0) return false;
+        ActiverProjet(ouverts.ElementAtOrDefault(s.Actif) ?? valides[0]);
+        Disposer(Enum.TryParse<Disposition>(s.Disposition, out var d) ? d : Disposition.Mixte);
+        _detailsContenu.Height = Math.Clamp(s.HauteurDetails, 80, 800);
+        if (Enum.TryParse<Detail>(s.Detail, out var det)) OuvrirDetail(det);
+        RafraichirOnglets();
+        return true;
+    }
+
     public ProjetOuvert? OuvrirFichier(string chemin)
     {
         if (_projets.FirstOrDefault(p => p.Chemin != null && Path.GetFullPath(p.Chemin) == Path.GetFullPath(chemin)) is { } deja) { ActiverProjet(deja); return deja; }
@@ -750,6 +816,10 @@ public sealed partial class MainWindow : Window
 
     // ───────────────────────── tiroir « Détails » ─────────────────────────
     public enum Detail { Netlist, Verifications, Journal, Campagne }
+    readonly Button _reduireDetails = new() { Content = "▾ Réduire", FontSize = Ui.Aide, Padding = new Thickness(8, 1), Background = Brushes.Transparent, IsVisible = false, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0) };
+    Border? _poigneeDetails;
+    public bool BarreBancsVisible => _benchBar.IsEffectivelyVisible;
+    public bool ReduireDetailsVisible => _reduireDetails.IsVisible;
     Detail? _detailOuvert;
     readonly ContentControl _detailsContenu = new() { Height = 200, IsVisible = false };
     readonly Dictionary<Detail, Button> _boutonsDetails = new();
@@ -765,9 +835,23 @@ public sealed partial class MainWindow : Window
             var dd = d; b.Click += (_, _) => OuvrirDetail(_detailOuvert == dd ? null : dd);
             _boutonsDetails[d] = b; barre.Children.Add(b);
         }
+        // Tiroir réductible : chevron pour le replier, poignée au-dessus du contenu pour le redimensionner.
+        _reduireDetails.Click += (_, _) => OuvrirDetail(null);
+        ToolTip.SetTip(_reduireDetails, "Réduire le tiroir (re-cliquer un onglet le rouvre)");
+        var g = new Grid { ColumnDefinitions = new("*,Auto") };
+        g.Children.Add(barre); Grid.SetColumn(_reduireDetails, 1); g.Children.Add(_reduireDetails);
+        var poignee = new Border { Height = 5, Background = Brushes.Transparent, Cursor = new Cursor(StandardCursorType.SizeNorthSouth) };
+        ToolTip.SetTip(poignee, "Glisser pour changer la hauteur du tiroir");
+        double? y0 = null; double h0 = 0;
+        poignee.PointerPressed += (_, e) => { y0 = e.GetPosition(this).Y; h0 = _detailsContenu.Height; e.Pointer.Capture(poignee); e.Handled = true; };
+        poignee.PointerMoved += (_, e) => { if (y0 is { } y) _detailsContenu.Height = Math.Clamp(h0 + (y - e.GetPosition(this).Y), 60, Math.Max(120, Bounds.Height - 260)); };
+        poignee.PointerReleased += (_, e) => { y0 = null; e.Pointer.Capture(null); };
+        _poigneeDetails = poignee;
         var dock = new DockPanel();
-        var barreB = new Border { Child = barre, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 0) };
+        var barreB = new Border { Child = g, Background = Ui.Panel, BorderBrush = Ui.Line, BorderThickness = new Thickness(0, 1, 0, 0) };
+        DockPanel.SetDock(poignee, Dock.Top); dock.Children.Add(poignee);
         DockPanel.SetDock(barreB, Dock.Top); dock.Children.Add(barreB); dock.Children.Add(_detailsContenu);
+        poignee.IsVisible = false;
         return dock;
     }
 
@@ -775,7 +859,8 @@ public sealed partial class MainWindow : Window
     public void OuvrirDetail(Detail? d)
     {
         _detailOuvert = d;
-        _detailsContenu.IsVisible = d != null;
+        _detailsContenu.IsVisible = d != null; _reduireDetails.IsVisible = d != null;
+        if (_poigneeDetails != null) _poigneeDetails.IsVisible = d != null;
         _detailsContenu.Content = d switch
         {
             Detail.Netlist => _netlist, Detail.Verifications => new ScrollViewer { Content = _ercList }, Detail.Journal => _journal, Detail.Campagne => VueCampagne(), _ => null
@@ -821,8 +906,10 @@ public sealed partial class MainWindow : Window
     public void Disposer(Disposition d)
     {
         _disposition = d;
-        _zoneHaut.IsVisible = d != Disposition.Courbes; _zoneBas.IsVisible = d != Disposition.Schema; _separateur.IsVisible = d == Disposition.Mixte;
-        _centre.RowDefinitions[0].Height = d == Disposition.Courbes ? new GridLength(0) : new GridLength(3, GridUnitType.Star);
+        // Courbes seules : la barre des bancs (pastilles et leurs réglages) reste en haut, seul le schéma est masqué.
+        _zoneHaut.IsVisible = true; _cadreSchema.IsVisible = d != Disposition.Courbes;
+        _zoneBas.IsVisible = d != Disposition.Schema; _separateur.IsVisible = d == Disposition.Mixte;
+        _centre.RowDefinitions[0].Height = d == Disposition.Courbes ? GridLength.Auto : new GridLength(3, GridUnitType.Star);
         _centre.RowDefinitions[1].Height = d == Disposition.Mixte ? new GridLength(5) : new GridLength(0);
         _centre.RowDefinitions[2].Height = d == Disposition.Schema ? new GridLength(0) : new GridLength(d == Disposition.Courbes ? 1 : 2, GridUnitType.Star);
         foreach (var (k, b) in _boutonsDisposition) Ui.SetActive(b, k == d);

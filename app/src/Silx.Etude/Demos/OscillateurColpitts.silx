@@ -1,0 +1,495 @@
+{
+  "Version": 2,
+  "Application": "Silx",
+  "Composants": [
+    {
+      "Nom": "2N3904",
+      "Type": "Npn",
+      "Modele": "2N3904",
+      "TexteSpice": ".model 2N3904 NPN(IS=6.734f XTI=3 EG=1.11 VAF=74.03 BF=416.4 NE=1.259 ISE=6.734f IKF=66.78m XTB=1.5 BR=.7371 NC=2 RC=1 CJC=3.638p MJC=.3085 VJC=.75 FC=.5 CJE=4.493p MJE=.2593 VJE=.75 TR=239.5n TF=301.2p ITF=.4 VTF=4 XTF=2 RB=10)",
+      "BrochesModele": [
+        "C",
+        "B",
+        "E"
+      ],
+      "Parametres": "",
+      "Description": "Transistor NPN",
+      "Libelles": {},
+      "Notes": "Modèle intégré, indicatif. ",
+      "BrochesCachees": {},
+      "Symbole": {
+        "Gabarit": "Npn",
+        "Version": 4,
+        "DiodeCorps": false,
+        "Traits": [
+          {
+            "Forme": "Trait",
+            "X1": 0,
+            "Y1": 0,
+            "X2": 0.9,
+            "Y2": 0,
+            "Plein": false
+          },
+          {
+            "Forme": "Trait",
+            "X1": 0.9,
+            "Y1": -0.6,
+            "X2": 0.9,
+            "Y2": 0.6,
+            "Plein": false
+          },
+          {
+            "Forme": "Trait",
+            "X1": 0.9,
+            "Y1": -0.3,
+            "X2": 2,
+            "Y2": -0.9,
+            "Plein": false
+          },
+          {
+            "Forme": "Trait",
+            "X1": 2,
+            "Y1": -0.9,
+            "X2": 2,
+            "Y2": -2,
+            "Plein": false
+          },
+          {
+            "Forme": "Fleche",
+            "X1": 0.9,
+            "Y1": 0.3,
+            "X2": 2,
+            "Y2": 0.9,
+            "Plein": false
+          },
+          {
+            "Forme": "Trait",
+            "X1": 2,
+            "Y1": 0.9,
+            "X2": 2,
+            "Y2": 2,
+            "Plein": false
+          },
+          {
+            "Forme": "Cercle",
+            "X1": 1.4,
+            "Y1": 0,
+            "X2": 1.05,
+            "Y2": 0,
+            "Plein": false
+          }
+        ],
+        "Broches": [
+          {
+            "X": 0,
+            "Y": 0,
+            "BrocheModele": "B",
+            "Role": "B"
+          },
+          {
+            "X": 2,
+            "Y": -2,
+            "BrocheModele": "C",
+            "Role": "C"
+          },
+          {
+            "X": 2,
+            "Y": 2,
+            "BrocheModele": "E",
+            "Role": "E"
+          }
+        ]
+      },
+      "TensionLogique": 5
+    }
+  ],
+  "Circuit": {
+    "Composants": [
+      {
+        "Ref": "VCC",
+        "Type": "VoltageSource",
+        "X": 0,
+        "Y": 2,
+        "Rotation": 1,
+        "Miroir": false,
+        "Valeur": "DC 9"
+      },
+      {
+        "Ref": "NET2",
+        "Type": "Label",
+        "X": 0,
+        "Y": 0,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": "VCC"
+      },
+      {
+        "Ref": "GND1",
+        "Type": "Ground",
+        "X": 0,
+        "Y": 5,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": ""
+      },
+      {
+        "Ref": "R1",
+        "Type": "Resistor",
+        "X": 5,
+        "Y": 2,
+        "Rotation": 1,
+        "Miroir": false,
+        "Valeur": "47k"
+      },
+      {
+        "Ref": "NET5",
+        "Type": "Label",
+        "X": 5,
+        "Y": 0,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": "VCC"
+      },
+      {
+        "Ref": "R2",
+        "Type": "Resistor",
+        "X": 5,
+        "Y": 10,
+        "Rotation": 1,
+        "Miroir": false,
+        "Valeur": "10k"
+      },
+      {
+        "Ref": "GND2",
+        "Type": "Ground",
+        "X": 5,
+        "Y": 13,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": ""
+      },
+      {
+        "Ref": "Q1",
+        "Type": "Spice",
+        "X": 10,
+        "Y": 8,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": "",
+        "Composant": "2N3904"
+      },
+      {
+        "Ref": "RC",
+        "Type": "Resistor",
+        "X": 16,
+        "Y": 0,
+        "Rotation": 1,
+        "Miroir": false,
+        "Valeur": "2.2k"
+      },
+      {
+        "Ref": "NET15",
+        "Type": "Label",
+        "X": 16,
+        "Y": 0,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": "VCC"
+      },
+      {
+        "Ref": "RE",
+        "Type": "Resistor",
+        "X": 12,
+        "Y": 12,
+        "Rotation": 1,
+        "Miroir": false,
+        "Valeur": "1k"
+      },
+      {
+        "Ref": "GND3",
+        "Type": "Ground",
+        "X": 12,
+        "Y": 15,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": ""
+      },
+      {
+        "Ref": "CE",
+        "Type": "Capacitor",
+        "X": 15,
+        "Y": 12,
+        "Rotation": 1,
+        "Miroir": false,
+        "Valeur": "100n"
+      },
+      {
+        "Ref": "GND4",
+        "Type": "Ground",
+        "X": 15,
+        "Y": 15,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": ""
+      },
+      {
+        "Ref": "C1",
+        "Type": "Capacitor",
+        "X": 18,
+        "Y": 8,
+        "Rotation": 1,
+        "Miroir": false,
+        "Valeur": "1n"
+      },
+      {
+        "Ref": "GND5",
+        "Type": "Ground",
+        "X": 18,
+        "Y": 11,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": ""
+      },
+      {
+        "Ref": "CC",
+        "Type": "Capacitor",
+        "X": 10,
+        "Y": 4,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": "100n"
+      },
+      {
+        "Ref": "L1",
+        "Type": "Inductor",
+        "X": 8,
+        "Y": 8,
+        "Rotation": 3,
+        "Miroir": false,
+        "Valeur": "10u"
+      },
+      {
+        "Ref": "C2",
+        "Type": "Capacitor",
+        "X": 8,
+        "Y": 10,
+        "Rotation": 1,
+        "Miroir": false,
+        "Valeur": "1n"
+      },
+      {
+        "Ref": "GND6",
+        "Type": "Ground",
+        "X": 8,
+        "Y": 13,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": ""
+      },
+      {
+        "Ref": "NET30",
+        "Type": "Label",
+        "X": 12,
+        "Y": 6,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": "C"
+      },
+      {
+        "Ref": "NET31",
+        "Type": "Label",
+        "X": 10,
+        "Y": 8,
+        "Rotation": 0,
+        "Miroir": false,
+        "Valeur": "B"
+      }
+    ],
+    "Fils": [
+      [
+        5,
+        5,
+        5,
+        10
+      ],
+      [
+        0,
+        0,
+        5,
+        0
+      ],
+      [
+        5,
+        0,
+        16,
+        0
+      ],
+      [
+        12,
+        6,
+        16,
+        6
+      ],
+      [
+        16,
+        6,
+        16,
+        3
+      ],
+      [
+        18,
+        8,
+        18,
+        6
+      ],
+      [
+        10,
+        8,
+        8,
+        8
+      ],
+      [
+        8,
+        8,
+        5,
+        8
+      ],
+      [
+        8,
+        5,
+        8,
+        4
+      ],
+      [
+        10,
+        4,
+        8,
+        4
+      ],
+      [
+        0,
+        2,
+        0,
+        0
+      ],
+      [
+        5,
+        2,
+        5,
+        0
+      ],
+      [
+        5,
+        0,
+        5,
+        1
+      ],
+      [
+        13,
+        4,
+        16,
+        4
+      ],
+      [
+        8,
+        10,
+        8,
+        8
+      ],
+      [
+        16,
+        6,
+        18,
+        6
+      ],
+      [
+        12,
+        12,
+        12,
+        10
+      ],
+      [
+        15,
+        12,
+        15,
+        11
+      ],
+      [
+        15,
+        11,
+        12,
+        11
+      ]
+    ]
+  },
+  "Bancs": [
+    {
+      "Nom": "Démarrage",
+      "TypeParDefaut": "Transitoire",
+      "Calque": {
+        "Composants": [
+          {
+            "Ref": "IK",
+            "Type": "CurrentSource",
+            "X": 2,
+            "Y": 13,
+            "Rotation": 3,
+            "Miroir": false,
+            "Valeur": "PULSE(0 1m 2u 10n 10n 100n 1)"
+          },
+          {
+            "Ref": "GNDB1",
+            "Type": "Ground",
+            "X": 2,
+            "Y": 13,
+            "Rotation": 0,
+            "Miroir": false,
+            "Valeur": ""
+          }
+        ],
+        "Fils": [
+          [
+            2,
+            10,
+            2,
+            8
+          ],
+          [
+            2,
+            8,
+            5,
+            8
+          ]
+        ]
+      },
+      "Pas": 1e-08,
+      "Duree": 6e-05,
+      "FDebut": 1,
+      "FFin": 1000000,
+      "PointsParDecade": 50,
+      "AcLineaire": false,
+      "AcAuto": true,
+      "TranAuto": false,
+      "Criteres": [
+        {
+          "Mesure": "Frequence",
+          "Noeud": "C",
+          "Min": 2000000,
+          "Max": 2400000
+        },
+        {
+          "Mesure": "AmplitudeCreteACrete",
+          "Noeud": "C",
+          "Min": 4
+        }
+      ],
+      "GabaritsDessines": [],
+      "Graphiques": [
+        [
+          "C",
+          "B"
+        ]
+      ]
+    }
+  ]
+}

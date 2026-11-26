@@ -869,4 +869,55 @@ public class UiTests
         w.AfficherFft(false);
         Assert.Empty(w.Curseurs);   // autre axe : les curseurs FFT sont retirés
     }
+
+    /// <summary>
+    /// État conservé : onglets (démos à jour, fichier, contenu non enregistré), banc actif, disposition, tiroir ;
+    /// pastilles des bancs visibles en « courbes seules » ; tiroir du bas réductible.
+    /// </summary>
+    [AvaloniaFact]
+    public void Session_disposition_et_tiroir()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        // Courbes seules : la barre des bancs reste là.
+        w.Disposer(MainWindow.Disposition.Courbes);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Assert.True(w.BarreBancsVisible);
+        Shot(w, "67-courbes-seules-avec-bancs.png");
+        // Tiroir : ouvert puis réduit.
+        w.OuvrirDetail(MainWindow.Detail.Journal);
+        Assert.True(w.ReduireDetailsVisible);
+        w.OuvrirDetail(null);
+        Assert.False(w.ReduireDetailsVisible);
+        // Session : un projet enregistré et modifié, un projet neuf, le banc « Bode » de l'exemple.
+        var dir = Directory.CreateTempSubdirectory("silx-session").FullName;
+        try
+        {
+            var demo = w.ProjetActif;
+            w.SelectBanc(demo.Etude.Bancs[1]);
+            var chemin = Path.Combine(dir, "rc.silx");
+            Assert.True(w.EnregistrerSous(demo, chemin));
+            demo.Etude.Schema.Components.Single(k => k.Ref == "R1").Value = "2k";   // modification non enregistrée
+            var neuf = w.NouveauProjet(); neuf.Etude.Bancs.Add(new Silx.Etude.Banc { Nom = "Banc neuf" });
+            w.ActiverProjet(demo);
+            w.OuvrirDetail(MainWindow.Detail.Netlist);
+            var s = w.CaptureSession();
+            var fichier = Path.Combine(dir, "session.json"); s.Enregistrer(fichier);
+            var relue = Session.Charger(fichier)!;
+            Assert.Contains(relue.Onglets, o => o.Demo == "Oscillateur Colpitts" && o.Contenu == null);   // démo non modifiée : recréée à jour
+            var w2 = new MainWindow { Width = 1440, Height = 900 }; w2.Show();
+            foreach (var p in w2.Projets.ToList()) w2.FermerSansDemander(p);
+            Assert.True(w2.RestaurerSession(relue));
+            // (w2 garde l'onglet vide créé quand on a fermé ses onglets de démarrage)
+            Assert.Equal(w.Projets.Select(p => p.Nom), w2.Projets.Skip(1).Select(p => p.Nom));
+            var rc = w2.ProjetActif;
+            Assert.Equal(chemin, rc.Chemin);
+            Assert.Equal("2k", rc.Etude.Schema.Components.Single(k => k.Ref == "R1").Value);
+            Assert.True(rc.Modifie);                                   // les modifications restent à enregistrer
+            Assert.Equal("Réponse en fréquence", w2.BancActif!.Nom);
+            Assert.Equal(MainWindow.Disposition.Courbes, w2.DispositionActive);
+            Assert.Equal(MainWindow.Detail.Netlist, w2.DetailOuvert);
+            Assert.Contains(w2.Projets, p => p.Etude.Bancs.Any(b => b.Nom == "Banc neuf"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

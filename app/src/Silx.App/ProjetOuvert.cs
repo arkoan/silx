@@ -9,6 +9,8 @@ public sealed class ProjetOuvert
     public string Nom { get; set; } = "Sans titre";
     public Dictionary<Banc, ResultatEtude> Resultats { get; } = new();
     public Banc? BancActif { get; set; }
+    /// <summary>Nom de la démonstration intégrée dont vient ce projet (recréée à jour au prochain démarrage s'il n'est pas modifié).</summary>
+    public string? Demo { get; set; }
     /// <summary>Contenu au dernier enregistrement (ou à l'ouverture) : sert à savoir s'il y a des modifications.</summary>
     public string Reference { get; set; } = "";
 

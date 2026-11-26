@@ -17,6 +17,7 @@ static class BibliothequeDeTest
         var id = Guid.NewGuid().ToString("N");
         Environment.SetEnvironmentVariable("SILX_COMPOSANTS", Path.Combine(Path.GetTempPath(), "silx-tests-" + id));
         Environment.SetEnvironmentVariable("SILX_JOURNAL", Path.Combine(Path.GetTempPath(), "silx-tests-" + id));
+        Environment.SetEnvironmentVariable("SILX_SESSION", "off");   // chaque fenêtre de test démarre comme une première ouverture
         Environment.SetEnvironmentVariable("SILX_PARAMETRES", Path.Combine(Path.GetTempPath(), "silx-tests-" + id, "parametres.json"));   // pas les préférences de l'utilisateur
     }
 }
