@@ -218,4 +218,31 @@ public class SpiceTests
         Assert.Equal(4, d.Symbole.Broches.Count);
         Assert.Equal("Logique", Silx.App.MainWindow.Categorie(d));
     }
+
+    /// <summary>Tension logique par instance : 3,3 V → seuils 0,99 / 2,31 V, sortie haute à 3,3 V.</summary>
+    [Fact]
+    public async Task Tension_logique_reglee_sur_l_instance()
+    {
+        var bib = BibliothequeLogique.Definitions().ToDictionary(d => d.Nom);
+        var e = new Silx.Etude.Etude(); var banc = new Banc(); var s = e.Schema;
+        var inv = new PlacedComponent { Ref = "A1", Kind = ComponentKind.Spice, Definition = bib["INV"], Position = new(0, 0), Value = "3,3V" };
+        s.Components.Add(inv);
+        s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(0, 0), Value = "IN" });
+        s.Components.Add(new() { Ref = "NET2", Kind = ComponentKind.Label, Position = new(4, 0), Value = "OUT" });
+        s.Components.Add(new() { Ref = "RL", Kind = ComponentKind.Resistor, Position = new(4, 0), Rotation = 1, Value = "1meg" });
+        s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(4, 4) });
+        banc.Calque.Components.Add(new() { Ref = "VIN", Kind = ComponentKind.VoltageSource, Position = new(10, 0), Rotation = 1, Value = "DC 0" });
+        banc.Calque.Components.Add(new() { Ref = "GND2", Kind = ComponentKind.Ground, Position = new(10, 4) });
+        banc.Calque.Components.Add(new() { Ref = "NET3", Kind = ComponentKind.Label, Position = new(10, 0), Value = "IN" });
+        banc.Transitoire.Duree = 1e-6; banc.Transitoire.Pas = 1e-8;
+        Assert.Equal(3.3, CircuitBuilder.TensionLogique(inv), 9);
+        var net = CircuitBuilder.Preview(banc.Fusion(s), Connectivity.Build(banc.Fusion(s)), null);
+        Assert.Contains(".model silx_adc_3p3 adc_bridge(in_low=0.99 in_high=2.31)", net);
+        Assert.Contains("out_high=3.3", net);
+        var r = await Verification.RunAsync(e, banc, []);
+        Assert.Null(r.Erreur);
+        Assert.InRange(r.Resultats[AnalyseKind.Transitoire].Vector("v(out)")[^1], 3.2, 3.31);
+        inv.Value = "";
+        Assert.Equal(5, CircuitBuilder.TensionLogique(inv), 9);   // défaut du composant
+    }
 }

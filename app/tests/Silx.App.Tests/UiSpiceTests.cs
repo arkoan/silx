@@ -346,6 +346,13 @@ public class UiSpiceTests
         w.SelectBanc(null);
         w.ProposerReferences("Logique", w.Schema);
         Shot(w, "50-palette-logique.png");
+        w.SelectBanc(banc);
+        w.EditerCircuitDepuisBanc(w.EtudeCourante.Schema.Components.Single(k => k.Ref == "A1"));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        w.ChampsBulle.ElementAt(1).Text = "3,3"; w.ValiderBulle();
+        Assert.Equal(3.3, CircuitBuilder.TensionLogique(w.EtudeCourante.Schema.Components.Single(k => k.Ref == "A1")), 9);
+        w.EditerCircuitDepuisBanc(w.EtudeCourante.Schema.Components.Single(k => k.Ref == "A1"));
+        Shot(w, "56-tension-logique.png");
     }
 
     /// <summary>Depuis un banc : les valeurs du circuit sous test se modifient (clic sur le composant estompé, ou liste du panneau).</summary>

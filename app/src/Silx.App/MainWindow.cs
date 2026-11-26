@@ -1038,6 +1038,15 @@ public sealed partial class MainWindow : Window
     }
 
     (double X, double Y) ToData(PointerEventArgs e) => ToData(e.GetPosition(_plot));
+
+    /// <summary>Point ramené dans la zone de tracé visible (marge de 4 px) : un point de gabarit reste toujours attrapable.</summary>
+    public Point DansLaZone(Point pos)
+    {
+        var r = _plot.Plot.RenderManager.LastRender.DataRect; var sc = _plot.DisplayScale;
+        if (!(r.Width > 8 && r.Height > 8)) return pos;
+        const double m = 4;
+        return new(Math.Clamp(pos.X, r.Left / sc + m, r.Right / sc - m), Math.Clamp(pos.Y, r.Top / sc + m, r.Bottom / sc - m));
+    }
     (double X, double Y) ToData(Point pos)
     {
         var sc = _plot.DisplayScale;
@@ -1055,7 +1064,7 @@ public sealed partial class MainWindow : Window
             e.Handled = true;
             if (!left) { EndDrawing(false); return; }
             if (e.ClickCount > 1) { EndDrawing(true); return; }
-            var p = ToData(e);
+            var p = ToData(DansLaZone(e.GetPosition(_plot)));
             if (_drawing.Points.Count == 0 && CourbeProche(e.GetPosition(_plot)) is { } proche) _drawing.Noeud = proche;
             if (_drawing.Points.Count > 0 && p.X <= _drawing.Points[^1].X) { _drawHint.Text = "Les points se posent de gauche à droite."; return; }
             _drawing.Points.Add(p);
@@ -1101,7 +1110,7 @@ public sealed partial class MainWindow : Window
         if (_drawing != null)
         {
             if (_drawing.Points.Count == 0) return;
-            _hover = ToData(e); RefreshPlot(keepLimits: true); return;
+            _hover = ToData(DansLaZone(e.GetPosition(_plot))); RefreshPlot(keepLimits: true); return;
         }
         if (_zoomStart is { } z0)
         {
@@ -1116,8 +1125,8 @@ public sealed partial class MainWindow : Window
         }
         if (_dragVertex is { } dv)
         {
-            // Déplacement d'un point : l'abscisse reste entre celles de ses voisins.
-            var (x, y) = ToData(e); var pts = dv.G.Points;
+            // Déplacement d'un point : dans la zone visible, l'abscisse entre celles de ses voisins.
+            var (x, y) = ToData(DansLaZone(e.GetPosition(_plot))); var pts = dv.G.Points;
             // Bornes finies seulement : le premier et le dernier point n'ont qu'un voisin.
             double? lo = dv.I > 0 ? pts[dv.I - 1].X : null, hi = dv.I < pts.Count - 1 ? pts[dv.I + 1].X : null;
             bool ac = dv.G.Analyse == AnalyseKind.Ac;
@@ -1741,11 +1750,30 @@ public sealed partial class MainWindow : Window
         if (st.Forme == FormeStimulus.Continu) _cible.Children.Add(ChampTolerance(c));
     }
 
+    /// <summary>Porte ou bascule XSPICE : tension d'alimentation de l'instance (seuils des ponts à 30 % / 70 %, sorties 0 / Vcc).</summary>
+    void ProprietesLogique(PlacedComponent c, DefinitionComposant d, TextBox refBox)
+    {
+        var vcc = CircuitBuilder.TensionLogique(c);
+        var tb = new TextBox { Text = SpiceNumber.Format(vcc, "V"), PlaceholderText = $"{SpiceNumber.Format(d.TensionLogique, "V")} (défaut du composant)" };
+        void Commit()
+        {
+            var t = (tb.Text ?? "").Trim();
+            string valeur = t.Length == 0 ? "" : SpiceNumber.ParseOrNull(t.TrimEnd('V', 'v').Trim()) is > 0 and <= 50 and var x
+                ? (Math.Abs(x - d.TensionLogique) < 1e-9 ? "" : SpiceNumber.Format(x, "V").Replace(" ", "")) : c.Value;
+            EditerComposant(c, refBox.Text ?? c.Ref, valeur);
+        }
+        foreach (var t in new[] { refBox, tb }) { t.KeyDown += (_, e) => { if (e.Key == Key.Enter) Commit(); }; t.LostFocus += (_, _) => Commit(); }
+        _cible.Children.Add(Ui.Label("Référence")); _cible.Children.Add(refBox);
+        _cible.Children.Add(Ui.Label("Tension d'alimentation logique")); _cible.Children.Add(tb);
+        _cible.Children.Add(Ui.Hint($"Entrées : bas sous {SpiceNumber.Format(0.3 * vcc, "V")}, haut au-dessus de {SpiceNumber.Format(0.7 * vcc, "V")} (30 % / 70 %). Sorties : 0 V ou {SpiceNumber.Format(vcc, "V")} derrière 50 Ω. Ex. 3,3 · 5 · 12."));
+    }
+
     void ProprietesSpice(PlacedComponent c)
     {
         var d = c.Definition;
         _cible.Children.Add(new TextBlock { Text = d == null ? "Composant SPICE" : $"{d.Nom} · {d.Description}", FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap });
         var refBox = new TextBox { Text = c.Ref };
+        if (d?.CodeXspice != null) { ProprietesLogique(c, d, refBox); return; }
         var vb = new TextBox { Text = c.Value, PlaceholderText = d?.Type == TypeModele.SousCircuit ? d.Parametres : "" };
         void Commit() => EditerComposant(c, refBox.Text ?? c.Ref, vb.Text ?? "");
         foreach (var t in new[] { refBox, vb }) { t.KeyDown += (_, e) => { if (e.Key == Key.Enter) Commit(); }; t.LostFocus += (_, _) => Commit(); }

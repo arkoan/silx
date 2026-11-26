@@ -88,6 +88,8 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
   - gain DC, offset
   - (extensible : liste ouverte, ajout de nouvelles mesures sans toucher au moteur)
 - Évaluation automatique pass/fail contre un ou plusieurs gabarits
+- Gabarits dessinés : leurs points se posent et se déplacent dans la zone de tracé visible seulement (ils
+  restent toujours attrapables)
 - **Bancs de test en calques** : le circuit sous test ne contient que le montage ; chaque banc est un
   calque posé dessus (sources, charges, analyses, gabarits). Depuis un banc, la **topologie** du circuit
   est verrouillée (câblage, ajout ou retrait de composants : onglet « Circuit sous test »), mais ses

@@ -59,8 +59,14 @@ reconnaît, en gérant les lignes de continuation `+` et les commentaires `*` et
 | `.model X NJF(...)` / `PJF` | `J` | D, G, S |
 | `.subckt X n1 n2 … [params: …]` … `.ends` | `X` | n1, n2, … (noms du fichier) |
 
-Les modèles XSPICE numériques (`d_and`, `d_dff`…) ne sont pas encore importables : ils demandent la syntaxe
-tableau `[ ]` et des ponts A/D ; ils viendront avec le mixte avancé.
+Composants logiques XSPICE (`d_and`, `d_nand`, `d_or`, `d_nor`, `d_xor`, `d_xnor`, `d_inverter`, `d_buffer`,
+`d_dff`, `d_jkff`, `d_tff`, `d_srff`, `d_dlatch`, `d_srlatch`) : importables (lettre `A`, une porte nommée
+« and3 » a 3 entrées), et fournis prêts à poser dans la catégorie « Logique » de la palette. Ils se câblent sur
+des nœuds analogiques : Silx place un pont `adc_bridge` sur chaque entrée et un `dac_bridge` suivi de 50 Ω sur
+chaque sortie ; mise à un / à zéro des bascules inactives (`NULL`). La **tension d'alimentation logique** se
+règle **par instance** dans la bulle du composant (valeur de l'instance, ex. « 3,3V » ; vide = défaut du
+composant, 5 V) : entrées basses sous 30 %, hautes au-dessus de 70 % de cette tension, sorties à 0 V ou à
+cette tension. Les ponts `adc_bridge` / `dac_bridge` d'un fichier importé sont ignorés avec un avertissement.
 
 ### Définition de composant
 Une **définition** (`DefinitionComposant`, enregistrée en JSON, extension `.silxcomp`) rassemble :

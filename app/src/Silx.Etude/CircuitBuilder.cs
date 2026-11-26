@@ -69,6 +69,16 @@ public static class CircuitBuilder
     static string Propre(string s) => string.Concat(s.Select(ch => char.IsAsciiLetterOrDigit(ch) ? ch : '_'));
     static string NoeudCache(PlacedComponent k, string broche, string cx) => cx.Trim() == "0" ? "0" : $"{Propre(k.Ref)}_{Propre(broche)}";
 
+    /// <summary>
+    /// Tension d'alimentation d'un composant logique : celle de l'instance (sa valeur, ex. « 3,3V » ou « VCC=3.3 »),
+    /// sinon celle de sa définition (5 V par défaut).
+    /// </summary>
+    public static double TensionLogique(PlacedComponent k)
+    {
+        var v = System.Text.RegularExpressions.Regex.Replace(k.Value ?? "", @"(?i)^\s*vcc\s*=\s*", "").Trim().TrimEnd('V', 'v').Trim();
+        return SpiceNumber.ParseOrNull(v) is > 0 and <= 50 and var x ? x : k.Definition?.TensionLogique ?? 5;
+    }
+
     static string NoeudNumerique(PlacedComponent k, string broche) => $"{Propre(k.Ref)}_{Propre(broche)}_d";
     static string Famille(double vcc) => vcc.ToString("G4", System.Globalization.CultureInfo.InvariantCulture).Replace('.', 'p');
 
@@ -82,7 +92,7 @@ public static class CircuitBuilder
         if (k.Kind != ComponentKind.Spice || k.Definition is not { } d) yield break;
         if (d.CodeXspice != null)
         {
-            var pins = k.Pins; var ordre = d.OrdreSpice(); var fam = Famille(d.TensionLogique);
+            var pins = k.Pins; var ordre = d.OrdreSpice(); var fam = Famille(TensionLogique(k));
             for (int j = 0; j < d.BrochesModele.Count; j++)
             {
                 var b = d.BrochesModele[j]; var r = Propre(k.Ref); var pb = Propre(b);
@@ -107,7 +117,7 @@ public static class CircuitBuilder
     {
         foreach (var m in s.Components.Where(k => k.Kind == ComponentKind.Diode).Select(k => k.Value.Trim().ToUpperInvariant()).Distinct())
             if (DiodeModels.All.TryGetValue(m, out var line)) yield return line;
-        foreach (var v in s.Components.Where(k => k.Kind == ComponentKind.Spice && k.Definition?.CodeXspice != null).Select(k => k.Definition!.TensionLogique).Distinct())
+        foreach (var v in s.Components.Where(k => k.Kind == ComponentKind.Spice && k.Definition?.CodeXspice != null).Select(TensionLogique).Distinct())
         {
             // Ponts de la famille logique : seuils à 30 % / 70 % de Vcc, sorties 0 / Vcc, transitions de 5 ns.
             string G4(double x) => x.ToString("G4", System.Globalization.CultureInfo.InvariantCulture);

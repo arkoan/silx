@@ -775,4 +775,18 @@ public class UiTests
         w.OuvrirReglagesBanc(w.Schema);
         Shot(w, "53-reglages-campagne.png");
     }
+
+    /// <summary>Les points de gabarit se posent et se déplacent dans la zone de tracé visible seulement.</summary>
+    [AvaloniaFact]
+    public async Task Points_de_gabarit_contraints_a_la_zone_visible()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        var q = w.DansLaZone(new Avalonia.Point(-500, 5000));
+        var b = w.PlotControl.Bounds;
+        Assert.InRange(q.X, 0, b.Width); Assert.InRange(q.Y, 0, b.Height);
+        var r = w.DansLaZone(new Avalonia.Point(5000, -500));
+        Assert.True(r.X > q.X && r.Y < q.Y);
+    }
 }
