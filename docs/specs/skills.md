@@ -1,6 +1,6 @@
 # Chapitre de spécification : Skills d'électronique de l'assistant Silx
 
-Statut : proposition, à valider.
+Statut : proposition, à valider. Décisions du 26/11/2026 : §1.1 et §10.1 (voir §12).
 Complète la spécification fonctionnelle (§3.7 Assistant de conception, §3.9 Intégration IA),
 `assistant_documents.md` et `generation_modeles.md`. S'appuie sur le serveur MCP `silx-mcp` (`mcp/README.md`).
 
@@ -24,7 +24,7 @@ utilisés, outils manquants et priorité.
 
 ### 1.1 Consignes permanentes (hors Skills)
 
-Certaines règles valent pour chaque réponse. Elles ne sont pas des Skills (qui se chargent à la demande) mais des
+Certaines règles valent pour chaque réponse. Elles ne sont pas des Skills (décision du 26/11/2026) (qui se chargent à la demande) mais des
 **consignes permanentes** : texte `Instructions` du serveur MCP (déjà en place) et consignes système de l'agent
 intégré.
 
@@ -524,9 +524,10 @@ Ce tableau est la conséquence directe de la liste : il dit quels outils débloq
 ### 10.1 Calcul (débloque D1 à D5, D7, C5, C8, F2)
 
 `evaluate_formula`, `solve_formula`, `worst_case`, `nearest_standard_value`, déjà spécifiés dans
-`assistant_documents.md` §6.1 au jalon J3. **Proposition : les sortir du chantier documentaire et les livrer tôt**,
-car aucune Skill de dimensionnement ne peut respecter la règle « l'IA ne calcule pas » sans eux, avec ou sans
-datasheet.
+`assistant_documents.md` §6.1 au jalon J3. **Décision (26/11/2026) : ils sortent du chantier documentaire et sont
+livrés tôt**, avant le lot 2, car aucune Skill de dimensionnement ne peut respecter la règle « l'IA ne calcule pas »
+sans eux, avec ou sans datasheet. Au jalon J3 ne restent que la transcription de formules depuis un document et la
+boucle de confirmation par simulation propre aux documents.
 
 ### 10.2 Écriture du projet (débloque B1, B2, C4, C6, D1 à D6, E1)
 
@@ -577,13 +578,20 @@ besoin, ce qui guide le choix du modèle. Si nécessaire, le serveur exposera le
    C1 `diagnostiquer-banc-en-echec`, B3 `regler-campagne`, C3 `verifier-polarisation`, C5 `analyser-bruit`,
    C7 `expliquer-un-circuit`, C8 `revue-de-schema` (partielle), G1 `rapport-de-test` (partielle),
    C2 `analyser-sensibilite` (dégradée). Plus le plugin Claude Code qui réunit serveur MCP et Skills.
-2. **Outils de calcul et d'écriture** (§10.1, §10.2), puis **lot 2** : B1, B2, C4, C6, D1 à D6, E1.
+2. **Outils de calcul** (§10.1, avancés) **et d'écriture** (§10.2), puis **lot 2** : B1, B2, C4, C6, D1 à D6, E1.
 3. **Conception bouclée** (§10.3), puis D7, et C1 et C2 en version complète.
 4. **Lot 3**, au rythme des jalons J et M : F1 à F4, E2 à E4.
 5. **Après v1** : D8, D9, F5, G2.
 
-## 12. Questions ouvertes
+## 12. Décisions et questions ouvertes
 
-1. Faut-il avancer les outils de calcul (§10.1) avant le socle documentaire, comme proposé ?
-2. Le plugin Claude Code (serveur MCP + Skills) est-il le premier mode de diffusion, avant l'agent intégré ?
-3. Des domaines manquent-ils pour votre usage (RF, audio, capteurs et conditionnement, CEM, mesures sur batteries) ?
+Décisions validées (26/11/2026) :
+
+1. Les règles permanentes (§1.1) ne sont pas des Skills : elles vont dans les consignes de l'agent (texte
+   `Instructions` du serveur MCP, consignes système de l'agent intégré).
+2. Les outils de calcul (§10.1) sont livrés avant le socle documentaire, sans attendre le jalon J3.
+
+Questions ouvertes :
+
+1. Le plugin Claude Code (serveur MCP + Skills) est-il le premier mode de diffusion, avant l'agent intégré ?
+2. Des domaines manquent-ils pour votre usage (RF, audio, capteurs et conditionnement, CEM, mesures sur batteries) ?
