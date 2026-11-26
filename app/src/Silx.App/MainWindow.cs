@@ -231,6 +231,7 @@ public sealed partial class MainWindow : Window
             ActiverProjet(exemple);
             Disposer(Disposition.Mixte);
         }
+        CreerMenus();
         ActiverZone(Zone.Schema);
         _status.Text = "Clic : placer / sélectionner · glisser : déplacer · clic droit ou molette : vue · ⌘R : pivoter · W : fil · Suppr · ⌘Z / ⇧⌘Z";
     }
@@ -397,7 +398,7 @@ public sealed partial class MainWindow : Window
         try
         {
             var p = OuvrirDansOnglet(Projet.Ouvrir(chemin), Path.GetFileNameWithoutExtension(chemin), chemin);
-            _status.Text = $"Projet ouvert : {chemin}";
+            _status.Text = $"Projet ouvert : {chemin}"; RetenirRecent(chemin);
             return p;
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or System.Text.Json.JsonException or UnauthorizedAccessException)
@@ -430,7 +431,7 @@ public sealed partial class MainWindow : Window
         {
             Projet.Enregistrer(p.Etude, chemin);
             p.Chemin = chemin; p.Nom = Path.GetFileNameWithoutExtension(chemin); p.MarquerEnregistre();
-            _status.Text = $"Projet enregistré : {chemin}";
+            _status.Text = $"Projet enregistré : {chemin}"; RetenirRecent(chemin);
             RafraichirOnglets();
             return true;
         }

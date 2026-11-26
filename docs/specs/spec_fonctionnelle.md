@@ -271,6 +271,23 @@ Chaque démo est conforme sous ngspice (test automatique).
 - Visualiseur de courbes interactif (temporel, AC bode, FFT, histogrammes
   Monte Carlo), avec possibilité de superposer les traces d'un run
   sélectionné directement sur le schéma (probes visuelles sur les nœuds)
+- **Barre de menus native** (en haut de l'écran sur macOS) — **faite** :
+  - *Silx* : À propos de Silx, Paramètres… (⌘,) ; Masquer et Quitter (⌘Q) fournis par macOS.
+  - *Fichier* : Nouveau projet (⌘N), Ouvrir… (⌘O), Ouvrir un projet récent (10 derniers ouverts ou enregistrés,
+    « Effacer la liste »), Enregistrer (⌘S), Enregistrer sous… (⇧⌘S), Exporter (schéma, courbes, les deux en
+    PDF/SVG/PNG ; points des courbes et mesures en CSV ; rapport Markdown), Fermer le projet (⌘W).
+  - *Édition* : Annuler (⌘Z), Rétablir (⇧⌘Z), Couper, Copier, Coller, Dupliquer (⌘D), Supprimer, Tout sélectionner
+    (⌘A), Pivoter (⌘R), Miroir, Rechercher une commande ou un composant… (⌘K). Dans un champ texte, ces commandes
+    agissent sur le texte.
+  - *Affichage* : Schéma seul / Schéma et courbes / Courbes seules (F1, F2, F3), zoom avant, arrière, tout voir
+    (⌘+, ⌘−, ⌘0), tiroir du bas (netlist, vérifications, journal, campagne, réduire), explorateur, palette, panneau
+    de propriétés, thème (clair, sombre, système).
+  - *Placer* : résistance, condensateur, inductance, diode, sources de tension et de courant, masse, étiquette, fil,
+    sonde (lettre du raccourci rappelée dans le libellé, sans raccourci de menu pour ne pas gêner la saisie),
+    importer un modèle SPICE.
+  - *Simulation* : Lancer (⌘↵ ; ⌘R reste « pivoter »), Arrêter (⌘.), simulation automatique, point de
+    fonctionnement DC, nouveau banc (modèles), réglages du banc et campagne, circuit sous test.
+  - *Aide* : manuel en ligne (README du dépôt), gestes et raccourcis, palette de commandes, démos.
 - **Icônes légères** : icônes au trait dessinées sur une grille 24×24 commune et mises à l'échelle telles quelles
   (même corps optique pour toutes, pas d'étirement jusqu'au bord), 16 px par défaut, **trait de 1,15 px** quelle
   que soit la taille ; boutons-icônes avec 6 px de marge.

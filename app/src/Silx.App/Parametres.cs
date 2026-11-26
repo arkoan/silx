@@ -14,6 +14,8 @@ public sealed class Parametres
     public int NiveauZoom { get; set; } = 3;
     /// <summary>Apparence : « clair », « sombre » ou « systeme » (suit macOS).</summary>
     public string Theme { get; set; } = "clair";
+    /// <summary>Projets ouverts ou enregistrés récemment (menu Fichier), le plus récent d'abord.</summary>
+    public List<string> Recents { get; set; } = new();
     // Affichage
     public string CouleurBanc { get; set; } = "#7c3aed";
     public string CouleurGabarit { get; set; } = "#b91c1c";

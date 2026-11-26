@@ -1014,4 +1014,33 @@ public class UiTests
         w.AfficherBruit(false);
         Assert.False(w.VueBruit);
     }
+
+    /// <summary>Barre de menus native : structure, raccourcis, commandes exécutables, projets récents.</summary>
+    [AvaloniaFact]
+    public async Task Barre_de_menus()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var menus = Avalonia.Controls.NativeMenu.GetMenu(w)!;
+        var titres = menus.Items.OfType<Avalonia.Controls.NativeMenuItem>().Select(m => m.Header).ToList();
+        Assert.Equal(["Fichier", "Édition", "Affichage", "Placer", "Simulation", "Aide"], titres);
+        Avalonia.Controls.NativeMenuItem Chercher(Avalonia.Controls.NativeMenu m, string t) =>
+            m.Items.OfType<Avalonia.Controls.NativeMenuItem>().Select(i => i.Header == t ? i : i.Menu is { } s ? Chercher(s, t) : null).FirstOrDefault(x => x != null)!;
+        Assert.NotNull(Chercher(menus, "Enregistrer").Gesture);
+        Assert.NotNull(Chercher(menus, "Ouvrir un projet récent").Menu);
+        Assert.NotNull(Avalonia.Controls.NativeMenu.GetMenu(Avalonia.Application.Current!));   // menu « Silx » : À propos, Paramètres
+        w.SelectBanc(w.EtudeCourante.Bancs[1]);
+        Chercher(menus, "Point de fonctionnement DC (afficher / masquer)").Command!.Execute(null);
+        for (int i = 0; i < 100 && w.Canevas.PointFonctionnement == null; i++) { await Task.Delay(30); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+        Assert.True(w.PointFonctionnementVisible);
+        Chercher(menus, "Courbes seules").Command!.Execute(null);
+        Assert.Equal(MainWindow.Disposition.Courbes, w.DispositionActive);
+        var dir = Directory.CreateTempSubdirectory("silx-menus").FullName;
+        try
+        {
+            var f = Path.Combine(dir, "essai.silx");
+            Assert.True(w.EnregistrerSous(w.ProjetActif, f));
+            Assert.Contains(Chercher(menus, "Ouvrir un projet récent").Menu!.Items.OfType<Avalonia.Controls.NativeMenuItem>(), i => i.Header!.StartsWith("essai"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }
