@@ -47,6 +47,7 @@ public class ProjetTests
         banc.Calque.Components.Add(new() { Ref = "GND3", Kind = ComponentKind.Ground, Position = new(2, -10) });
         banc.Transitoire.Duree = 1e-4; banc.Transitoire.Pas = 1e-6;
 
+        Ancien.Raccorder(e.Schema, banc);   // tracé au pas de 4
         var dir = Directory.CreateTempSubdirectory("silx-projet").FullName;
         try
         {

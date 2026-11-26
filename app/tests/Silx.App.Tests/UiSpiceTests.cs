@@ -43,18 +43,18 @@ public class UiSpiceTests
         w.SelectBanc(null);
         var e = w.EtudeCourante; var avant = e.Bancs[1].Fusion(e.Schema);
         Shot(w, "15-avant-glisser.png");
-        var c1 = e.Schema.Components.Single(c => c.Ref == "C1");   // (12,8)-(12,12), vertical
-        var p0 = Ecran(w, 12, 10);
+        var c1 = e.Schema.Components.Single(c => c.Ref == "C1");   // (11,8)-(11,11), vertical
+        var p0 = Ecran(w, 11, 10);
         w.MouseMove(p0); w.MouseDown(p0, MouseButton.Left);
-        foreach (var k in new[] { 1.0, 2.0, 3.0 }) { w.MouseMove(Ecran(w, 12 + k, 10 - k)); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+        foreach (var k in new[] { 1.0, 2.0, 3.0 }) { w.MouseMove(Ecran(w, 11 + k, 10 - k)); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
         Shot(w, "16-pendant-glisser.png");
-        w.MouseUp(Ecran(w, 15, 7), MouseButton.Left);
-        Assert.Equal(new GridPoint(15, 5), c1.Position);
+        w.MouseMove(Ecran(w, 14, 6)); w.MouseUp(Ecran(w, 14, 6), MouseButton.Left);   // (+3, −4) : la broche basse ne retombe pas sur le fil du banc
+        Assert.Equal(new GridPoint(14, 4), c1.Position);
         Assert.All(e.Schema.Wires, x => Assert.True(x.A.X == x.B.X || x.A.Y == x.B.Y));
         Assert.True(Elastique.MemesConnexions(avant, e.Bancs[1].Fusion(e.Schema)));  // le banc Bode suit aussi
         Shot(w, "17-apres-glisser.png");
         w.Schema.Undo();
-        Assert.Equal(new GridPoint(12, 8), e.Schema.Components.Single(c => c.Ref == "C1").Position);
+        Assert.Equal(new GridPoint(11, 8), e.Schema.Components.Single(c => c.Ref == "C1").Position);
         Assert.Equal(avant.Wires.ToHashSet(), e.Bancs[1].Fusion(e.Schema).Wires.ToHashSet());
     }
 
@@ -337,6 +337,7 @@ public class UiSpiceTests
         Source("VH", 12, "H", "PULSE(5 0 1u 10n 10n 5u 10u)");
         banc.Transitoire.Duree = 40e-6; banc.Transitoire.Pas = 10e-9;
         banc.Graphiques.Add(["H", "D"]); banc.Graphiques.Add(["Q", "Y"]);
+        Ancien.Raccorder(s, banc);   // sources tracées au pas de 4
         w.OuvrirDansOnglet(e, "Logique", null);
         w.SelectBanc(banc);
         await w.SimulateAsync();
@@ -387,5 +388,32 @@ public class UiSpiceTests
         double apres = w.Resultats!.Criteres.Single(c => c.Critere == tm).Resultat.Valeur!.Value;
         Assert.InRange(apres / avant, 1.9, 2.1);   // τ = RC double
         Shot(w, "54-valeurs-depuis-banc.png");
+    }
+
+    /// <summary>Tailles : dipôles sur 3 pas, transistors sur 4 ; composants de base dans la palette.</summary>
+    [AvaloniaFact]
+    public void Composants_de_base_et_tailles()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var b = w.Bibliotheque.Definitions.ToDictionary(d => d.Nom);
+        var e = new Silx.Etude.Etude(); var s = e.Schema;
+        s.Components.Add(new() { Ref = "R1", Kind = ComponentKind.Resistor, Position = new(0, 0), Value = "10k" });
+        s.Components.Add(new() { Ref = "C1", Kind = ComponentKind.Capacitor, Position = new(5, 0), Value = "100n" });
+        s.Components.Add(new() { Ref = "L1", Kind = ComponentKind.Inductor, Position = new(10, 0), Value = "10u" });
+        s.Components.Add(new() { Ref = "D1", Kind = ComponentKind.Diode, Position = new(15, 0), Value = "1N4148" });
+        s.Components.Add(new() { Ref = "V1", Kind = ComponentKind.VoltageSource, Position = new(20, -1), Rotation = 1, Value = "DC 5" });
+        s.Components.Add(new() { Ref = "Q1", Kind = ComponentKind.Spice, Definition = b["2N3904"], Position = new(0, 6) });
+        s.Components.Add(new() { Ref = "Q2", Kind = ComponentKind.Spice, Definition = b["2N3906"], Position = new(5, 6) });
+        s.Components.Add(new() { Ref = "X1", Kind = ComponentKind.Spice, Definition = b["2N7000"], Position = new(10, 6) });
+        s.Components.Add(new() { Ref = "X2", Kind = ComponentKind.Spice, Definition = b["BS250"], Position = new(15, 6) });
+        s.Components.Add(new() { Ref = "J1", Kind = ComponentKind.Spice, Definition = b["J201"], Position = new(20, 6) });
+        s.Components.Add(new() { Ref = "X3", Kind = ComponentKind.Spice, Definition = b["Quartz 16 MHz"], Position = new(25, 6) });
+        s.Components.Add(new() { Ref = "A1", Kind = ComponentKind.Spice, Definition = b["NAND2"], Position = new(25, 0) });
+        w.OuvrirDansOnglet(e, "Composants", null);
+        w.SelectBanc(null);
+        w.Schema.FitAll();
+        Shot(w, "57-tailles-composants.png");
+        w.ProposerReferences("MOSFET canal N", w.Schema);
+        Shot(w, "58-palette-base.png");
     }
 }

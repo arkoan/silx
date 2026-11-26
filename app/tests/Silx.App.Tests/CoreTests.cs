@@ -20,6 +20,7 @@ public class CoreTests
         s.Components.Add(new() { Ref = "R2", Kind = ComponentKind.Resistor, Position = new(8, 0), Value = "2k" });
         s.Wires.Add(new(new(4, 0), new(8, 0)));
         s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(12, 0) });
+        Ancien.Raccorder(s);   // tracé au pas de 4
         var c = Connectivity.Build(s);
         Assert.Equal(c.NodeOf[new GridPoint(4, 0)], c.NodeOf[new GridPoint(8, 0)]);
         Assert.Equal("0", c.NodeOf[new GridPoint(12, 0)]);
@@ -46,6 +47,7 @@ public class CoreTests
         s.Components.Add(new() { Ref = "R1", Kind = ComponentKind.Resistor, Position = new(0, 0), Value = "1k" });
         s.Components.Add(new() { Ref = "R2", Kind = ComponentKind.Resistor, Position = new(2, 4), Rotation = 3, Value = "1k" }); // (2,4),(2,0)
         s.Wires.Add(new(new(0, 0), new(4, 0)));
+        Ancien.Raccorder(s);   // tracé au pas de 4
         var c = Connectivity.Build(s);
         Assert.Equal(c.NodeOf[new GridPoint(2, 0)], c.NodeOf[new GridPoint(0, 0)]);
     }
@@ -156,6 +158,7 @@ public class CoreTests
         s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(0, 4) });
         s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(4, 0), Value = "OUT" });
         banc.Transitoire.Duree = 3e-3; banc.Transitoire.Pas = 5e-6;
+        Ancien.Raccorder(s, banc);   // tracé au pas de 4
         var r = await Verification.RunAsync(e, banc, [AnalyseKind.Transitoire]);
         Assert.Null(r.Erreur);
         var v = r.Resultats[AnalyseKind.Transitoire].Vector("v(out)");

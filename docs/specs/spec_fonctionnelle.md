@@ -52,7 +52,14 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
   via une interface dédiée, pensée pour être nettement plus simple que
   l'association manuelle typique de LTspice (point faible connu à corriger)
 - Bibliothèque de symboles standards fournie par défaut (composants discrets,
-  sources, composants actifs courants)
+  sources, composants actifs courants). Dans la palette, toujours présents : R, C, L, diode, sources, masse,
+  étiquette ; puis, par catégorie, des bipolaires (2N3904, 2N3906, 2N2222A, BC547B, BC557B), JFET
+  (2N5457, J201, 2N5460), MOSFET discrets avec diode de corps (2N7000, BS250, IRF540N, IRF9540), quartz
+  (32,768 kHz, 4, 8, 16 MHz) et portes et bascules logiques XSPICE. Modèles indicatifs, remplacés par ceux du
+  fabricant à l'import.
+- Tailles : dipôles (R, C, L, D, sources, quartz) sur **3 pas** de grille ; transistors sur 4 pas de haut,
+  dessinés finement au quart de pas. Un projet enregistré avec les anciens dipôles sur 4 pas (format 1)
+  reçoit à l'ouverture un court fil de raccord par dipôle : aucune connexion n'est perdue.
 
 **Gestion de bibliothèques**
 - Scan automatique de dossiers de bibliothèques (`.lib`, `.mod`, `.sub`, `.asy`

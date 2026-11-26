@@ -11,7 +11,8 @@ namespace Silx.Etude;
 public static class Projet
 {
     public const string Extension = ".silx";
-    public const int VersionFormat = 1;
+    /// <summary>2 : dipôles sur 3 pas (4 avant) ; un projet plus ancien reçoit des fils de raccord à l'ouverture.</summary>
+    public const int VersionFormat = 2;
 
     // ── format de fichier (objets simples, indépendants des classes de travail) ──
     public sealed class Fichier
@@ -104,6 +105,7 @@ public static class Projet
                 r.Components.Add(new PlacedComponent { Ref = c.Ref, Kind = c.Type, Position = new(c.X, c.Y), Rotation = c.Rotation, Miroir = c.Miroir, Value = c.Valeur, Definition = d, Tolerance = c.Tolerance });
             }
             foreach (var w in s.Fils.Where(w => w.Length == 4)) r.Wires.Add(new(new(w[0], w[1]), new(w[2], w[3])));
+            if (f.Version < 2) r.RaccorderDipoles(4);
             return r;
         }
         var e = new Etude { Schema = S(f.Circuit) };

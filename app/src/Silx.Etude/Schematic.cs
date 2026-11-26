@@ -21,7 +21,10 @@ public sealed class PlacedComponent
     /// <summary>Vrai si le composant produit une ligne de netlist (ni masse, ni étiquette).</summary>
     public bool IsElectrical => Kind is not (ComponentKind.Ground or ComponentKind.Label);
 
-    // HYPOTHÈSE : composants 2 broches, broche 1 en (0,0), broche 2 à 4 pas (axe X avant rotation). GND et étiquette : 1 broche en (0,0).
+    /// <summary>Écart entre les deux broches d'un dipôle (R, C, L, D, sources), en pas de grille. 4 avant le format de projet 2.</summary>
+    public const int LongueurDipole = 3;
+
+    // Composants 2 broches : broche 1 en (0,0), broche 2 à LongueurDipole pas (axe X avant rotation). GND et étiquette : 1 broche en (0,0).
     public IReadOnlyList<GridPoint> Pins
     {
         get
@@ -29,7 +32,7 @@ public sealed class PlacedComponent
             var local = Kind == ComponentKind.Spice
                 ? (Definition?.Symbole.Broches.Select(b => new GridPoint(b.X, b.Y)).ToArray() ?? [])
                 : IsElectrical
-                ? new[] { new GridPoint(0, 0), new GridPoint(4, 0) }
+                ? new[] { new GridPoint(0, 0), new GridPoint(LongueurDipole, 0) }
                 : new[] { new GridPoint(0, 0) };
             return local.Select(p => Miroir ? new GridPoint(-p.X, p.Y) : p).Select(p => Rotate(p, Rotation)).Select(p => new GridPoint(p.X + Position.X, p.Y + Position.Y)).ToArray();
         }
@@ -56,6 +59,22 @@ public sealed record Wire(GridPoint A, GridPoint B);
 
 public sealed class Schematic
 {
+    /// <summary>
+    /// Schéma dessiné avec des dipôles plus longs (<paramref name="ancienneLongueur"/> pas) : un fil de raccord relie la
+    /// nouvelle broche 2 de chaque dipôle à l'ancienne, pour que toutes les connexions soient conservées.
+    /// </summary>
+    public void RaccorderDipoles(int ancienneLongueur)
+    {
+        foreach (var k in Components.Where(k => k.IsElectrical && k.Kind != ComponentKind.Spice))
+        {
+            var ancien = PlacedComponent.Rotate(new GridPoint(ancienneLongueur, 0), k.Rotation);
+            if (k.Miroir) ancien = PlacedComponent.Rotate(new GridPoint(-ancienneLongueur, 0), k.Rotation);
+            var a = new GridPoint(k.Position.X + ancien.X, k.Position.Y + ancien.Y);
+            var b = k.Pins[1];
+            if (a != b) Wires.Add(new Wire(b, a));
+        }
+    }
+
     public List<PlacedComponent> Components { get; init; } = new();
     public List<Wire> Wires { get; init; } = new();
 

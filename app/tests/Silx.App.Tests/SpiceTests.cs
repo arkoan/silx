@@ -116,7 +116,7 @@ public class SpiceTests
             var bib = BibliothequeComposants.Charger(dir);
             bib.Enregistrer(d); bib.Enregistrer(Def("RCF"));
             var relu = BibliothequeComposants.Charger(dir);
-            Assert.Equal(["BS170", "RCF"], relu.Definitions.Where(x => x.CodeXspice == null).Select(x => x.Nom));   // + composants logiques intégrés
+            Assert.Equal(["BS170", "RCF"], relu.Definitions.Select(x => x.Nom).Intersect(["BS170", "RCF"]));   // + composants intégrés
             Assert.Equal(5, relu.Definitions.Single(x => x.Nom == "BS170").Symbole.Broches[3].X);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
@@ -136,6 +136,7 @@ public class SpiceTests
         banc.Calque.Components.Add(new() { Ref = "VCC", Kind = ComponentKind.VoltageSource, Position = new(2, -2), Rotation = 3, Value = "DC 10" }); // (3,-3)-(3,-7)
         banc.Calque.Components.Add(new() { Ref = "GND3", Kind = ComponentKind.Ground, Position = new(2, -6) });
         banc.Transitoire.Duree = 1e-3; banc.Transitoire.Pas = 1e-5;
+        Ancien.Raccorder(s, banc);   // tracé au pas de 4
         var r = await Verification.RunAsync(e, banc, []);
         Assert.Null(r.Erreur);
         var v = r.Resultats[AnalyseKind.Transitoire].Vector("v(out)");
@@ -160,6 +161,7 @@ public class SpiceTests
         banc.Calque.Components.Add(new() { Ref = "V1", Kind = ComponentKind.VoltageSource, Position = new(0, 0), Rotation = 3, Value = "AC 1" }); // (0,0)-(0,-4)
         banc.Calque.Components.Add(new() { Ref = "GND2", Kind = ComponentKind.Ground, Position = new(0, -4) });
         banc.Gabarits.Add(new() { Mesure = TypeMesure.BandePassante3dB, Noeud = "OUT", Min = fc * 0.97, Max = fc * 1.03 });
+        Ancien.Raccorder(s, banc);   // tracé au pas de 4
         var r = await Verification.RunAsync(e, banc, []);
         Assert.Null(r.Erreur);
         Assert.Equal(Verdict.Pass, r.Global);
@@ -187,6 +189,7 @@ public class SpiceTests
         Source("VD", 40, "D", "PULSE(0 5 3u 10n 10n 20u 40u)");
         Source("VC", 50, "CLK", "PULSE(0 5 1u 10n 10n 5u 10u)");
         banc.Transitoire.Duree = 40e-6; banc.Transitoire.Pas = 10e-9;
+        Ancien.Raccorder(s, banc);   // tracé au pas de 4
         var c = Connectivity.Build(banc.Fusion(s));
         var net = CircuitBuilder.Preview(banc.Fusion(s), c, null);
         Assert.Contains("A1 A1_D_d A1_CLK_d NULL NULL A1_Q_d A1_QB_d silx_dff", net);
@@ -236,6 +239,7 @@ public class SpiceTests
         banc.Calque.Components.Add(new() { Ref = "NET3", Kind = ComponentKind.Label, Position = new(10, 0), Value = "IN" });
         banc.Transitoire.Duree = 1e-6; banc.Transitoire.Pas = 1e-8;
         Assert.Equal(3.3, CircuitBuilder.TensionLogique(inv), 9);
+        Ancien.Raccorder(s, banc);   // tracé au pas de 4
         var net = CircuitBuilder.Preview(banc.Fusion(s), Connectivity.Build(banc.Fusion(s)), null);
         Assert.Contains(".model silx_adc_3p3 adc_bridge(in_low=0.99 in_high=2.31)", net);
         Assert.Contains("out_high=3.3", net);
@@ -244,5 +248,55 @@ public class SpiceTests
         Assert.InRange(r.Resultats[AnalyseKind.Transitoire].Vector("v(out)")[^1], 3.2, 3.31);
         inv.Value = "";
         Assert.Equal(5, CircuitBuilder.TensionLogique(inv), 9);   // défaut du composant
+    }
+
+    /// <summary>Projet au format 1 (dipôles sur 4 pas) : à l'ouverture, un fil de raccord garde chaque connexion.</summary>
+    [Fact]
+    public void Ancien_projet_dipoles_raccordes()
+    {
+        var e = new Silx.Etude.Etude();
+        e.Schema.Components.Add(new() { Ref = "R1", Kind = ComponentKind.Resistor, Position = new(0, 0), Value = "1k" });
+        e.Schema.Components.Add(new() { Ref = "R2", Kind = ComponentKind.Resistor, Position = new(8, 0), Rotation = 1, Value = "1k" });
+        e.Schema.Wires.Add(new(new(4, 0), new(8, 0)));     // fil vers l'ancienne broche 2 de R1 (4,0)
+        e.Schema.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(8, 4) });   // ancienne broche 2 de R2 (8,4)
+        var json = Projet.VersJson(e).Replace($"\"Version\": {Projet.VersionFormat}", "\"Version\": 1");
+        var r = Projet.DepuisJson(json);
+        var c = Connectivity.Build(r.Schema);
+        var r1 = r.Schema.Components.Single(k => k.Ref == "R1"); var r2 = r.Schema.Components.Single(k => k.Ref == "R2");
+        Assert.Equal(new GridPoint(3, 0), r1.Pins[1]);
+        Assert.Equal(c.NodeOf[r1.Pins[1]], c.NodeOf[r2.Pins[0]]);
+        Assert.Equal("0", c.NodeOf[r2.Pins[1]]);
+    }
+
+    /// <summary>Composants de base intégrés : bipolaires, JFET, MOSFET (3 broches, diode de corps), quartz qui résonne à sa fréquence.</summary>
+    [Fact]
+    public async Task Composants_de_base_integres()
+    {
+        var b = BibliothequeBase.Definitions().ToDictionary(d => d.Nom);
+        Assert.Equal(GabaritSymbole.Npn, b["2N3904"].Symbole.Gabarit);
+        Assert.Equal(GabaritSymbole.Pnp, b["2N3906"].Symbole.Gabarit);
+        Assert.Equal(GabaritSymbole.Njf, b["J201"].Symbole.Gabarit);
+        Assert.Equal(GabaritSymbole.Pjf, b["2N5460"].Symbole.Gabarit);
+        Assert.Equal(GabaritSymbole.Nmos3, b["2N7000"].Symbole.Gabarit); Assert.True(b["2N7000"].Symbole.DiodeCorps);
+        Assert.Equal(GabaritSymbole.Pmos3, b["IRF9540"].Symbole.Gabarit);
+        var q = b["Quartz 32,768 kHz"];
+        Assert.Equal(GabaritSymbole.Quartz, q.Symbole.Gabarit);
+        Assert.Equal("Quartz", Silx.App.MainWindow.Categorie(q));
+        // Quartz entre une source AC et 1 kΩ : maximum de V(OUT) à la résonance série.
+        var e = new Silx.Etude.Etude(); var s = e.Schema;
+        s.Components.Add(new() { Ref = "X1", Kind = ComponentKind.Spice, Definition = q, Position = new(0, 0) });   // (0,0)-(3,0)
+        s.Components.Add(new() { Ref = "R1", Kind = ComponentKind.Resistor, Position = new(3, 0), Rotation = 1, Value = "1k" });   // (3,0)-(3,3)
+        s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(3, 3) });
+        s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(0, 0), Value = "IN" });
+        s.Components.Add(new() { Ref = "NET2", Kind = ComponentKind.Label, Position = new(3, 0), Value = "OUT" });
+        var banc = new Banc { Type = AnalyseKind.Ac };
+        banc.Calque.Components.Add(new() { Ref = "V1", Kind = ComponentKind.VoltageSource, Position = new(-6, 0), Rotation = 1, Value = "AC 1" });
+        banc.Calque.Components.Add(new() { Ref = "GND2", Kind = ComponentKind.Ground, Position = new(-6, 3) });
+        banc.Calque.Components.Add(new() { Ref = "NET3", Kind = ComponentKind.Label, Position = new(-6, 0), Value = "IN" });
+        banc.Ac.FDebut = 32e3; banc.Ac.FFin = 33.5e3; banc.Ac.PointsParDecade = 200000;
+        var r = await Verification.RunAsync(e, banc, []);
+        Assert.Null(r.Erreur);
+        var (f, db) = Verification.Courbe(AnalyseKind.Ac, r.Resultats[AnalyseKind.Ac], "OUT");
+        Assert.InRange(f[Array.IndexOf(db, db.Max())], 32600, 32950);
     }
 }

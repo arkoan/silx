@@ -195,7 +195,9 @@ public sealed class SchematicCanvas : Control
     void SuivreCalques(IReadOnlyDictionary<GridPoint, GridPoint> moves)
     {
         if (IsLayer || moves.Count == 0) return;
-        foreach (var c in CalquesLies) Elastique.SuivreCalque(c, moves);
+        // Circuit d'avant l'opération : le dernier instantané d'annulation (pris au début de chaque modification).
+        var avant = _undo.TryPeek(out var snap) ? snap.S : null;
+        foreach (var c in CalquesLies) Elastique.SuivreCalque(c, moves, avant, Schematic);
     }
 
     /// <summary>Déplace un composant du schéma édité comme un glisser à la souris (fils élastiques, une entrée d'annulation).</summary>

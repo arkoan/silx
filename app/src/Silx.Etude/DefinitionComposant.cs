@@ -56,14 +56,14 @@ public sealed class BrocheSymbole
 
 /// <summary>Gabarit de dessin d'un symbole.</summary>
 /// <summary>Gabarit de dessin d'un symbole. Nmos/Pmos : 4 broches (substrat B) ; Nmos3/Pmos3 : substrat relié à la source.</summary>
-public enum GabaritSymbole { Boite, Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf, Nmos3, Pmos3, Personnalise, Logique }
+public enum GabaritSymbole { Boite, Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf, Nmos3, Pmos3, Personnalise, Logique, Quartz }
 
 public sealed class Symbole
 {
     public GabaritSymbole Gabarit { get; set; } = GabaritSymbole.Boite;
-    /// <summary>Version du dessin : 2 = grille fine (transistors à 2 pas). Absente des fichiers anciens (0).</summary>
+    /// <summary>Version du dessin : 2 = grille fine (transistors à 2 pas) ; 3 = transistors affinés, diode sur 3 pas. Absente des fichiers anciens (0).</summary>
     public int Version { get; set; }
-    public const int VersionCourante = 2;
+    public const int VersionCourante = 3;
     /// <summary>MOS 3 broches : dessiner la diode de corps entre drain et source.</summary>
     public bool DiodeCorps { get; set; }
     /// <summary>Corps rectangulaire (gabarit Boîte) : les broches hors du corps y sont reliées par un trait, et leur nom est écrit à l'intérieur.</summary>
@@ -291,8 +291,9 @@ public sealed class BibliothequeComposants
 
     public static BibliothequeComposants Charger(string dossier)
     {
-        // Composants logiques intégrés (portes, bascules XSPICE) : toujours présents ; un fichier de même nom les remplace.
+        // Composants intégrés (bipolaires, JFET, MOSFET, quartz, portes et bascules XSPICE) : toujours présents ; un fichier de même nom les remplace.
         var b = new BibliothequeComposants { Dossier = dossier };
+        b.Definitions.AddRange(BibliothequeBase.Definitions());
         b.Definitions.AddRange(BibliothequeLogique.Definitions());
         if (!Directory.Exists(dossier)) return b;
         foreach (var f in Directory.GetFiles(dossier, "*" + Extension).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))

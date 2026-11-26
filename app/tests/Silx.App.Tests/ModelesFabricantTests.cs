@@ -95,6 +95,7 @@ public class ModelesFabricantTests
         banc.Calque.Components.Add(new() { Ref = "VDD", Kind = ComponentKind.VoltageSource, Position = new(2, -6), Rotation = 3, Value = "DC 5" }); // + (3,-7), − (3,-11)
         banc.Calque.Components.Add(new() { Ref = "GND3", Kind = ComponentKind.Ground, Position = new(2, -10) });
         banc.Transitoire.Duree = 1e-4; banc.Transitoire.Pas = 1e-6;
+        Ancien.Raccorder(s, banc);   // tracé au pas de 4
         var r = await Verification.RunAsync(e, banc, [], TestContext.Current.CancellationToken);
         Assert.True(r.Erreur == null, r.Erreur + "\n" + r.Journal);
         Assert.InRange(r.Resultats[AnalyseKind.Transitoire].Vector("v(out)")[^1], 0, 0.1);

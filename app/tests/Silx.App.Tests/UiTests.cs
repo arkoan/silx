@@ -277,7 +277,7 @@ public class UiTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         var cv = w.Canevas;
         Point Ecran(int x, int y) => cv.TranslatePoint(cv.ScreenOf(new Silx.Etude.GridPoint(x, y)), w)!.Value;
-        // R1 (4,8)-(8,8), C1 (12,8)-(12,12) ; le rectangle va de (3,5) à (13,13) : masse et étiquettes comprises.
+        // R1 (4,8)-(7,8), C1 (11,8)-(11,11) ; le rectangle va de (3,6) à (14,14) : masse et étiquettes comprises.
         var a = Ecran(3, 6); var b = Ecran(14, 14);
         w.MouseDown(a, Avalonia.Input.MouseButton.Left); w.MouseMove(b); w.MouseUp(b, Avalonia.Input.MouseButton.Left);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -291,7 +291,7 @@ public class UiTests
         w.MouseDown(r1, Avalonia.Input.MouseButton.Left); w.MouseMove(Ecran(8, 8)); w.MouseUp(Ecran(8, 8), Avalonia.Input.MouseButton.Left);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal(new Silx.Etude.GridPoint(6, 8), w.EtudeCourante.Schema.Components.Single(c => c.Ref == "R1").Position);
-        Assert.Equal(new Silx.Etude.GridPoint(14, 8), w.EtudeCourante.Schema.Components.Single(c => c.Ref == "C1").Position);
+        Assert.Equal(new Silx.Etude.GridPoint(13, 8), w.EtudeCourante.Schema.Components.Single(c => c.Ref == "C1").Position);
         Assert.Equal(conn0, Silx.Etude.Connectivity.Build(w.EtudeCourante.Schema).AllNodes.Count);
         // Suppression de la sélection
         cv.SelectBox(new Rect(cv.ScreenOf(new Silx.Etude.GridPoint(5, 6)), cv.ScreenOf(new Silx.Etude.GridPoint(15, 14))));   // repère du canevas
@@ -465,14 +465,14 @@ public class UiTests
         var cv = w.Canevas; var s = w.EtudeCourante.Schema;
         Point E(int x, int y) => cv.TranslatePoint(cv.ScreenOf(new Silx.Etude.GridPoint(x, y)), w)!.Value;
         int avant = s.Wires.Count;
-        w.MouseDown(E(12, 8), Avalonia.Input.MouseButton.Left);      // broche haute de C1
+        w.MouseDown(E(11, 8), Avalonia.Input.MouseButton.Left);      // broche haute de C1
         w.MouseMove(E(18, 4)); w.MouseUp(E(18, 4), Avalonia.Input.MouseButton.Left);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal(Silx.App.Tool.Select, cv.Tool);
         Assert.Equal(avant + 2, s.Wires.Count);
-        Assert.Contains(s.Wires, x => x == new Silx.Etude.Wire(new(12, 8), new(18, 8)));
+        Assert.Contains(s.Wires, x => x == new Silx.Etude.Wire(new(11, 8), new(18, 8)));
         Assert.Contains(s.Wires, x => x == new Silx.Etude.Wire(new(18, 8), new(18, 4)));
-        Assert.Equal(new Silx.Etude.GridPoint(12, 8), s.Components.Single(c => c.Ref == "C1").Position);   // le composant n'a pas bougé
+        Assert.Equal(new Silx.Etude.GridPoint(11, 8), s.Components.Single(c => c.Ref == "C1").Position);   // le composant n'a pas bougé
     }
 
     /// <summary>A4 : depuis un banc, modifier un composant du circuit sous test sans quitter le banc.</summary>

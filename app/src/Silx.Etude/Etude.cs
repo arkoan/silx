@@ -135,12 +135,12 @@ public sealed class Etude
     {
         var s = new Schematic();
         s.Components.Add(new() { Ref = "R1", Kind = ComponentKind.Resistor, Position = new(4, 8), Value = "1k" });
-        s.Components.Add(new() { Ref = "C1", Kind = ComponentKind.Capacitor, Position = new(12, 8), Rotation = 1, Value = "1u" });
-        s.Wires.Add(new(new(8, 8), new(12, 8)));
-        s.Wires.Add(new(new(12, 12), new(4, 12)));
-        s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(8, 12) });
+        s.Components.Add(new() { Ref = "C1", Kind = ComponentKind.Capacitor, Position = new(11, 8), Rotation = 1, Value = "1u" });
+        s.Wires.Add(new(new(7, 8), new(11, 8)));
+        s.Wires.Add(new(new(11, 11), new(4, 11)));
+        s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(7, 11) });
         s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(4, 8), Value = "IN" });
-        s.Components.Add(new() { Ref = "NET2", Kind = ComponentKind.Label, Position = new(12, 8), Value = "OUT" });
+        s.Components.Add(new() { Ref = "NET2", Kind = ComponentKind.Label, Position = new(11, 8), Value = "OUT" });
         var e = new Etude { Schema = s };
 
         var echelon = new Banc { Nom = "Échelon 1 V" };
@@ -153,9 +153,9 @@ public sealed class Etude
 
         var bode = new Banc { Nom = "Réponse en fréquence", Type = AnalyseKind.Ac };
         bode.Calque.Components.Add(new() { Ref = "V1", Kind = ComponentKind.VoltageSource, Position = new(4, 8), Rotation = 1, Value = "AC 1" });
-        bode.Calque.Components.Add(new() { Ref = "RL", Kind = ComponentKind.Resistor, Position = new(16, 8), Rotation = 1, Value = "100k" });
-        bode.Calque.Wires.Add(new(new(12, 8), new(16, 8)));
-        bode.Calque.Wires.Add(new(new(16, 12), new(12, 12)));
+        bode.Calque.Components.Add(new() { Ref = "RL", Kind = ComponentKind.Resistor, Position = new(15, 8), Rotation = 1, Value = "100k" });
+        bode.Calque.Wires.Add(new(new(11, 8), new(15, 8)));
+        bode.Calque.Wires.Add(new(new(15, 11), new(11, 11)));
         bode.Gabarits.Add(new() { Mesure = TypeMesure.BandePassante3dB, Noeud = "OUT", Min = 150 });
         bode.GabaritsTraces.Add(new() { Analyse = AnalyseKind.Ac, Noeud = "OUT", Limite = Silx.Mesures.Gabarits.Limite.Haute, Points = [(1e3, -12), (1e5, -35), (1e6, -55)] });
         e.Bancs.Add(bode);

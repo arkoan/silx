@@ -46,9 +46,9 @@ public static class Symboles
         {
             case ComponentKind.Resistor:
                 {
-                    // Symbole IEC : rectangle de proportions 1 × 2,5 (1,5 pas × 0,6 pas), centré entre les broches.
-                    ctx.DrawLine(pen, At(0), At(.31)); ctx.DrawLine(pen, At(.69), At(1));
-                    var poly = new[] { At(.31, h * .43), At(.69, h * .43), At(.69, -h * .43), At(.31, -h * .43), At(.31, h * .43) };
+                    // Symbole IEC : rectangle de proportions 1 × 2,5 (1,5 pas × 0,6 pas) sur un dipôle de 3 pas.
+                    ctx.DrawLine(pen, At(0), At(.25)); ctx.DrawLine(pen, At(.75), At(1));
+                    var poly = new[] { At(.25, h * .43), At(.75, h * .43), At(.75, -h * .43), At(.25, -h * .43), At(.25, h * .43) };
                     for (int i = 0; i < 4; i++) ctx.DrawLine(pen, poly[i], poly[i + 1]);
                     break;
                 }

@@ -603,7 +603,7 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Catégorie d'un composant importé, d'après son symbole ou son type de modèle.</summary>
-    public static string Categorie(DefinitionComposant d) => d.CodeXspice != null ? "Logique" : d.Symbole.Gabarit switch
+    public static string Categorie(DefinitionComposant d) => d.CodeXspice != null ? "Logique" : d.Symbole.Gabarit == GabaritSymbole.Quartz ? "Quartz" : d.Symbole.Gabarit switch
     {
         GabaritSymbole.Nmos or GabaritSymbole.Nmos3 => "MOSFET canal N", GabaritSymbole.Pmos or GabaritSymbole.Pmos3 => "MOSFET canal P",
         GabaritSymbole.Npn => "Bipolaire NPN", GabaritSymbole.Pnp => "Bipolaire PNP", GabaritSymbole.Diode => "Diode",
@@ -614,7 +614,7 @@ public sealed partial class MainWindow : Window
             TypeModele.Diode => "Diode", TypeModele.Njf or TypeModele.Pjf => "JFET", _ => "Sous-circuit"
         }
     };
-    static readonly string[] OrdreCategories = ["Diode", "Bipolaire NPN", "Bipolaire PNP", "MOSFET canal N", "MOSFET canal P", "JFET", "Logique", "Sous-circuit"];
+    static readonly string[] OrdreCategories = ["Diode", "Bipolaire NPN", "Bipolaire PNP", "MOSFET canal N", "MOSFET canal P", "JFET", "Quartz", "Logique", "Sous-circuit"];
 
     /// <summary>Composants importés : une tuile par catégorie (MOSFET N, bipolaire NPN…), puis la liste des références.</summary>
     void RebuildSpicePalette()

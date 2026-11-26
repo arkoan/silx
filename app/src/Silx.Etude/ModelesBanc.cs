@@ -52,14 +52,14 @@ public static class ModelesBanc
                     var q = new GridPoint(p.X - dx, p.Y + dy);
                     var essai = new Schematic();
                     essai.Components.Add(new PlacedComponent { Ref = "V1", Kind = ComponentKind.VoltageSource, Position = q, Rotation = 1, Value = valeur });
-                    essai.Components.Add(new PlacedComponent { Ref = "GNDB1", Kind = ComponentKind.Ground, Position = new GridPoint(q.X, q.Y + 4) });
+                    essai.Components.Add(new PlacedComponent { Ref = "GNDB1", Kind = ComponentKind.Ground, Position = new GridPoint(q.X, q.Y + PlacedComponent.LongueurDipole) });
                     if (dy != 0) { essai.Wires.Add(new(q, new GridPoint(q.X, p.Y))); essai.Wires.Add(new(new GridPoint(q.X, p.Y), p)); }
                     else essai.Wires.Add(new(q, p));
                     var banc = new Banc { Calque = essai };
                     var f = banc.Fusion(e.Schema); var c = Connectivity.Build(f);
                     // Valide si : + sur l'entrée, − à la masse, et aucun autre nœud fusionné ou créé.
                     if (c.NodeOf.GetValueOrDefault(q) is { } np && string.Equals(np, entree, StringComparison.OrdinalIgnoreCase)
-                        && c.NodeOf.GetValueOrDefault(new GridPoint(q.X, q.Y + 4)) == "0" && c.AllNodes.Count == noeudsAvant
+                        && c.NodeOf.GetValueOrDefault(new GridPoint(q.X, q.Y + PlacedComponent.LongueurDipole)) == "0" && c.AllNodes.Count == noeudsAvant
                         && !Erc.Check(f, c).Any(i => i.Severity == Severity.Error))
                     {
                         b.Calque.Components.AddRange(essai.Components); b.Calque.Wires.AddRange(essai.Wires);
