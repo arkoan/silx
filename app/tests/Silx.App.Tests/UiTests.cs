@@ -842,4 +842,31 @@ public class UiTests
             Shot(w, $"64-demo-{++i}.png");
         }
     }
+
+    /// <summary>Curseurs sur la vue FFT (fréquence, dBV, écart) et couleur choisie pour un signal (enregistrée dans le projet).</summary>
+    [AvaloniaFact]
+    public async Task Curseurs_fft_et_couleur_de_signal()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var banc = w.EtudeCourante.Bancs[0];
+        w.SelectBanc(banc);
+        await w.SimulateAsync();
+        w.AfficherFft(true);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        var plot = w.PlotControl; var l = plot.Plot.Axes.GetLimits();
+        Avalonia.Point Ecran(double log10f) { var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(log10f, (l.Bottom + l.Top) / 2)); return new(px.X / plot.DisplayScale, px.Y / plot.DisplayScale); }
+        w.PoserCurseur('A', Ecran(l.Left + 0.2 * (l.Right - l.Left)));
+        w.PoserCurseur('B', Ecran(l.Left + 0.6 * (l.Right - l.Left)));
+        Assert.Equal(2, w.Curseurs.Count);
+        Assert.All(w.Curseurs, c => Assert.InRange(c.X, Math.Pow(10, l.Left) * 0.99, Math.Pow(10, l.Right) * 1.01));   // en hertz
+        // Couleur de V(OUT) : enregistrée dans le banc et le projet.
+        w.ColorerSignal("OUT", "#d62728");
+        Assert.Equal(new ScottPlot.Color(0xd6, 0x27, 0x28), w.CouleurSignal("OUT", 1));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Shot(w, "66-fft-curseurs-couleur.png");
+        var relu = Silx.Etude.Projet.DepuisJson(Silx.Etude.Projet.VersJson(w.EtudeCourante));
+        Assert.Equal("#d62728", relu.Bancs[0].CouleursSignaux["OUT"]);
+        w.AfficherFft(false);
+        Assert.Empty(w.Curseurs);   // autre axe : les curseurs FFT sont retirés
+    }
 }

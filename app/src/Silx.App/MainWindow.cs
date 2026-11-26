@@ -65,7 +65,7 @@ public sealed partial class MainWindow : Window
     bool _vueFft;
     /// <summary>Vue spectrale (FFT) d'un banc temporel : amplitude en dBV selon la fréquence.</summary>
     public bool VueFft => _vueFft && _banc?.Type == AnalyseKind.Transitoire;
-    public void AfficherFft(bool fft) { _vueFft = fft; if (fft) EndDrawing(false); RefreshPlotToolbar(); RefreshPlot(); }
+    public void AfficherFft(bool fft) { if (_vueFft != fft) _cursors.Clear(); _vueFft = fft; if (fft) EndDrawing(false); RefreshPlotToolbar(); RefreshPlot(); }
     // Édition des points d'un gabarit : survol (grossit) puis glisser.
     (GabaritTrace G, int I)? _hoverVertex, _dragVertex;
     // Curseurs de mesure : deux au plus par courbe (A, B), ils suivent la courbe.
@@ -80,7 +80,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Pose (ou déplace) le curseur A ou B sur la courbe la plus proche du point (repère du graphique actif).</summary>
     public void PoserCurseur(char nom, Point pos)
     {
-        if (_banc == null || _last == null || VueFft || CourbeProche(pos) is not { } sig) return;
+        if (_banc == null || _last == null || CourbeProche(pos) is not { } sig) return;
         var c = _cursors.FirstOrDefault(k => k.Noeud == sig && k.Nom == nom);
         if (c == null) { c = new Curseur { Noeud = sig, Nom = nom }; _cursors.Add(c); }
         c.X = ClampToCurve(sig, ToData(pos).X);
@@ -917,15 +917,56 @@ public sealed partial class MainWindow : Window
         Activate(_panes[Math.Clamp(_active != null ? _panes.FindIndex(p => p.Signaux == _active.Signaux) : 0, 0, _panes.Count - 1)]);
     }
 
+    static readonly ScottPlot.Palettes.Category10 Palette10 = new();
+    /// <summary>Couleur d'un signal : celle choisie pour le banc (clic sur sa pastille), sinon celle de sa place dans le graphique.</summary>
+    public ScottPlot.Color CouleurSignal(string noeud, int rang)
+        => _banc != null && _banc.CouleursSignaux.TryGetValue(noeud, out var hex) && Color.TryParse(hex, out var c) ? new ScottPlot.Color(c.R, c.G, c.B) : Palette10.GetColor(rang);
+
+    /// <summary>Choisit (ou rend par défaut, null) la couleur d'un signal du banc actif.</summary>
+    public void ColorerSignal(string noeud, string? hex)
+    {
+        if (_banc == null) return;
+        if (hex == null) _banc.CouleursSignaux.Remove(noeud); else _banc.CouleursSignaux[noeud] = hex;
+        RebuildPanes(); RefreshPlot(keepLimits: true);
+    }
+
+    /// <summary>Clic sur la pastille d'un signal : nuancier (et « par défaut »).</summary>
+    void ProposerCouleurSignal(string noeud, Control ancre)
+    {
+        var sp = new StackPanel { Spacing = 6, Margin = new Thickness(4) };
+        sp.Children.Add(new TextBlock { Text = $"Couleur de V({noeud})", FontWeight = FontWeight.SemiBold, FontSize = Ui.Texte });
+        var fly = new Flyout { Content = sp, Placement = PlacementMode.BottomEdgeAlignedLeft };
+        var w = new WrapPanel { MaxWidth = 230 };
+        var nuancier = new[] { "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf", "#000000", "#0891b2" };
+        foreach (var hex in nuancier)
+        {
+            var b = new Button { Width = 22, Height = 22, Padding = new Thickness(0), Margin = new Thickness(0, 0, 4, 4), CornerRadius = new CornerRadius(11), Background = new SolidColorBrush(Color.Parse(hex)), BorderThickness = new Thickness(0) };
+            var hh = hex; b.Click += (_, _) => { fly.Hide(); ColorerSignal(noeud, hh); };
+            w.Children.Add(b);
+        }
+        sp.Children.Add(w);
+        var hexBox = new TextBox { PlaceholderText = "#rrggbb", FontSize = 12, Width = 110 };
+        hexBox.KeyDown += (_, e) => { if (e.Key == Key.Enter && Color.TryParse((hexBox.Text ?? "").Trim(), out Color _)) { fly.Hide(); ColorerSignal(noeud, hexBox.Text!.Trim()); } };
+        var defaut = new Button { Content = "Par défaut", FontSize = Ui.Aide, Padding = new Thickness(8, 2) };
+        defaut.Click += (_, _) => { fly.Hide(); ColorerSignal(noeud, null); };
+        var ligne = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 }; ligne.Children.Add(hexBox); ligne.Children.Add(defaut);
+        sp.Children.Add(ligne);
+        fly.ShowAt(ancre);
+    }
+
     Control BuildPaneHeader(Pane pane, bool closable)
     {
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Margin = new Thickness(8, 2, 4, 0) };
-        var palette = new ScottPlot.Palettes.Category10();
         for (int i = 0; i < pane.Signaux.Count; i++)
         {
-            var n = pane.Signaux[i]; var c = palette.GetColor(i);
+            var n = pane.Signaux[i]; var c = CouleurSignal(n, i);
             var chip = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
-            chip.Children.Add(new Border { Width = 10, Height = 3, Background = new SolidColorBrush(Color.FromRgb(c.R, c.G, c.B)), VerticalAlignment = VerticalAlignment.Center });
+            // Pastille de couleur : un clic ouvre le nuancier du signal.
+            var pastille = new Button { Padding = new Thickness(2, 6), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center, Cursor = new Cursor(StandardCursorType.Hand),
+                Content = new Border { Width = 12, Height = 4, CornerRadius = new CornerRadius(2), Background = new SolidColorBrush(Color.FromRgb(c.R, c.G, c.B)) } };
+            ToolTip.SetTip(pastille, $"Couleur de V({n}) : cliquer pour la changer");
+            var nc = n; pastille.Click += (_, e) => { e.Handled = true; ProposerCouleurSignal(nc, pastille); };
+            chip.Children.Add(pastille);
             chip.Children.Add(new TextBlock { Text = $"V({n})", FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center });
             var x = new Button { Content = Icones.Make(Icones.Croix, 9, Ui.Muted), Padding = new Thickness(2), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
             ToolTip.SetTip(x, $"Retirer V({n}) de ce graphique");
@@ -1007,7 +1048,7 @@ public sealed partial class MainWindow : Window
         foreach (var n in ActiveSignals)
         {
             if (CurveAt(n, x) is not { } y) continue;
-            var px = _plot.Plot.GetPixel(new ScottPlot.Coordinates(Shown == AnalyseKind.Ac ? Math.Log10(x) : x * 1e3, y));
+            var px = _plot.Plot.GetPixel(new ScottPlot.Coordinates(XAff(x), y));
             var dd = Math.Abs(px.Y / sc - pos.Y);
             if (dd < bd) { bd = dd; best = n; }
         }
@@ -1063,7 +1104,27 @@ public sealed partial class MainWindow : Window
     {
         var sc = _plot.DisplayScale;
         var c = _plot.Plot.GetCoordinates(new ScottPlot.Pixel((float)(pos.X * sc), (float)(pos.Y * sc)));
-        return Shown == AnalyseKind.Ac ? (Math.Pow(10, c.X), c.Y) : (c.X * 1e-3, c.Y);
+        return AxeLog ? (Math.Pow(10, c.X), c.Y) : (c.X * 1e-3, c.Y);
+    }
+
+    /// <summary>Axe des abscisses en log f (Bode, FFT) ; sinon temps en ms.</summary>
+    bool AxeLog => Shown == AnalyseKind.Ac || VueFft;
+    double XAff(double x) => AxeLog ? Math.Log10(x) : x * 1e3;
+
+    Silx.Core.Raw.RawFile? _spectreRaw; readonly Dictionary<string, (double[], double[])> _spectres = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Courbe affichée d'un signal : v(t), |V| dB (Bode), ou spectre en dBV (vue FFT, mis en cache).</summary>
+    (double[] X, double[] Y)? CourbeAffichee(string noeud)
+    {
+        if (_last == null || !_last.Resultats.TryGetValue(Shown, out var raw)) return null;
+        if (!raw.Variables.Any(v => string.Equals(v.Name, $"v({noeud})", StringComparison.OrdinalIgnoreCase))) return null;
+        if (!VueFft) return Verification.Courbe(Shown, raw, noeud);
+        if (_spectreRaw != raw) { _spectres.Clear(); _spectreRaw = raw; }
+        if (!_spectres.TryGetValue(noeud, out var sp))
+        {
+            var (t, y) = Verification.Courbe(AnalyseKind.Transitoire, raw, noeud);
+            _spectres[noeud] = sp = Spectre.Calculer(t, y);
+        }
+        return sp.Item1.Length == 0 ? null : sp;
     }
 
     void OnPlotPressed(object? sender, PointerPressedEventArgs e)
@@ -1089,8 +1150,7 @@ public sealed partial class MainWindow : Window
             e.Handled = true; _zoomStart = e.GetPosition(_plot); _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
             return;
         }
-        if (VueFft) return;   // spectre : ni curseurs ni gabarits
-        if (_hoverVertex is { } hv)
+        if (!VueFft && _hoverVertex is { } hv)   // spectre : pas de gabarit
         {
             e.Handled = true; _dragVertex = hv; _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
             return;
@@ -1153,10 +1213,10 @@ public sealed partial class MainWindow : Window
             ReevaluateTraces(); RefreshPlot(keepLimits: true);
             e.Handled = true; return;
         }
-        if (_banc == null || _last == null || VueFft) return;
+        if (_banc == null || _last == null) return;
         var pos = e.GetPosition(_plot);
         SurvolerTirage(pos);
-        var hit = _modeTest ? VertexAt(pos) : null;
+        var hit = _modeTest && !VueFft ? VertexAt(pos) : null;
         var hc = hit == null ? CursorAt(pos) : null;
         if (!Nullable.Equals(hit, _hoverVertex) || hc != _hoverCursor)
         {
@@ -1197,21 +1257,19 @@ public sealed partial class MainWindow : Window
 
     double ClampToCurve(string noeud, double x)
     {
-        if (_last == null || !_last.Resultats.TryGetValue(Shown, out var raw)) return x;
-        var (xs, _) = Verification.Courbe(Shown, raw, noeud);
-        return Math.Clamp(x, xs[0], xs[^1]);
+        if (CourbeAffichee(noeud) is not { } c) return x;
+        return Math.Clamp(x, c.X[0], c.X[^1]);
     }
 
     /// <summary>Valeur de la courbe en x (interpolation linéaire, en log f pour Bode).</summary>
     double? CurveAt(string noeud, double x)
     {
-        if (_last == null || !_last.Resultats.TryGetValue(Shown, out var raw)) return null;
-        if (!raw.Variables.Any(v => string.Equals(v.Name, $"v({noeud})", StringComparison.OrdinalIgnoreCase))) return null;
-        var (xs, ys) = Verification.Courbe(Shown, raw, noeud);
+        if (CourbeAffichee(noeud) is not { } c) return null;
+        var (xs, ys) = c;
         if (x <= xs[0]) return ys[0];
         if (x >= xs[^1]) return ys[^1];
         int i = Array.BinarySearch(xs, x); if (i >= 0) return ys[i];
-        i = ~i; bool log = Shown == AnalyseKind.Ac;
+        i = ~i; bool log = AxeLog;
         double t = log ? Math.Log(x / xs[i - 1]) / Math.Log(xs[i] / xs[i - 1]) : (x - xs[i - 1]) / (xs[i] - xs[i - 1]);
         return ys[i - 1] + t * (ys[i] - ys[i - 1]);
     }
@@ -1219,7 +1277,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Phase (degrés, déroulée depuis la plus basse fréquence) de V(nœud) en f, interpolée en log f.</summary>
     double? PhaseAt(string noeud, double f)
     {
-        if (_last == null || Shown != AnalyseKind.Ac || !_last.Resultats.TryGetValue(AnalyseKind.Ac, out var raw)) return null;
+        if (_last == null || Shown != AnalyseKind.Ac || VueFft || !_last.Resultats.TryGetValue(AnalyseKind.Ac, out var raw)) return null;
         if (!raw.Variables.Any(v => string.Equals(v.Name, $"v({noeud})", StringComparison.OrdinalIgnoreCase))) return null;
         var r = Verification.Frequentielle(raw, $"v({noeud})");
         var fs = r.Frequences.ToArray(); var ph = Unwrap(r.Valeurs.ToArray().Select(z => z.Phase * 180 / Math.PI).ToArray());
@@ -1236,7 +1294,7 @@ public sealed partial class MainWindow : Window
         var sc = _plot.DisplayScale;
         foreach (var c in _cursors.Where(c => ActiveSignals.Contains(c.Noeud)))
         {
-            var px = _plot.Plot.GetPixel(new ScottPlot.Coordinates(Shown == AnalyseKind.Ac ? Math.Log10(c.X) : c.X * 1e3, 0));
+            var px = _plot.Plot.GetPixel(new ScottPlot.Coordinates(XAff(c.X), 0));
             if (Math.Abs(px.X / sc - pos.X) < 6) return c;
         }
         return null;
@@ -1294,8 +1352,8 @@ public sealed partial class MainWindow : Window
         var bySignal = _cursors.Where(c => ActiveSignals.Contains(c.Noeud)).GroupBy(c => c.Noeud).ToList();
         _readout.IsVisible = bySignal.Count > 0 && _banc != null && _last != null;
         if (!_readout.IsVisible) return;
-        bool ac = Shown == AnalyseKind.Ac;
-        string ux = ac ? "Hz" : "s", uy = ac ? "dB" : "V";
+        bool ac = Shown == AnalyseKind.Ac && !VueFft, fft = VueFft;   // Bode : phase et pente ; FFT : fréquence et dBV
+        string ux = ac || fft ? "Hz" : "s", uy = ac ? "dB" : fft ? "dBV" : "V";
         var g = new Grid { ColumnDefinitions = new("Auto,14,Auto,14,Auto,14,Auto,14,Auto") };
         int row = 0;
         void Cell(string t, int col, IBrush? b = null, bool bold = false, bool right = true)
@@ -1304,11 +1362,11 @@ public sealed partial class MainWindow : Window
             Grid.SetRow(tb, row); Grid.SetColumn(tb, col); g.Children.Add(tb);
         }
         void NewRow() { g.RowDefinitions.Add(new RowDefinition(GridLength.Auto)); }
-        NewRow(); Cell("", 0); Cell(ac ? "f" : "t", 2, Ui.Muted); Cell(ac ? "gain" : "tension", 4, Ui.Muted); Cell(ac ? "phase" : "1/Δt", 6, Ui.Muted); if (ac) Cell("pente", 8, Ui.Muted); row++;
+        NewRow(); Cell("", 0); Cell(ac || fft ? "f" : "t", 2, Ui.Muted); Cell(ac ? "gain" : fft ? "amplitude" : "tension", 4, Ui.Muted); if (!fft) Cell(ac ? "phase" : "1/Δt", 6, Ui.Muted); if (ac) Cell("pente", 8, Ui.Muted); row++;
         foreach (var grp in bySignal)
         {
             var col = colorOf(grp.Key); var brush = new SolidColorBrush(Color.FromArgb(255, col.R, col.G, col.B));
-            NewRow(); Cell(ac ? $"|V({grp.Key})|" : $"V({grp.Key})", 0, brush, bold: true, right: false); row++;
+            NewRow(); Cell(ac || fft ? $"|V({grp.Key})|" : $"V({grp.Key})", 0, brush, bold: true, right: false); row++;
             foreach (var c in grp.OrderBy(c => c.Nom))
             {
                 NewRow(); Cell($"  {c.Nom}", 0, brush, right: false); Cell(SpiceNumber.Format(c.X, ux), 2);
@@ -1321,14 +1379,14 @@ public sealed partial class MainWindow : Window
             {
                 double dx = ab[1].X - ab[0].X, dy = yb - ya;
                 NewRow(); Cell("  Δ B−A", 0, Ui.AccentBrush, bold: true, right: false);
-                Cell(ac ? $"×{ab[1].X / ab[0].X:0.###}" : SpiceNumber.Format(dx, ux), 2, Ui.AccentBrush, bold: true);
+                Cell(ac || fft ? SpiceNumber.Format(dx, ux) + $" (×{ab[1].X / ab[0].X:0.###})" : SpiceNumber.Format(dx, ux), 2, Ui.AccentBrush, bold: true);
                 Cell(SpiceNumber.Format(dy, uy), 4, Ui.AccentBrush, bold: true);
                 if (ac)
                 {
                     if (PhaseAt(ab[0].Noeud, ab[0].X) is { } pa && PhaseAt(ab[1].Noeud, ab[1].X) is { } pb) Cell($"{pb - pa:+0.0;-0.0;0}°".Replace('.', ','), 6, Ui.AccentBrush, bold: true);
                     Cell(Math.Abs(Math.Log10(ab[1].X / ab[0].X)) > 1e-9 ? $"{dy / Math.Log10(ab[1].X / ab[0].X):0.#} dB/déc".Replace('.', ',') : "", 8, Ui.AccentBrush, bold: true);
                 }
-                else Cell(Math.Abs(dx) > 0 ? SpiceNumber.Format(1 / Math.Abs(dx), "Hz") : "—", 6, Ui.AccentBrush, bold: true);
+                else if (!fft) Cell(Math.Abs(dx) > 0 ? SpiceNumber.Format(1 / Math.Abs(dx), "Hz") : "—", 6, Ui.AccentBrush, bold: true);
                 row++;
             }
         }
@@ -2169,16 +2227,15 @@ public sealed partial class MainWindow : Window
         bool ac = Shown == AnalyseKind.Ac;
         double X(double x) => ac ? Math.Log10(x) : x * 1e3;
         var nodes = nodesOk;
-        var palette = new ScottPlot.Palettes.Category10();
         double yMin = double.PositiveInfinity, yMax = double.NegativeInfinity, xLo = double.PositiveInfinity, xHi = double.NegativeInfinity;
         int idx = 0;
         // Tirages de la campagne sous les courbes nominales.
-        var (cLo, cHi) = DessinerCampagne(p, pane, nodes.Take(8).ToList(), X, Enumerable.Range(0, 8).Select(i => palette.GetColor(i)).ToArray());
+        var (cLo, cHi) = DessinerCampagne(p, pane, nodes.Take(8).ToList(), X, nodes.Take(8).Select((n, i) => CouleurSignal(n, pane.Signaux.IndexOf(n))).ToArray());
         foreach (var n in nodes.Take(8))
         {
             var (xs, ys) = Verification.Courbe(Shown, raw, n);
             bool dim = _drawing != null && isActive && nodes.Count > 1 && _drawing.Points.Count > 0 && n != _drawing.Noeud;
-            var color = palette.GetColor(idx);
+            var color = CouleurSignal(n, pane.Signaux.IndexOf(n));
             var sc = p.Add.ScatterLine(xs.Select(X).ToArray(), ys);
             sc.LegendText = ac ? $"|V({n})| (dB)" : $"V({n})"; sc.LineWidth = dim ? 1.5f : (float)Parametres.Courant.EpaisseurCourbes; sc.Color = dim ? color.WithAlpha(0.35) : color;
             yMin = Math.Min(yMin, ys.Min()); yMax = Math.Max(yMax, ys.Max()); xLo = Math.Min(xLo, X(xs[0])); xHi = Math.Max(xHi, X(xs[^1]));
@@ -2270,23 +2327,8 @@ public sealed partial class MainWindow : Window
                 vl.LabelText = $"fc {SpiceNumber.Format(rc.Resultat.Valeur!.Value, "Hz")}"; vl.LabelFontSize = 11; vl.LabelBackgroundColor = vl.Color; vl.LabelFontColor = ScottPlot.Colors.White;
             }
         }
-        // Curseurs : ligne verticale, point sur la courbe, lettre.
-        var colorOf = new Dictionary<string, ScottPlot.Color>();
-        { int k = 0; foreach (var n in nodes.Take(8)) colorOf[n] = palette.GetColor(k++); }
-        ScottPlot.Color ColorOf(string n) => colorOf.TryGetValue(n, out var c) ? c : ScottPlot.Colors.Gray;
-        foreach (var c in _cursors.Where(c => pane.Signaux.Contains(c.Noeud)))
-        {
-            if (CurveAt(c.Noeud, c.X) is not { } yc) continue;
-            var col = ColorOf(c.Noeud); bool hot = c == _hoverCursor || c == _dragCursor;
-            // Réticule : pointillés fins vertical et horizontal passant par le point de la courbe.
-            var vl = p.Add.VerticalLine(X(c.X)); vl.Color = col.WithAlpha(hot ? 0.95 : 0.75); vl.LineWidth = hot ? 1.5f : 1; vl.LinePattern = ScottPlot.LinePattern.Dotted;
-            var hl = p.Add.HorizontalLine(yc); hl.Color = col.WithAlpha(hot ? 0.95 : 0.75); hl.LineWidth = hot ? 1.5f : 1; hl.LinePattern = ScottPlot.LinePattern.Dotted;
-            var mk = p.Add.Marker(X(c.X), yc); mk.Color = col; mk.Size = hot ? 12 : 9; mk.Shape = ScottPlot.MarkerShape.FilledCircle;
-            var mk2 = p.Add.Marker(X(c.X), yc); mk2.Color = ScottPlot.Colors.White; mk2.Size = hot ? 5 : 4; mk2.Shape = ScottPlot.MarkerShape.FilledCircle;
-            var lt = p.Add.Text(c.Nom.ToString(), X(c.X), yc); lt.LabelFontColor = ScottPlot.Colors.White; lt.LabelBackgroundColor = col; lt.LabelBold = true; lt.LabelFontSize = 11;
-            bool haut = yc > yMin + 0.7 * (yMax - yMin);   // près du haut : étiquette sous le point
-            lt.LabelAlignment = haut ? ScottPlot.Alignment.UpperRight : ScottPlot.Alignment.LowerRight; lt.LabelOffsetX = -6; lt.LabelOffsetY = haut ? 6 : -6; lt.LabelPadding = 3;
-        }
+        ScottPlot.Color ColorOf(string n) => CouleurSignal(n, pane.Signaux.IndexOf(n));
+        DessinerCurseurs(p, pane, X, ColorOf, yMin, yMax);
         if (isActive) RefreshReadout(ColorOf);
         RemplirMesures(pane, raw, nodes, ColorOf);
         // Les pastilles au-dessus du graphique servent de légende : plus de cadre de légende sur les courbes.
@@ -2308,17 +2350,33 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Vue FFT d'un banc temporel : amplitude crête (dBV) de chaque signal, fréquence en échelle log.</summary>
+    /// <summary>Curseurs : réticule pointillé, point sur la courbe, lettre (temporel, Bode et FFT).</summary>
+    void DessinerCurseurs(ScottPlot.Plot p, Pane pane, Func<double, double> X, Func<string, ScottPlot.Color> ColorOf, double yMin, double yMax)
+    {
+        foreach (var c in _cursors.Where(c => pane.Signaux.Contains(c.Noeud)))
+        {
+            if (CurveAt(c.Noeud, c.X) is not { } yc) continue;
+            var col = ColorOf(c.Noeud); bool hot = c == _hoverCursor || c == _dragCursor;
+            var vl = p.Add.VerticalLine(X(c.X)); vl.Color = col.WithAlpha(hot ? 0.95 : 0.75); vl.LineWidth = hot ? 1.5f : 1; vl.LinePattern = ScottPlot.LinePattern.Dotted;
+            var hl = p.Add.HorizontalLine(yc); hl.Color = col.WithAlpha(hot ? 0.95 : 0.75); hl.LineWidth = hot ? 1.5f : 1; hl.LinePattern = ScottPlot.LinePattern.Dotted;
+            var mk = p.Add.Marker(X(c.X), yc); mk.Color = col; mk.Size = hot ? 12 : 9; mk.Shape = ScottPlot.MarkerShape.FilledCircle;
+            var mk2 = p.Add.Marker(X(c.X), yc); mk2.Color = ScottPlot.Colors.White; mk2.Size = hot ? 5 : 4; mk2.Shape = ScottPlot.MarkerShape.FilledCircle;
+            var lt = p.Add.Text(c.Nom.ToString(), X(c.X), yc); lt.LabelFontColor = ScottPlot.Colors.White; lt.LabelBackgroundColor = col; lt.LabelBold = true; lt.LabelFontSize = 11;
+            bool haut = yc > yMin + 0.7 * (yMax - yMin);   // près du haut : étiquette sous le point
+            lt.LabelAlignment = haut ? ScottPlot.Alignment.UpperRight : ScottPlot.Alignment.LowerRight; lt.LabelOffsetX = -6; lt.LabelOffsetY = haut ? 6 : -6; lt.LabelPadding = 3;
+        }
+    }
+
     void RenderSpectre(Pane pane, Silx.Core.Raw.RawFile raw, List<string> nodes, bool isActive)
     {
         var p = _plot.Plot;
-        var palette = new ScottPlot.Palettes.Category10();
         double yMax = double.NegativeInfinity, xLo = double.PositiveInfinity, xHi = double.NegativeInfinity;
         int idx = 0;
         foreach (var n in nodes.Take(8))
         {
             var (t, y) = Verification.Courbe(AnalyseKind.Transitoire, raw, n);
             var (f, db) = Spectre.Calculer(t, y);
-            var color = palette.GetColor(idx++);
+            var color = CouleurSignal(n, pane.Signaux.IndexOf(n)); idx++;
             if (f.Length == 0) continue;
             var sc = p.Add.ScatterLine(f.Select(Math.Log10).ToArray(), db);
             sc.LegendText = $"|V({n})| (dBV)"; sc.LineWidth = (float)Math.Max(1, Parametres.Courant.EpaisseurCourbes * 0.7); sc.Color = color;
@@ -2332,10 +2390,12 @@ public sealed partial class MainWindow : Window
         p.Axes.Bottom.Label.Text = "Fréquence (FFT, fenêtre de Hann)"; p.Axes.Left.Label.Text = "Amplitude (dBV crête)";
         p.Title(""); p.HideLegend();
         if (_panes.Count > 1 && pane != _panes[^1]) p.Axes.Bottom.Label.Text = "";
-        if (isActive) _readout.IsVisible = false;
         pane.Mesures.Children.Clear();
-        if (!double.IsFinite(yMax)) { _plot.Refresh(); return; }
+        if (!double.IsFinite(yMax)) { if (isActive) _readout.IsVisible = false; _plot.Refresh(); return; }
         double yMin = yMax - 120;   // 120 dB de dynamique : en dessous, c'est du bruit numérique
+        ScottPlot.Color ColorOf(string n) => CouleurSignal(n, pane.Signaux.IndexOf(n));
+        DessinerCurseurs(p, pane, Math.Log10, ColorOf, yMin, yMax);
+        if (isActive) RefreshReadout(ColorOf);
         p.Axes.SetLimits(xLo, xHi, yMin, yMax + 10);
         BornerAuxDonnees(p, xLo, xHi, yMin, yMax + 5);
         _plot.Refresh();

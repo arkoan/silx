@@ -95,6 +95,10 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
 - Saisie des valeurs en notation ingénieur dans tous les champs : « M » majuscule et « meg » = méga (2 MHz,
   4,7 MΩ), « m » minuscule = milli (3 ms, 10 mHz) ; unités tolérées (Hz, s, V, A, Ω, F, H, dB, %). Les valeurs
   de R, C, L sont réécrites sans ambiguïté dans la netlist (« 1meg », jamais « 1M » que SPICE lit milli).
+- Courbes : curseurs A / B (double-clic ou touches A et B) en temporel, en Bode et sur la **vue FFT** (fréquence,
+  amplitude en dBV, écarts). **Couleur d'un signal** au choix : clic sur sa pastille au-dessus du graphique
+  (nuancier, code hexadécimal, « par défaut ») ; enregistrée par banc dans le projet et reprise par les courbes de
+  campagne.
 - Robustesse : une erreur de simulation, de mesure ou de tracé est signalée dans la barre d'état et journalisée
   (~/Library/Logs/Silx/silx.log) ; elle ne ferme jamais l'application.
 - Exécution en parallèle de runs indépendants, bornée au nombre de cœurs

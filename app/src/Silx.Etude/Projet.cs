@@ -35,6 +35,7 @@ public static class Projet
         public string Nom { get; set; } = ""; public AnalyseKind TypeParDefaut { get; set; }
         public string? Couleur { get; set; }
         public Campagne? Campagne { get; set; }
+        public Dictionary<string, string>? CouleursSignaux { get; set; }
         public SchemaF Calque { get; set; } = new();
         public double Pas { get; set; } public double Duree { get; set; }
         public double FDebut { get; set; } public double FFin { get; set; } public int PointsParDecade { get; set; } public bool AcLineaire { get; set; }
@@ -79,7 +80,7 @@ public static class Projet
             Circuit = S(e.Schema),
             Bancs = e.Bancs.Select(b => new BancF
             {
-                Nom = b.Nom, TypeParDefaut = b.TypeParDefaut, Couleur = b.Couleur, Campagne = b.Campagne.Mode == ModeCampagne.Aucune ? null : b.Campagne, Calque = S(b.Calque),
+                Nom = b.Nom, TypeParDefaut = b.TypeParDefaut, Couleur = b.Couleur, Campagne = b.Campagne.Mode == ModeCampagne.Aucune ? null : b.Campagne, CouleursSignaux = b.CouleursSignaux.Count == 0 ? null : new(b.CouleursSignaux), Calque = S(b.Calque),
                 Pas = b.Transitoire.Pas, Duree = b.Transitoire.Duree, FDebut = b.Ac.FDebut, FFin = b.Ac.FFin, PointsParDecade = b.Ac.PointsParDecade, AcLineaire = b.Ac.Lineaire, AcAuto = b.Ac.Auto, TranAuto = b.Transitoire.Auto,
                 Criteres = b.Gabarits.ToList(),
                 GabaritsDessines = b.GabaritsTraces.Select(g => new TraceF { Analyse = g.Analyse, Relatif = g.Relatif, Ancrage = g.Ancrage, Noeud = g.Noeud, Limite = g.Limite, Points = g.Points.Select(p => new[] { p.X, p.Y }).ToList() }).ToList(),
@@ -118,6 +119,7 @@ public static class Projet
             b.Gabarits.AddRange(bf.Criteres);
             b.GabaritsTraces.AddRange(bf.GabaritsDessines.Select(t => new GabaritTrace { Analyse = t.Analyse, Relatif = t.Relatif, Ancrage = t.Ancrage, Noeud = t.Noeud, Limite = t.Limite, Points = t.Points.Where(p => p.Length == 2).Select(p => (p[0], p[1])).ToList() }));
             b.Graphiques.AddRange(bf.Graphiques);
+            foreach (var (n, c) in bf.CouleursSignaux ?? []) b.CouleursSignaux[n] = c;
             e.Bancs.Add(b);
         }
         return e;
