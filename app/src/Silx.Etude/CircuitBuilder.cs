@@ -65,7 +65,9 @@ public static class CircuitBuilder
     {
         string N(GridPoint p) => c.NodeOf.TryGetValue(p, out var n) ? n : "?";
         if (k.Kind != ComponentKind.Spice || k.Definition is not { } d)
-            return new Component(k.Ref, k.Pins.Select(N).ToList(), k.Value.Trim());
+            // R, C, L : valeur saisie à l'ingénieur (« 1 MΩ », « 4,7k », « 100nF ») réécrite sans ambiguïté pour ngspice (« 1meg »).
+            return new Component(k.Ref, k.Pins.Select(N).ToList(), k.Kind is ComponentKind.Resistor or ComponentKind.Capacitor or ComponentKind.Inductor
+                ? SpiceNumber.NormaliserValeur(k.Value) : k.Value.Trim());
         if (d.CodeXspice is { } code)
             // Porte / bascule XSPICE : ports numériques internes, reliés au schéma par les ponts (voir Auxiliaires).
             return new Component(k.Ref, ModelesSpice.PortsXspice(code, d.BrochesModele).Select(p => p == "NULL" ? p

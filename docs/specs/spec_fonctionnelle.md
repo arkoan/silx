@@ -84,6 +84,9 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
   aiguës : un quartz 32,768 kHz (Q ≈ 67 000) a une résonance large d'environ 0,5 Hz, invisible avec 50 points
   par décade. Sur moins d'une décade, l'axe des fréquences est gradué au hertz près.
   En décade, Silx garantit au moins 100 points sur la plage demandée.
+- Saisie des valeurs en notation ingénieur dans tous les champs : « M » majuscule et « meg » = méga (2 MHz,
+  4,7 MΩ), « m » minuscule = milli (3 ms, 10 mHz) ; unités tolérées (Hz, s, V, A, Ω, F, H, dB, %). Les valeurs
+  de R, C, L sont réécrites sans ambiguïté dans la netlist (« 1meg », jamais « 1M » que SPICE lit milli).
 - Robustesse : une erreur de simulation, de mesure ou de tracé est signalée dans la barre d'état et journalisée
   (~/Library/Logs/Silx/silx.log) ; elle ne ferme jamais l'application.
 - Exécution en parallèle de runs indépendants, bornée au nombre de cœurs

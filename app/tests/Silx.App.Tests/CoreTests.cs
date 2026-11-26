@@ -68,10 +68,29 @@ public class CoreTests
 
     [Theory]
     [InlineData("4,7k", 4700)] [InlineData("10meg", 1e7)] [InlineData("2.5 ms", 2.5e-3)] [InlineData("150Hz", 150)] [InlineData("1e-3", 1e-3)] [InlineData("100n", 1e-7)]
+    [InlineData("1MHz", 1e6)] [InlineData("2,5 MHz", 2.5e6)] [InlineData("1 Meg", 1e6)] [InlineData("10MEG", 1e7)] [InlineData("4,7 MΩ", 4.7e6)] [InlineData("1M", 1e6)]
+    [InlineData("10 mHz", 1e-2)] [InlineData("3 ms", 3e-3)] [InlineData("100nF", 1e-7)] [InlineData("10µH", 1e-5)] [InlineData("2,2 kΩ", 2200)] [InlineData("10f", 1e-14)] [InlineData("1,00 MHz", 1e6)]
     public void Nombres_notation_ingenieur(string text, double expected)
     {
         Assert.True(SpiceNumber.TryParse(text, out var v));
         Assert.Equal(expected, v, expected * 1e-12);
+    }
+
+    /// <summary>« M » majuscule = méga (MHz, MΩ), « m » = milli ; ce que Silx affiche se relit à l'identique ; netlist sans « M ».</summary>
+    [Fact]
+    public void Mega_et_milli_et_aller_retour()
+    {
+        foreach (var v in new[] { 1e6, 32.68e3, 2.2e-3, 4.7e6, 150.0, 1e-9 })
+            foreach (var u in new[] { "Hz", "s", "" })
+                Assert.Equal(v, SpiceNumber.ParseOrNull(SpiceNumber.Format(v, u))!.Value, Math.Abs(v) * 2e-3);   // 3 chiffres affichés
+        Assert.Equal("1meg", SpiceNumber.NormaliserValeur("1 MΩ"));
+        Assert.Equal("4.7k", SpiceNumber.NormaliserValeur("4,7k"));
+        Assert.Equal("100n", SpiceNumber.NormaliserValeur("100nF"));
+        Assert.Equal("1m", SpiceNumber.NormaliserValeur("1m"));
+        var s = new Schematic();
+        s.Components.Add(new() { Ref = "R1", Kind = ComponentKind.Resistor, Position = new(0, 0), Value = "1M" });
+        s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(3, 0) });
+        Assert.EndsWith(" 1meg", CircuitBuilder.Ligne(s.Components[0], Connectivity.Build(s)).ToSpiceLine());
     }
 
     [Fact]
