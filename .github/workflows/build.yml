@@ -1,0 +1,91 @@
+# Silx — tests et application téléchargeable.
+# À chaque poussée : tests (socle, mesures, application) puis Silx.app macOS en artefact (.dmg).
+# Sur une étiquette vX.Y.Z : le .dmg est aussi publié dans une release GitHub.
+name: build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write   # publication des releases sur étiquette
+
+env:
+  DOTNET_NOLOGO: "1"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  NGSPICE_VERSION: "47"
+
+jobs:
+  tests:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: ngspice (Homebrew) pour les tests
+        run: brew install ngspice
+      - name: Tests du socle ngspice
+        run: dotnet test socle-ngspice
+      - name: Tests de la bibliothèque de mesures
+        run: dotnet test mesures
+      - name: Tests de l'application
+        run: dotnet test app/tests/Silx.App.Tests
+
+  ngspice:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cache ngspice compilé
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ngspice-embarque
+          key: ngspice-${{ env.NGSPICE_VERSION }}-macos14-arm64-v1
+      - name: Compilation de ngspice (sans X11, avec XSPICE)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: app/packaging/ngspice-construire.sh ngspice-embarque "$NGSPICE_VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ngspice-macos-arm64
+          path: ngspice-embarque
+          retention-days: 7
+
+  paquet-macos:
+    needs: [tests, ngspice]
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # numéro de version et de build (git describe, rev-list)
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ngspice-macos-arm64
+          path: ngspice-embarque
+      - name: Droits d'exécution de ngspice
+        run: chmod +x ngspice-embarque/bin/*
+      - name: Silx.app et .dmg
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then export VERSION="${GITHUB_REF_NAME#v}"; fi
+          NGSPICE_DIR="$PWD/ngspice-embarque" app/packaging/paquet-macos.sh
+      - name: Vérification du ngspice embarqué
+        run: |
+          app/build/Silx.app/Contents/Resources/ngspice/bin/ngspice -v
+          otool -L app/build/Silx.app/Contents/Resources/ngspice/bin/ngspice
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Silx-macos-arm64
+          path: app/build/*.dmg
+          retention-days: 30
+      - name: Release (étiquette vX.Y.Z)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/*.dmg
+          generate_release_notes: true
