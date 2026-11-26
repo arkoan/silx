@@ -40,7 +40,7 @@ public sealed partial class MainWindow
         {
             var bb = b; var r = _results.GetValueOrDefault(b);
             var etat = r == null ? "" : r.Erreur != null ? " ⚠" : r.Nombre == 0 ? "" : r.Global == Silx.Mesures.Gabarits.Verdict.Pass ? " ✓" : r.Global == Silx.Mesures.Gabarits.Verdict.Fail ? " ✕" : " ?";
-            Noeud(1, b.Nom + etat, _banc == b, () => SelectBanc(bb), CouleurDe(bb), b.Type == AnalyseKind.Ac ? "Bode" : "temporel");
+            Noeud(1, b.Nom + etat, _banc == b, () => SelectBanc(bb), CouleurDe(bb), b.Type == AnalyseKind.Ac ? "Bode" : TypesAnalyse.Libelle(b.Type));
             foreach (var c in b.CriteresActifs.ToList()) { var cc = c; Noeud(2, $"{c.Info.Nom} · {Signaux.Nom(c.Noeud)}", false, () => { if (_banc != bb) SelectBanc(bb); OuvrirLignePlan(cc); }); }
             foreach (var t in b.TracesActives.ToList()) { var tt = t; Noeud(2, $"Gabarit {(t.Limite == Silx.Mesures.Gabarits.Limite.Haute ? "haut" : "bas")} · {Signaux.Nom(t.Noeud)}", false, () => { if (_banc != bb) SelectBanc(bb); OuvrirLignePlan(tt); }); }
             for (int i = 0; i < b.Graphiques.Count; i++) Noeud(2, $"Graphique {i + 1} : {string.Join(", ", b.Graphiques[i].Select(n => $"V({n})").DefaultIfEmpty("vide"))}", false, () => { if (_banc != bb) SelectBanc(bb); });

@@ -87,6 +87,19 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
 ### 3.2 Moteur de simulation
 - Backend ngspice (CLI dans un premier temps, `libngspice` si besoin de perf)
 - Types d'analyse supportés : DC, AC, Transient, Noise, FFT
+- **Analyse DC** — **faite** :
+  - *Caractéristique de transfert* (.dc) : un banc dont le premier stimulus a la forme « **balayage DC** » (de, à,
+    pas ; enregistrée `DCSWEEP(de à pas)`, écrite « DC de » + `.dc` dans la netlist ; 10 000 points au plus, pas
+    négatif si la plage descend) est un banc **DC** : ses courbes ont pour abscisse la source balayée (« V1 (V) »,
+    ou en A pour une source de courant), courants sur l'axe de droite. Mesures sous le graphique : min, max,
+    **seuil** (abscisse où la sortie franchit le milieu de son excursion), **pente max** (gain DC). Critères :
+    valeur maximale, valeur minimale, seuil de basculement, pente maximale ; gabarits dessinés comme ailleurs.
+    Curseurs : Δ donne la pente. Modèle de banc « Caractéristique de transfert DC » (0 → 5 V, pas 10 mV).
+  - *Point de fonctionnement* (.op) : bouton « V » cerclé de la barre d'outils (et palette de commandes). Sur le
+    schéma, la **tension de chaque nœud** (étiquette bleue près de la broche la plus en haut à gauche du nœud) et le
+    **courant de chaque composant** (étiquette verte : entrant par la broche 1 ; collecteur / drain pour un
+    transistor), sans chevauchement. Avec un banc actif, ses stimuli sont à leur valeur continue (début du
+    balayage, valeur à t = 0, polarisation du petit signal) ; recalculé à chaque modification tant qu'il est affiché.
 - **Échantillonnage adaptatif (mode « Auto », par défaut)** :
   - *Temporel* : ngspice choisit son pas (pas maximal = durée / 200) ; il pose un point d'arrêt à chaque coin des
     stimuli (fronts) et y resserre ses points, puis les espace sur les paliers. Tous les points calculés sont

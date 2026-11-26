@@ -130,6 +130,7 @@ public static class Verification
     {
         var (vec, signe) = Signaux.Vecteur(signal, f) ?? throw new ArgumentException($"Signal « {signal} » indisponible.");
         if (k == AnalyseKind.Transitoire) { var c = Temporelle(raw, vec); return (c.Temps.ToArray(), c.Valeurs.ToArray().Select(v => v * signe).ToArray()); }
+        if (k == AnalyseKind.Dc) { var c = Balayage(raw, vec); return (c.Temps.ToArray(), c.Valeurs.ToArray().Select(v => v * signe).ToArray()); }
         var r = Frequentielle(raw, vec);
         return (r.Frequences.ToArray(), r.Valeurs.ToArray().Select(Frequentiel.Db).ToArray());
     }
@@ -152,7 +153,7 @@ public static class Verification
     static ResultatGabarit Evaluer0(CritereGabarit g, RawFile raw, Schematic? f, TypesMesure.Info info, Bornes bornes)
     {
         var (vec, signe) = Signaux.Vecteur(g.Noeud, f)!.Value;
-        CourbeTemporelle Temporelle(RawFile r, string v) { var c = Verification.Temporelle(r, v); return signe == 1 ? c : new CourbeTemporelle(c.Temps.ToArray(), c.Valeurs.ToArray().Select(x => x * signe).ToArray()); }
+        CourbeTemporelle Temporelle(RawFile r, string v) { var c = info.Analyse == AnalyseKind.Dc ? Balayage(r, v) : Verification.Temporelle(r, v); return signe == 1 ? c : new CourbeTemporelle(c.Temps.ToArray(), c.Valeurs.ToArray().Select(x => x * signe).ToArray()); }
         ReponseFrequentielle Frequentielle(RawFile r, string v) => Verification.Frequentielle(r, v);
         IMesure<CourbeTemporelle>? mt = g.Mesure switch
         {
@@ -165,6 +166,10 @@ public static class Verification
             TypeMesure.ValeurEfficace => new Mesure<CourbeTemporelle>("Valeur efficace", "V", MesuresEtablies.Efficace),
             TypeMesure.ValeurMoyenne => new Mesure<CourbeTemporelle>("Valeur moyenne", "V", MesuresEtablies.Moyenne),
             TypeMesure.Thd => new Mesure<CourbeTemporelle>("Distorsion harmonique", "%", MesuresEtablies.Thd),
+            TypeMesure.MaximumDc => new Mesure<CourbeTemporelle>("Maximum", "V", c => c.Valeurs.ToArray().Max()),
+            TypeMesure.MinimumDc => new Mesure<CourbeTemporelle>("Minimum", "V", c => c.Valeurs.ToArray().Min()),
+            TypeMesure.SeuilDc => new Mesure<CourbeTemporelle>("Seuil", "V", MesuresDc.Seuil),
+            TypeMesure.PenteMaxDc => new Mesure<CourbeTemporelle>("Pente maximale", "V/V", MesuresDc.PenteMax),
             _ => null
         };
         IMesure<ReponseFrequentielle>? mf = g.Mesure switch
@@ -210,6 +215,19 @@ public static class Verification
             tt.Add(ti); vv.Add(v[i]);
         }
         return new CourbeTemporelle(tt, vv);
+    }
+
+    /// <summary>
+    /// Caractéristique de transfert d'un balayage DC : abscisse = la grandeur balayée (premier vecteur du fichier,
+    /// « v(v-sweep) » ou « i(i-sweep) »), rangée par valeurs croissantes.
+    /// </summary>
+    public static CourbeTemporelle Balayage(RawFile raw, string vec)
+    {
+        var x = raw.Vector(raw.Variables[0].Name); var v = raw.Vector(vec);
+        var idx = Enumerable.Range(0, Math.Min(x.Length, v.Length)).OrderBy(i => x[i]).ToList();
+        var xx = new List<double>(); var vv = new List<double>();
+        foreach (var i in idx) { if (xx.Count > 0 && x[i] <= xx[^1]) continue; xx.Add(x[i]); vv.Add(v[i]); }
+        return new CourbeTemporelle(xx, vv);
     }
 
     public static ReponseFrequentielle Frequentielle(RawFile raw, string vec)

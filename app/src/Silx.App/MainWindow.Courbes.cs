@@ -32,8 +32,9 @@ public sealed partial class MainWindow
         _viewTran = Icones.Button(Icones.Temporel, "Vue temporelle (banc temporel)", () => AfficherFft(false), 16);
         _viewFft = Icones.Button(Icones.Fft, "Vue spectrale (FFT) du banc temporel : amplitude en dBV selon la fréquence", () => AfficherFft(true), 16);
         _viewAc = Icones.Button(Icones.Bode, "Vue Bode : suit le type du banc (réglable dans le panneau du banc)", () => { }, 16);
+        _viewDc = Icones.Button(Icones.TransfertDc, "Caractéristique de transfert DC : sorties en fonction de la source balayée", () => { }, 16);
         var view = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
-        view.Children.Add(_viewTran); view.Children.Add(_viewFft); view.Children.Add(_viewAc);
+        view.Children.Add(_viewTran); view.Children.Add(_viewFft); view.Children.Add(_viewAc); view.Children.Add(_viewDc);
 
         foreach (var (b, lim) in new[] { (_drawHigh, Limite.Haute), (_drawLow, Limite.Basse) })
         {
@@ -222,6 +223,7 @@ public sealed partial class MainWindow
             // La vue suit le type du banc : l'autre est grisée.
             Ui.SetActive(_viewTran, _banc != null && Shown == AnalyseKind.Transitoire && !VueFft); Ui.SetActive(_viewFft, VueFft); Ui.SetActive(_viewAc, _banc != null && Shown == AnalyseKind.Ac);
             _viewTran.IsEnabled = _viewFft.IsEnabled = _banc?.Type == AnalyseKind.Transitoire; _viewAc.IsEnabled = _banc?.Type == AnalyseKind.Ac;
+            _viewDc.IsVisible = _banc?.Type == AnalyseKind.Dc; Ui.SetActive(_viewDc, _viewDc.IsVisible);
             _viewTran.Opacity = _viewTran.IsEnabled ? 1 : 0.3; _viewFft.Opacity = _viewFft.IsEnabled ? 1 : 0.3; _viewAc.Opacity = _viewAc.IsEnabled ? 1 : 0.3;
         }
         _testTools.IsVisible = _modeTest && _banc != null && !VueFft;
@@ -297,7 +299,7 @@ public sealed partial class MainWindow
     {
         var sc = _plot.DisplayScale;
         var c = _plot.Plot.GetCoordinates(new ScottPlot.Pixel((float)(pos.X * sc), (float)(pos.Y * sc)));
-        return AxeLog ? (Math.Pow(10, c.X), c.Y) : (c.X * 1e-3, c.Y);
+        return AxeLog ? (Math.Pow(10, c.X), c.Y) : (c.X / EchX, c.Y);
     }
 
     Schematic? _fusionMemo; Banc? _fusionBanc;
@@ -315,7 +317,9 @@ public sealed partial class MainWindow
 
     /// <summary>Axe des abscisses en log f (Bode, FFT) ; sinon temps en ms.</summary>
     bool AxeLog => Shown == AnalyseKind.Ac || VueFft;
-    double XAff(double x) => AxeLog ? Math.Log10(x) : x * 1e3;
+    double XAff(double x) => AxeLog ? Math.Log10(x) : x * EchX;
+    /// <summary>Échelle de l'abscisse linéaire : temps affiché en ms ; grandeur balayée (DC) telle quelle.</summary>
+    double EchX => Shown == AnalyseKind.Transitoire ? 1e3 : 1;
 
     Silx.Core.Raw.RawFile? _spectreRaw; readonly Dictionary<string, (double[], double[])> _spectres = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Courbe affichée d'un signal : v(t), |V| dB (Bode), ou spectre en dBV (vue FFT, mis en cache).</summary>
@@ -518,7 +522,7 @@ public sealed partial class MainWindow
             var ligne = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(0, 0, 18, 0) };
             ligne.Children.Add(new Border { Width = 10, Height = 3, Background = new SolidColorBrush(Color.FromRgb(c.R, c.G, c.B)), VerticalAlignment = VerticalAlignment.Center });
             ligne.Children.Add(new TextBlock { Text = ac ? $"|{NomSignal(n)}|" : NomSignal(n), FontWeight = FontWeight.SemiBold, FontSize = Ui.Aide });
-            foreach (var (nom, val) in ac ? MesuresBode(xs, ys) : MesuresTemps(xs, ys, Signaux.Unite(n)))
+            foreach (var (nom, val) in ac ? MesuresBode(xs, ys) : Shown == AnalyseKind.Dc ? MesuresTransfert(xs, ys, Signaux.Unite(n), Banc.SourceBalayee?.Unite ?? "V") : MesuresTemps(xs, ys, Signaux.Unite(n)))
                 ligne.Children.Add(new TextBlock { Text = $"{nom} {val}", FontSize = Ui.Aide, Foreground = Ui.Muted, FontFamily = new FontFamily("Menlo, Consolas, monospace") });
             pane.Mesures.Children.Add(ligne);
         }
@@ -535,6 +539,16 @@ public sealed partial class MainWindow
             if (v[i - 1] < moy && v[i] >= moy) montees.Add(t[i - 1] + (moy - v[i - 1]) / (v[i] - v[i - 1]) * (t[i] - t[i - 1]));
         string f = montees.Count >= 3 && max - min > 1e-9 ? SpiceNumber.Format((montees.Count - 1) / (montees[^1] - montees[0]), "Hz") : "—";
         return [("min", SpiceNumber.Format(min, u)), ("max", SpiceNumber.Format(max, u)), ("c-c", SpiceNumber.Format(max - min, u)), ("moy", SpiceNumber.Format(moy, u)), ("f", f)];
+    }
+
+    /// <summary>Caractéristique DC : min, max, seuil de basculement (mi-excursion), pente maximale (gain).</summary>
+    public static IEnumerable<(string, string)> MesuresTransfert(double[] x, double[] y, string u, string ux)
+    {
+        var c = new Silx.Mesures.Courbes.CourbeTemporelle(x, y);
+        string Essai(Func<Silx.Mesures.Courbes.CourbeTemporelle, double> f, string unite)
+        { try { return SpiceNumber.Format(f(c), unite); } catch (Silx.Mesures.MesureImpossibleException) { return "—"; } }
+        return [("min", SpiceNumber.Format(y.Min(), u)), ("max", SpiceNumber.Format(y.Max(), u)), ("seuil", Essai(MesuresDc.Seuil, ux)),
+            ("pente max", Essai(MesuresDc.PenteMax, u == ux ? "V/V" : $"{u}/{ux}"))];
     }
 
     /// <summary>Gain basse fréquence, fréquence de coupure −3 dB, pente sur la dernière décade.</summary>
@@ -559,7 +573,8 @@ public sealed partial class MainWindow
         _readout.IsVisible = bySignal.Count > 0 && _banc != null && _last != null;
         if (!_readout.IsVisible) return;
         bool ac = Shown == AnalyseKind.Ac && !VueFft, fft = VueFft;   // Bode : phase et pente ; FFT : fréquence et dBV
-        string ux = ac || fft ? "Hz" : "s", uy = ac ? "dB" : fft ? "dBV" : "V";
+        bool dc = Shown == AnalyseKind.Dc;   // caractéristique DC : abscisse = source balayée ; Δ donne la pente
+        string ux = ac || fft ? "Hz" : dc ? Banc.SourceBalayee?.Unite ?? "V" : "s", uy = ac ? "dB" : fft ? "dBV" : "V";
         var g = new Grid { ColumnDefinitions = new("Auto,14,Auto,14,Auto,14,Auto,14,Auto") };
         int row = 0;
         void Cell(string t, int col, IBrush? b = null, bool bold = false, bool right = true)
@@ -568,7 +583,7 @@ public sealed partial class MainWindow
             Grid.SetRow(tb, row); Grid.SetColumn(tb, col); g.Children.Add(tb);
         }
         void NewRow() { g.RowDefinitions.Add(new RowDefinition(GridLength.Auto)); }
-        NewRow(); Cell("", 0); Cell(ac || fft ? "f" : "t", 2, Ui.Muted); Cell(ac ? "gain" : fft ? "amplitude" : "tension", 4, Ui.Muted); if (!fft) Cell(ac ? "phase" : "1/Δt", 6, Ui.Muted); if (ac) Cell("pente", 8, Ui.Muted); row++;
+        NewRow(); Cell("", 0); Cell(ac || fft ? "f" : dc ? Banc.SourceBalayee?.Ref ?? "x" : "t", 2, Ui.Muted); Cell(ac ? "gain" : fft ? "amplitude" : "valeur", 4, Ui.Muted); if (!fft) Cell(ac ? "phase" : dc ? "pente" : "1/Δt", 6, Ui.Muted); if (ac) Cell("pente", 8, Ui.Muted); row++;
         foreach (var grp in bySignal)
         {
             var col = colorOf(grp.Key); var brush = new SolidColorBrush(Color.FromArgb(255, col.R, col.G, col.B));
@@ -593,6 +608,7 @@ public sealed partial class MainWindow
                     if (PhaseAt(ab[0].Noeud, ab[0].X) is { } pa && PhaseAt(ab[1].Noeud, ab[1].X) is { } pb) Cell($"{pb - pa:+0.0;-0.0;0}°".Replace('.', ','), 6, Ui.AccentBrush, bold: true);
                     Cell(Math.Abs(Math.Log10(ab[1].X / ab[0].X)) > 1e-9 ? $"{dy / Math.Log10(ab[1].X / ab[0].X):0.#} dB/déc".Replace('.', ',') : "", 8, Ui.AccentBrush, bold: true);
                 }
+                else if (dc) Cell(Math.Abs(dx) > 0 ? SpiceNumber.Format(dy / dx, uyS == ux ? "V/V" : $"{uyS}/{ux}") : "—", 6, Ui.AccentBrush, bold: true);
                 else if (!fft) Cell(Math.Abs(dx) > 0 ? SpiceNumber.Format(1 / Math.Abs(dx), "Hz") : "—", 6, Ui.AccentBrush, bold: true);
                 row++;
             }
@@ -608,7 +624,7 @@ public sealed partial class MainWindow
             for (int i = 0; i < g.Points.Count; i++)
             {
                 var q = g.Points[i];
-                var px = _plot.Plot.GetPixel(new ScottPlot.Coordinates(Shown == AnalyseKind.Ac ? Math.Log10(q.X) : q.X * 1e3, q.Y));
+                var px = _plot.Plot.GetPixel(new ScottPlot.Coordinates(XAff(q.X), q.Y));
                 if (Math.Abs(px.X / sc - pos.X) < 9 && Math.Abs(px.Y / sc - pos.Y) < 9) return (g, i);
             }
         return null;
@@ -661,7 +677,7 @@ public sealed partial class MainWindow
         p.ShowGrid(); p.Axes.Left.IsVisible = p.Axes.Bottom.IsVisible = p.Axes.Top.IsVisible = true;
         if (VueFft) { RenderSpectre(pane, raw, nodesOk, isActive); return; }
         bool ac = Shown == AnalyseKind.Ac;
-        double X(double x) => ac ? Math.Log10(x) : x * 1e3;
+        double X(double x) => ac ? Math.Log10(x) : x * EchX;
         var nodes = nodesOk;
         double yMin = double.PositiveInfinity, yMax = double.NegativeInfinity, xLo = double.PositiveInfinity, xHi = double.NegativeInfinity;
         double iMin = double.PositiveInfinity, iMax = double.NegativeInfinity;
@@ -710,12 +726,18 @@ public sealed partial class MainWindow
             };
             p.Axes.Bottom.Label.Text = "Fréquence"; p.Axes.Left.Label.Text = "Gain (dB)";
         }
+        else if (Shown == AnalyseKind.Dc)
+        {
+            var sb = Banc.SourceBalayee;
+            p.Axes.Bottom.Label.Text = sb is { } s ? $"{s.Ref} ({s.Unite})" : "Grandeur balayée"; p.Axes.Left.Label.Text = "Tension (V)";
+            p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic { LabelFormatter = x => SpiceNumber.Format(x, "") };
+        }
         else { p.Axes.Bottom.Label.Text = "Temps (ms)"; p.Axes.Left.Label.Text = "Tension (V)"; }
 
         if (_modeTest)
         {
-            if (!ac && Banc.RecalerGabarits()) ReevaluateTraces();
-            if (!ac && Banc.TracesActives.Any(g => g.Relatif && pane.Signaux.Contains(g.Noeud)))
+            if (Shown == AnalyseKind.Transitoire && Banc.RecalerGabarits()) ReevaluateTraces();
+            if (Shown == AnalyseKind.Transitoire && Banc.TracesActives.Any(g => g.Relatif && pane.Signaux.Contains(g.Noeud)))
             {
                 // Repère du front du stimulus auquel les gabarits relatifs sont accrochés.
                 var fl = p.Add.VerticalLine(X(Banc.InstantFront));
@@ -798,7 +820,7 @@ public sealed partial class MainWindow
 
     /// <summary>Vue FFT d'un banc temporel : amplitude crête (dBV) de chaque signal, fréquence en échelle log.</summary>
     /// <summary>Un courant en vue temporelle se trace sur l'axe de droite.</summary>
-    bool AxeCourant(string n) => Signaux.EstCourant(n) && Shown == AnalyseKind.Transitoire && !VueFft;
+    bool AxeCourant(string n) => Signaux.EstCourant(n) && Shown is AnalyseKind.Transitoire or AnalyseKind.Dc && !VueFft;
     ScottPlot.IYAxis AxeY(string n) => AxeCourant(n) ? _plot.Plot.Axes.Right : _plot.Plot.Axes.Left;
 
     /// <summary>Curseurs : réticule pointillé, point sur la courbe, lettre (temporel, Bode et FFT).</summary>

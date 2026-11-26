@@ -48,7 +48,7 @@ public sealed partial class MainWindow
                 var detail = new TextBlock
                 {
                     FontSize = 11.5, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center,
-                    Text = r == null ? $"{b.CriteresActifs.Count() + b.TracesActives.Count()} contrainte(s) · {(b.Type == AnalyseKind.Ac ? "fréquentiel" : "temporel")}" : r.Erreur != null ? "erreur" : $"{r.Respectes}/{r.Nombre} respectée(s)"
+                    Text = r == null ? $"{b.CriteresActifs.Count() + b.TracesActives.Count()} contrainte(s) · {TypesAnalyse.Libelle(b.Type)}" : r.Erreur != null ? "erreur" : $"{r.Respectes}/{r.Nombre} respectée(s)"
                 };
                 Grid.SetColumn(detail, 2); row.Children.Add(detail);
                 var bb = b;
@@ -65,7 +65,7 @@ public sealed partial class MainWindow
         var add = Ui.ToolButton("+ Critère", "Ajouter un critère mesuré (temps de montée, bande passante…)", () =>
         {
             var n = Connectivity.Build(SchemaCourant).NamedNodes.FirstOrDefault() ?? "OUT";
-            var c = new CritereGabarit { Mesure = Banc.Type == AnalyseKind.Ac ? TypeMesure.BandePassante3dB : TypeMesure.TempsDeMontee, Noeud = n };
+            var c = new CritereGabarit { Mesure = Banc.Type switch { AnalyseKind.Ac => TypeMesure.BandePassante3dB, AnalyseKind.Dc => TypeMesure.SeuilDc, _ => TypeMesure.TempsDeMontee }, Noeud = n };
             Banc.Gabarits.Add(c); _ligneOuverte = c; RefreshGabarits();
         });
         Grid.SetColumn(add, 1); gh.Children.Add(add);
@@ -102,7 +102,7 @@ public sealed partial class MainWindow
 
     public Banc CreerBanc(ModeleBanc m, string? entree, string? sortie)
     {
-        var nom = m switch { ModeleBanc.Echelon => "Échelon", ModeleBanc.Sinus => "Sinus", ModeleBanc.Bode => "Bode", _ => "Banc" };
+        var nom = m switch { ModeleBanc.Echelon => "Échelon", ModeleBanc.Sinus => "Sinus", ModeleBanc.Bode => "Bode", ModeleBanc.TransfertDc => "Transfert DC", _ => "Banc" };
         int i = 1; var n = nom; while (_etude.Bancs.Any(b => b.Nom == n)) n = $"{nom} {++i}";
         var banc = ModelesBanc.Creer(_etude, m, entree, sortie, n);
         _etude.Bancs.Add(banc); SelectBanc(banc);
@@ -209,15 +209,22 @@ public sealed partial class MainWindow
             // Le type est fixé par le premier stimulus : on l'affiche, sans le proposer au choix.
             var st = Stimulus.Lire(src.Value);
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-            row.Children.Add(Icones.Make(Banc.Type == AnalyseKind.Ac ? Icones.Bode : Icones.Temporel, 15, Ui.AccentBrush));
-            row.Children.Add(new TextBlock { Text = Banc.Type == AnalyseKind.Ac ? "Fréquentiel" : "Temporel", FontWeight = FontWeight.SemiBold, FontSize = Ui.Texte, VerticalAlignment = VerticalAlignment.Center });
+            row.Children.Add(Icones.Make(Banc.Type switch { AnalyseKind.Ac => Icones.Bode, AnalyseKind.Dc => Icones.TransfertDc, _ => Icones.Temporel }, 15, Ui.AccentBrush));
+            row.Children.Add(new TextBlock { Text = Banc.Type switch { AnalyseKind.Ac => "Fréquentiel", AnalyseKind.Dc => "Balayage DC", _ => "Temporel" }, FontWeight = FontWeight.SemiBold, FontSize = Ui.Texte, VerticalAlignment = VerticalAlignment.Center });
             row.Children.Add(new TextBlock { Text = $"· fixé par {src.Ref} ({Stimulus.Libelle(st.Forme).ToLowerInvariant()})", FontSize = 12, Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center });
             ToolTip.SetTip(row, "Le premier stimulus posé dans le banc décide : petit signal (AC) → fréquentiel ; continu, impulsion, sinus → temporel.");
             s.Children.Add(row);
         }
         else s.Children.Add(type);
         void Rouvrir() { ResultatsPerimes(); if (_bulleBanc?.IsOpen == true && _bulleBanc.Target is Control anc) { _bulleBanc.Hide(); OuvrirReglagesBanc(anc); } }
-        if (Banc.Type == AnalyseKind.Transitoire)
+        if (Banc.Type == AnalyseKind.Dc)
+        {
+            s.Children.Add(Ui.SubTitle("Balayage DC (.dc)"));
+            s.Children.Add(Ui.Hint(Banc.SourceBalayee is { } sb
+                ? $"Bornes et pas du balayage : dans les propriétés de {sb.Ref} (forme « balayage DC »). Abscisse des courbes : {sb.Ref} ({sb.Unite})."
+                : "Posez une source de forme « balayage DC » : elle fixe la grandeur balayée."));
+        }
+        else if (Banc.Type == AnalyseKind.Transitoire)
         {
             s.Children.Add(Ui.SubTitle("Transitoire (.tran)"));
             var auto = new CheckBox { Content = "Pas automatique (fin aux fronts)", IsChecked = Banc.Transitoire.Auto, FontSize = Ui.Aide };
@@ -499,6 +506,7 @@ public sealed partial class MainWindow
             bool duCircuit = _etude.Schema.Components.Contains(c);
             _cible.Children.Add(Ui.Hint((duCircuit ? "Source du circuit sous test : présente dans tous les bancs (alimentation, polarisation). "
                 : st.Forme == FormeStimulus.PetitSignal ? "Source petit signal : le banc devient fréquentiel (Bode) si c'est son premier stimulus. "
+                : st.Forme == FormeStimulus.BalayageDc ? "Balayage DC : le banc trace la caractéristique de transfert (sorties en fonction de cette source) si c'est son premier stimulus. "
                 : "Le banc est temporel si c'est son premier stimulus. ") + "Valeurs en notation ingénieur : 4,7k · 100n · 1meg." + (courant ? " Courant de la broche 1 vers la broche 2 dans la source." : "")));
         }
         var spice = st.VersSpice();

@@ -23,6 +23,8 @@ static class Icones
     public const string ModeTest = "M3 5h18 M3 19h18 M3 13c3-6 6 2 9-1s5-3 9 0 M6 5l-2 2 M10 5l-2 2 M14 5l-2 2 M18 5l-2 2";
     public const string Temporel = "M3 19h5V5h13";
     public const string Bode = "M3 7h9c4 0 5 4 9 13";
+    public const string TransfertDc = "M3 20h18 M4 4v16 M4 17h4c3 0 4-11 8-11h5";   // caractéristique de transfert
+    public const string PointFonctionnement = "M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0 M8.5 8l3.5 8.5 3.5-8.5";   // « V » cerclé (voltmètre)
     public const string Fft = "M3 20h18M5 20V9M9 20v-6M13 20V5M17 20v-9M21 20v-4";
     public const string LimiteHaute = "M3 13h6l4-4h8 M5 13l3-3 M9 13l3-3 M14 9l3-3 M18 9l3-3";
     public const string LimiteBasse = "M3 11h6l4 4h8 M6 11l-3 3 M10 12l-3 3 M14 15l-3 3 M19 15l-3 3";

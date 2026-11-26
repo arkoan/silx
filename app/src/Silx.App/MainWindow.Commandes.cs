@@ -45,6 +45,7 @@ public sealed partial class MainWindow
             new("Afficher les vérifications", "", "Affichage", () => OuvrirDetail(Detail.Verifications)),
             new("Afficher le journal ngspice", "", "Affichage", () => OuvrirDetail(Detail.Journal)),
             new("Ajouter un graphique", "", "Courbes", () => AddPane()),
+            new("Point de fonctionnement DC (afficher / masquer)", "", "Simulation", () => Lancer(() => AfficherPointFonctionnementAsync(!_opVisible), "point de fonctionnement")),
             new("Explorateur de projet (afficher / masquer)", "", "Affichage", () => ExplorateurVisible = !ExplorateurVisible),
             new("Retirer tous les curseurs", "", "Courbes", () => { _cursors.Clear(); RefreshPlot(keepLimits: true); }),
             new("Aide-mémoire des gestes et raccourcis", "?", "Aide", () => AfficherAide()),

@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 namespace Silx.Etude;
 
 /// <summary>Forme d'un stimulus (source de tension ou de courant) saisi en clair.</summary>
-public enum FormeStimulus { Continu, Impulsion, Sinus, Rampe, Pwl, Prbs, Bruit, PetitSignal, Expression }
+public enum FormeStimulus { Continu, Impulsion, Sinus, Rampe, Pwl, Prbs, Bruit, PetitSignal, BalayageDc, Expression }
 
 /// <summary>
 /// Stimulus saisi par champs (valeurs en clair, notation ingénieur) et sa traduction en expression SPICE.
@@ -31,6 +31,7 @@ public sealed class Stimulus
         FormeStimulus.Prbs => [new("v1", "Niveau bas", "V", 0), new("v2", "Niveau haut", "V", 5), new("debit", "Débit", "bit/s", 100e3), new("td", "Retard", "s", 0), new("tr", "Transition", "s", 10e-9)],
         FormeStimulus.Bruit => [new("vo", "Décalage", "V", 0), new("na", "Bruit (efficace)", "V", 10e-3), new("nt", "Pas d'échantillonnage", "s", 1e-6)],
         FormeStimulus.PetitSignal => [new("ac", "Amplitude AC", "V", 1), new("ph", "Phase", "°", 0), new("dc", "Polarisation DC", "V", 0)],
+        FormeStimulus.BalayageDc => [new("de", "De", "V", 0), new("a", "À", "V", 5), new("pas", "Pas", "V", 0.01)],
         _ => [],
     };
 
@@ -38,11 +39,11 @@ public sealed class Stimulus
     {
         FormeStimulus.Continu => "Continu", FormeStimulus.Impulsion => "Échelon / impulsion", FormeStimulus.Sinus => "Sinus",
         FormeStimulus.Rampe => "Rampe", FormeStimulus.Pwl => "Points (PWL, fichier CSV)", FormeStimulus.Prbs => "Séquence pseudo-aléatoire (PRBS7)",
-        FormeStimulus.Bruit => "Bruit blanc", FormeStimulus.PetitSignal => "Petit signal (AC)", _ => "Expression SPICE"
+        FormeStimulus.Bruit => "Bruit blanc", FormeStimulus.PetitSignal => "Petit signal (AC)", FormeStimulus.BalayageDc => "Balayage DC (caractéristique de transfert)", _ => "Expression SPICE"
     };
 
     /// <summary>Une source en petit signal fait un banc fréquentiel ; les autres formes, un banc temporel.</summary>
-    public AnalyseKind Analyse => Forme == FormeStimulus.PetitSignal || (Forme == FormeStimulus.Expression && Regex.IsMatch(Expression, @"(^|\s)AC(\s|$)", RegexOptions.IgnoreCase)) ? AnalyseKind.Ac : AnalyseKind.Transitoire;
+    public AnalyseKind Analyse => Forme == FormeStimulus.BalayageDc ? AnalyseKind.Dc : Forme == FormeStimulus.PetitSignal || (Forme == FormeStimulus.Expression && Regex.IsMatch(Expression, @"(^|\s)AC(\s|$)", RegexOptions.IgnoreCase)) ? AnalyseKind.Ac : AnalyseKind.Transitoire;
 
     public double this[string cle] { get => V.TryGetValue(cle, out var v) ? v : Champs(Forme).FirstOrDefault(c => c.Cle == cle)?.Defaut ?? 0; set => V[cle] = value; }
 
@@ -67,13 +68,18 @@ public sealed class Stimulus
         FormeStimulus.Prbs => $"PRBS({N(this["v1"])} {N(this["v2"])} {N(this["debit"])} {N(this["td"])} {N(this["tr"])})",
         FormeStimulus.Bruit => $"DC {N(this["vo"])} TRNOISE({N(this["na"])} {N(this["nt"])} 0 0)",
         FormeStimulus.PetitSignal => $"DC {N(this["dc"])} AC {N(this["ac"])}" + (this["ph"] != 0 ? $" {N(this["ph"])}" : ""),
+        // Balayage DC : syntaxe Silx (bornes et pas relisibles) ; la netlist reçoit « DC de » et la directive .dc.
+        FormeStimulus.BalayageDc => $"DCSWEEP({N(this["de"])} {N(this["a"])} {N(this["pas"])})",
         _ => Expression.Trim(),
     };
 
     /// <summary>Valeur écrite dans la netlist ngspice (la PRBS y est développée en points PWL).</summary>
-    public string VersNetlist() => Forme == FormeStimulus.Prbs
-        ? "PWL(" + string.Join(" ", PointsPrbs().Select(p => $"{N(p.T)} {N(p.V)}")) + ")"
-        : VersSpice();
+    public string VersNetlist() => Forme switch
+    {
+        FormeStimulus.Prbs => "PWL(" + string.Join(" ", PointsPrbs().Select(p => $"{N(p.T)} {N(p.V)}")) + ")",
+        FormeStimulus.BalayageDc => $"DC {N(this["de"])}",
+        _ => VersSpice(),
+    };
 
     /// <summary>Séquence PRBS7 (x⁷ + x⁶ + 1, 127 bits) : paliers v1 / v2 au débit donné, transitions de durée tr.</summary>
     public List<(double T, double V)> PointsPrbs()
@@ -141,6 +147,7 @@ public sealed class Stimulus
             FormeStimulus.Prbs => $"PRBS7 {F("v1", "")}/{F("v2", u)}, {F("debit", "bit/s")}",
             FormeStimulus.Bruit => $"bruit {F("na", u)} eff." + (this["vo"] != 0 ? $" sur {F("vo", u)}" : ""),
             FormeStimulus.PetitSignal => $"AC {F("ac", u)}" + (this["dc"] != 0 ? $" sur {F("dc", u)}" : ""),
+            FormeStimulus.BalayageDc => $"DC {F("de", "")} → {F("a", u)}",
             _ => Expression,
         };
     }
@@ -190,6 +197,11 @@ public sealed class Stimulus
         {
             var s = Nouveau(FormeStimulus.Impulsion); string[] k = ["v1", "v2", "td", "tr", "tf", "pw", "per"];
             for (int i = 0; i < p.Length; i++) s[k[i]] = p[i];
+            return s;
+        }
+        if (Args("DCSWEEP") is { Length: 3 } dw)
+        {
+            var s = Nouveau(FormeStimulus.BalayageDc); s["de"] = dw[0]; s["a"] = dw[1]; s["pas"] = dw[2];
             return s;
         }
         if (Args("PRBS") is { Length: 5 } pr)

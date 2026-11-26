@@ -16,6 +16,7 @@ public class StimulusTests
     [InlineData("PWL(0 0 1m 0 6m 2)", FormeStimulus.Rampe, "PWL(0 0 0.001 0 0.006 2)")]
     [InlineData("PRBS(0 5 100k 0 10n)", FormeStimulus.Prbs, "PRBS(0 5 100000 0 1E-08)")]
     [InlineData("DC 1 TRNOISE(10m 1u 0 0)", FormeStimulus.Bruit, "DC 1 TRNOISE(0.01 1E-06 0 0)")]
+    [InlineData("DCSWEEP(0 5 10m)", FormeStimulus.BalayageDc, "DCSWEEP(0 5 0.01)")]
     [InlineData("EXP(0 5 1m 0.2m 3m 0.5m)", FormeStimulus.Expression, "EXP(0 5 1m 0.2m 3m 0.5m)")]
     public void Lecture_et_ecriture_des_stimuli(string spice, FormeStimulus forme, string attendu)
     {

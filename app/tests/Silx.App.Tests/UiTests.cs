@@ -973,4 +973,28 @@ public class UiTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    /// <summary>Banc « caractéristique de transfert DC » et point de fonctionnement affiché sur le schéma.</summary>
+    [AvaloniaFact]
+    public async Task Transfert_dc_et_point_de_fonctionnement()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var b = w.EtudeCourante.Bancs[1];
+        b.Calque.Components.Single(k => k.Ref == "V1").Value = "DCSWEEP(0 5 0.05)";
+        b.Gabarits.Clear(); b.GabaritsTraces.Clear();
+        w.SelectBanc(b);
+        await w.SimulateAsync();
+        Assert.Equal(Silx.Etude.AnalyseKind.Dc, b.Type);
+        Assert.Equal("V1 (V)", w.PlotControl.Plot.Axes.Bottom.Label.Text);
+        Shot(w, "80-transfert-dc.png");
+        await w.AfficherPointFonctionnementAsync(true);
+        Assert.Null(w.Canevas.PointFonctionnement?.Erreur);
+        Assert.Equal(0, w.Canevas.PointFonctionnement!.Tensions["OUT"], 6);   // début du balayage : V1 = 0
+        b.Calque.Components.Single(k => k.Ref == "V1").Value = "DC 5";
+        await w.AfficherPointFonctionnementAsync(true);
+        Assert.Equal(4.95, w.Canevas.PointFonctionnement!.Tensions["OUT"], 2);
+        Shot(w, "81-point-de-fonctionnement.png");
+        await w.AfficherPointFonctionnementAsync(false);
+        Assert.Null(w.Canevas.PointFonctionnement);
+    }
 }

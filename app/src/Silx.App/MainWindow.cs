@@ -61,7 +61,7 @@ public sealed partial class MainWindow : Window
     readonly Button _modeSim = new(), _modeTestBtn = new();
     readonly StackPanel _testTools = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
     readonly Button _drawHigh = new(), _drawLow = new();
-    Button _viewTran = null!, _viewAc = null!, _viewFft = null!;
+    Button _viewTran = null!, _viewAc = null!, _viewFft = null!, _viewDc = null!, _boutonOp = null!;
     bool _vueFft;
     /// <summary>Vue spectrale (FFT) d'un banc temporel : amplitude en dBV selon la fréquence.</summary>
     public bool VueFft => _vueFft && _banc?.Type == AnalyseKind.Transitoire;
@@ -611,7 +611,9 @@ public sealed partial class MainWindow : Window
             if (Parametres.Courant.SimulationAuto != _simAuto) { Parametres.Courant.SimulationAuto = _simAuto; Parametres.Courant.Enregistrer(); }
         };
         ToolTip.SetTip(_auto, "Simulation automatique : relancée seule après chaque modification quand le calcul dure moins d'une seconde");
-        rightSide.Children.Add(_etat); rightSide.Children.Add(_verdict); rightSide.Children.Add(_auto); rightSide.Children.Add(_simulate);
+        _boutonOp = Icones.Button(Icones.PointFonctionnement, "Point de fonctionnement DC sur le schéma : tension de chaque nœud, courant de chaque composant (stimuli à leur valeur continue)",
+            () => Lancer(() => AfficherPointFonctionnementAsync(!_opVisible), "point de fonctionnement"));
+        rightSide.Children.Add(_etat); rightSide.Children.Add(_verdict); rightSide.Children.Add(_boutonOp); rightSide.Children.Add(_auto); rightSide.Children.Add(_simulate);
         rightSide.Children.Add(Icones.Button(Icones.Reglages, "Paramètres de Silx (⌘,) : général, affichage (couleur des tests…), composants", () => OuvrirParametres()));
         var g = new Grid { ColumnDefinitions = new("*,Auto") };
         g.Children.Add(bar); g.Children.Add(rightSide); Grid.SetColumn(rightSide, 1);

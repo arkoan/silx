@@ -700,6 +700,51 @@ public sealed class SchematicCanvas : Control
     /// <summary>Vrai quand le schéma affiché est simulable seul (banc actif) : masse et broches libres sont alors des erreurs.</summary>
     public bool SimulationPossible { get; set; }
 
+    /// <summary>Point de fonctionnement affiché (tensions de nœud, courants de composant) ; null = masqué.</summary>
+    public ResultatOp? PointFonctionnement { get => _op; set { _op = value; InvalidateVisual(); } }
+    ResultatOp? _op;
+
+    /// <summary>Étiquettes du point de fonctionnement : tension sur chaque nœud (au bord de l'étiquette de net ou sur une broche), courant sous chaque composant.</summary>
+    void DessinerPointFonctionnement(DrawingContext ctx)
+    {
+        if (_op is not { Erreur: null } op) return;
+        var m = Merged(); var conn = Connectivity.Build(m);
+        var bleu = new SolidColorBrush(Color.Parse("#1d4ed8")); var fond = new SolidColorBrush(Color.FromArgb(235, 239, 246, 255));
+        var vert = new SolidColorBrush(Color.Parse("#047857"));
+        var police = new Typeface(new FontFamily("Menlo, Consolas, monospace"), FontStyle.Normal, FontWeight.SemiBold);
+        double taille = Math.Clamp(9.5 * Math.Sqrt(_zoom), 8.5, 12);
+        var posees = new List<Rect>();
+        void Etiquette(Point p, string texte, IBrush encre)
+        {
+            var t = new FormattedText(texte, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, police, taille, encre);
+            var r = new Rect(p.X, p.Y - t.Height - 2, t.Width + 6, t.Height + 2);
+            // Pas de chevauchement entre étiquettes : on décale vers le haut, puis vers le bas.
+            for (int k = 1; k <= 8 && posees.Any(q => q.Inflate(1).Intersects(r)); k++)
+                r = r.WithY(p.Y - t.Height - 2 + (k % 2 == 1 ? -1 : 1) * ((k + 1) / 2) * (r.Height + 2));
+            posees.Add(r);
+            ctx.DrawRectangle(fond, new Pen(encre, 0.7), r, 3, 3); ctx.DrawText(t, new Point(r.X + 3, r.Y + 1));
+        }
+        // Un point d'affichage par nœud : l'étiquette de net s'il y en a une, sinon la broche la plus en haut à gauche.
+        var broches = AllComponents.Where(c => c.IsElectrical).SelectMany(c => c.Pins).ToHashSet();
+        foreach (var g in conn.NodeOf.GroupBy(kv => kv.Value))
+        {
+            if (g.Key == "0" || !op.Tensions.TryGetValue(g.Key, out var v)) continue;
+            var label = m.Components.FirstOrDefault(c => c.Kind == ComponentKind.Label && conn.NodeOf.TryGetValue(c.Position, out var n) && n == g.Key);
+            var pt = label?.Position ?? g.Select(kv => kv.Key).OrderBy(q => broches.Contains(q) ? 0 : 1).ThenBy(q => q.Y).ThenBy(q => q.X).First();
+            var e = ToScreen(pt);
+            Etiquette(new Point(e.X + 6, e.Y - 4), SpiceNumber.Format(v, "V"), bleu);
+        }
+        foreach (var c in AllComponents.Where(c => c.IsElectrical && c.Kind != ComponentKind.Label && c.Kind != ComponentKind.Ground))
+        {
+            if (op.Courant(c.Ref) is not { } i || c.Pins.Count == 0) continue;
+            // Composant horizontal : au-dessus de son corps ; vertical : à droite, au niveau de sa broche basse.
+            var ps = c.Pins.Select(ToScreen).ToList();
+            bool horizontal = ps.All(q => Math.Abs(q.Y - ps[0].Y) < 1);
+            var ou = horizontal ? new Point(ps.Average(q => q.X) - 22, ps[0].Y - 7) : new Point(ps.Max(q => q.X) + 8, ps.Max(q => q.Y) - 4);
+            Etiquette(ou, "→ " + SpiceNumber.Format(i, "A"), vert);
+        }
+    }
+
     void DessinerErreurs(DrawingContext ctx)
     {
         CalculerErreurs();
@@ -795,6 +840,7 @@ public sealed class SchematicCanvas : Control
                 ctx.DrawRectangle(new SolidColorBrush(Color.Parse("#b45309")), null, r, 3, 3); ctx.DrawText(t, new Point(r.X + 5, r.Y + 2));
             }
         }
+        DessinerPointFonctionnement(ctx);
         DessinerErreurs(ctx);
         if (_dragging != null && !DernierDeplacementSur)
         {
