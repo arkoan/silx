@@ -5,7 +5,11 @@ using Silx.Core.Raw;
 
 namespace Silx.Core.Simulation;
 
-public sealed record SimulationResult(string RunId, RawFile Raw, string Log, TimeSpan Elapsed, int ExitCode);
+public sealed record SimulationResult(string RunId, RawFile Raw, string Log, TimeSpan Elapsed, int ExitCode)
+{
+    /// <summary>Tous les plots produits (plusieurs analyses dans la netlist) ; <see cref="Raw"/> est le premier.</summary>
+    public IReadOnlyList<RawFile> Plots { get; init; } = [Raw];
+}
 
 public sealed class NgspiceException(string message, string log) : Exception(message)
 {
@@ -81,8 +85,8 @@ public sealed class NgspiceRunner
             string logText = File.Exists(log) ? await File.ReadAllTextAsync(log, ct) : await so + await se;
             if (!File.Exists(raw) || new FileInfo(raw).Length == 0)
                 throw new NgspiceException($"ngspice n'a pas produit de .raw (code {p.ExitCode}).", logText);
-            var rf = RawFileReader.Read(raw);
-            return new SimulationResult(runId, rf, logText, sw.Elapsed, p.ExitCode);
+            var plots = RawFileReader.ReadAll(raw);
+            return new SimulationResult(runId, plots[0], logText, sw.Elapsed, p.ExitCode) { Plots = plots };
         }
         finally { try { Directory.Delete(dir, true); } catch { /* best effort */ } }
     }

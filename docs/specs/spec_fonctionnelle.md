@@ -80,10 +80,18 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
 ### 3.2 Moteur de simulation
 - Backend ngspice (CLI dans un premier temps, `libngspice` si besoin de perf)
 - Types d'analyse supportés : DC, AC, Transient, Noise, FFT
-- Analyse AC en décade (défaut) ou **linéaire sur une bande étroite** (option du banc), pour les résonances très
-  aiguës : un quartz 32,768 kHz (Q ≈ 67 000) a une résonance large d'environ 0,5 Hz, invisible avec 50 points
-  par décade. Sur moins d'une décade, l'axe des fréquences est gradué au hertz près.
-  En décade, Silx garantit au moins 100 points sur la plage demandée.
+- **Échantillonnage adaptatif (mode « Auto », par défaut)** :
+  - *Temporel* : ngspice choisit son pas (pas maximal = durée / 200) ; il pose un point d'arrêt à chaque coin des
+    stimuli (fronts) et y resserre ses points, puis les espace sur les paliers. Tous les points calculés sont
+    gardés, sans rééchantillonnage.
+  - *Fréquentiel* : balayage grossier (20 points par décade, au moins 100 points), puis à chaque passe (12 au plus)
+    des sous-balayages linéaires de 20 points sur les intervalles où le gain varie de plus de 3 dB ou la phase de
+    plus de 20°, ou bien où la pente du gain change brusquement (résonance cachée entre deux points, ex. la marche
+    de 0,014 dB que laisse un quartz). Toutes les zones d'une passe sont calculées dans une seule netlist (une
+    analyse .ac par zone), puis les points sont fusionnés en une courbe. Exemple : la résonance série (32 763 Hz,
+    35 kΩ) et parallèle (+26 Hz) d'un quartz 32,768 kHz sont trouvées sans réglage, en moins de 5 000 points.
+  - *Manuel* (case décochée) : pas maximal imposé en temporel ; en fréquentiel décade (au moins 100 points sur la
+    plage) ou linéaire sur une bande étroite. Sur moins d'une demi-décade, l'axe des fréquences est gradué au hertz.
 - Saisie des valeurs en notation ingénieur dans tous les champs : « M » majuscule et « meg » = méga (2 MHz,
   4,7 MΩ), « m » minuscule = milli (3 ms, 10 mHz) ; unités tolérées (Hz, s, V, A, Ω, F, H, dB, %). Les valeurs
   de R, C, L sont réécrites sans ambiguïté dans la netlist (« 1meg », jamais « 1M » que SPICE lit milli).

@@ -4,18 +4,33 @@ using System.Text;
 
 namespace Silx.Core.Raw;
 
-/// <summary>Lecteur de fichiers .raw ngspice (binaire et ASCII, réel et complexe, un seul plot).</summary>
+/// <summary>Lecteur de fichiers .raw ngspice (binaire et ASCII, réel et complexe ; un ou plusieurs plots).</summary>
 public static class RawFileReader
 {
     public static RawFile Read(string path) => Read(File.ReadAllBytes(path));
 
-    public static RawFile Read(ReadOnlySpan<byte> data)
+    /// <summary>Premier plot du fichier.</summary>
+    public static RawFile Read(ReadOnlySpan<byte> data) { int pos = 0; return ReadOne(data, ref pos); }
+
+    /// <summary>Tous les plots du fichier (plusieurs analyses dans une même netlist).</summary>
+    public static IReadOnlyList<RawFile> ReadAll(string path)
+    {
+        var data = File.ReadAllBytes(path).AsSpan();
+        var plots = new List<RawFile>(); int pos = 0;
+        while (pos < data.Length)
+        {
+            plots.Add(ReadOne(data, ref pos));
+            while (pos < data.Length && data[pos] is (byte)'\n' or (byte)'\r' or (byte)' ') pos++;
+        }
+        return plots;
+    }
+
+    static RawFile ReadOne(ReadOnlySpan<byte> data, ref int pos)
     {
         string title = "", plot = "";
         bool complex = false;
         int nVars = 0, nPoints = 0;
         var vars = new List<RawVariable>();
-        int pos = 0;
         bool binary = false;
 
         while (true)

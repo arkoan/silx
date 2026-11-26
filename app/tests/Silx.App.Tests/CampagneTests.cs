@@ -56,4 +56,19 @@ public class CampagneTests
         Assert.Contains("C1+", pire.Tirage.Libelle);      // C au maxi : montée la plus lente
         Assert.Contains("R1+", pire.Tirage.Libelle);
     }
+
+    /// <summary>Pas automatique : ngspice resserre ses points au front de l'échelon (0,5 ms) et les espace ailleurs.</summary>
+    [Fact]
+    public async Task Pas_automatique_dense_au_front()
+    {
+        var (e, b) = Exemple();
+        Assert.True(b.Transitoire.Auto);
+        var r = await Verification.RunAsync(e, b, []);
+        var t = r.Resultats[AnalyseKind.Transitoire].Vector("time");
+        int auFront = t.Count(x => x >= 0.5e-3 && x < 0.6e-3), aPlat = t.Count(x => x >= 8e-3 && x < 8.1e-3);
+        Assert.True(auFront >= 3 * Math.Max(aPlat, 1), $"front {auFront} points, plateau {aPlat}");
+        Assert.True(t.Length < 2000);
+        // Mesures inchangées à la précision près : temps de montée 2,2 RC.
+        Assert.InRange(r.Criteres.Single(c => c.Critere.Mesure == TypeMesure.TempsDeMontee).Resultat.Valeur!.Value, 2.15e-3, 2.25e-3);
+    }
 }

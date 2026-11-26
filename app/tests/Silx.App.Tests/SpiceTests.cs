@@ -316,7 +316,7 @@ public class SpiceTests
         banc.Calque.Components.Add(new() { Ref = "I1", Kind = ComponentKind.CurrentSource, Position = new(-6, 3), Rotation = 3, Value = "AC 1" });   // (−6,3)→(−6,0)
         banc.Calque.Components.Add(new() { Ref = "GND2", Kind = ComponentKind.Ground, Position = new(-6, 3) });
         banc.Calque.Components.Add(new() { Ref = "NET2", Kind = ComponentKind.Label, Position = new(-6, 0), Value = "Z" });
-        banc.Ac.Lineaire = true; banc.Ac.FDebut = 32.70e3; banc.Ac.FFin = 32.85e3; banc.Ac.PointsParDecade = 15001;
+        banc.Ac.Auto = false; banc.Ac.Lineaire = true; banc.Ac.FDebut = 32.70e3; banc.Ac.FFin = 32.85e3; banc.Ac.PointsParDecade = 15001;
         var r = await Verification.RunAsync(e, banc, []);
         Assert.Null(r.Erreur);
         var (f, db) = Verification.Courbe(AnalyseKind.Ac, r.Resultats[AnalyseKind.Ac], "Z");
@@ -325,10 +325,22 @@ public class SpiceTests
         Assert.InRange(Math.Pow(10, db[imin] / 20), 34e3, 36e3);     // |Z| = R1 = 35 kΩ
         Assert.InRange(f[imax] - f[imin], 20, 32);                   // parallèle : fs·C1/(2·C0) ≈ 26 Hz plus haut
         Assert.True(Math.Pow(10, db[imax] / 20) > 1e7);
-        // Décade, 50 points par décade : la résonance est manquée (seul C0 apparaît).
+        // Décade manuelle, 50 points par décade : la résonance est manquée (seul C0 apparaît).
         banc.Ac.Lineaire = false; banc.Ac.FDebut = 1e3; banc.Ac.FFin = 1e6; banc.Ac.PointsParDecade = 50;
         var r2 = await Verification.RunAsync(e, banc, []);
         var (_, db2) = Verification.Courbe(AnalyseKind.Ac, r2.Resultats[AnalyseKind.Ac], "Z");
         Assert.True(Math.Pow(10, db2.Min() / 20) > 1e5);
+        // Échantillonnage automatique, sans réglage, sur la même plage de 1 kHz à 1 MHz : les deux résonances sont trouvées.
+        banc.Ac.Auto = true;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var r3 = await Verification.RunAsync(e, banc, []);
+        var (f3, db3) = Verification.Courbe(AnalyseKind.Ac, r3.Resultats[AnalyseKind.Ac], "Z");
+        TestContext.Current.SendDiagnosticMessage($"auto : {f3.Length} points en {sw.ElapsedMilliseconds} ms");
+        int jmin = Array.IndexOf(db3, db3.Min()), jmax = Array.IndexOf(db3, db3.Max());
+        Assert.InRange(f3[jmin], 32755, 32770);
+        Assert.InRange(Math.Pow(10, db3[jmin] / 20), 34e3, 40e3);
+        Assert.InRange(f3[jmax] - f3[jmin], 20, 32);
+        Assert.True(Math.Pow(10, db3[jmax] / 20) > 1e7);
+        Assert.True(f3.Length < 5000);
     }
 }

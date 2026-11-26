@@ -1536,8 +1536,38 @@ public sealed partial class MainWindow : Window
             s.Children.Add(row);
         }
         else s.Children.Add(type);
-        if (Banc.Type == AnalyseKind.Transitoire) { s.Children.Add(Ui.SubTitle("Transitoire (.tran)")); s.Children.Add(tran); }
-        else { s.Children.Add(Ui.SubTitle(Banc.Ac.Lineaire ? "Petit signal (.ac, linéaire)" : "Petit signal (.ac, décade)")); s.Children.Add(ac); s.Children.Add(lin); }
+        void Rouvrir() { ResultatsPerimes(); if (_bulleBanc?.IsOpen == true && _bulleBanc.Target is Control anc) { _bulleBanc.Hide(); OuvrirReglagesBanc(anc); } }
+        if (Banc.Type == AnalyseKind.Transitoire)
+        {
+            s.Children.Add(Ui.SubTitle("Transitoire (.tran)"));
+            var auto = new CheckBox { Content = "Pas automatique (fin aux fronts)", IsChecked = Banc.Transitoire.Auto, FontSize = Ui.Aide };
+            auto.IsCheckedChanged += (_, _) => { Banc.Transitoire.Auto = auto.IsChecked == true; Rouvrir(); };
+            s.Children.Add(auto);
+            if (Banc.Transitoire.Auto)
+            {
+                s.Children.Add(Ui.Field("Durée", SpiceNumber.Format(Banc.Transitoire.Duree, "s"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) Banc.Transitoire.Duree = x; }));
+                s.Children.Add(Ui.Hint("ngspice adapte son pas : serré autour des fronts des stimuli, large sur les paliers. Tous ses points sont gardés."));
+            }
+            else s.Children.Add(tran);
+        }
+        else
+        {
+            s.Children.Add(Ui.SubTitle("Petit signal (.ac)"));
+            var auto = new CheckBox { Content = "Échantillonnage automatique", IsChecked = Banc.Ac.Auto, FontSize = Ui.Aide };
+            ToolTip.SetTip(auto, "Balayage grossier, puis points ajoutés là où le gain ou la phase varient vite ou cachent une résonance (coupures, quartz…).");
+            auto.IsCheckedChanged += (_, _) => { Banc.Ac.Auto = auto.IsChecked == true; Rouvrir(); };
+            s.Children.Add(auto);
+            if (Banc.Ac.Auto)
+            {
+                var plage = new Grid { ColumnDefinitions = new("*,8,*") };
+                plage.Children.Add(Ui.Field("De", SpiceNumber.Format(Banc.Ac.FDebut, "Hz"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) Banc.Ac.FDebut = x; }));
+                var a2 = Ui.Field("À", SpiceNumber.Format(Banc.Ac.FFin, "Hz"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) Banc.Ac.FFin = x; });
+                Grid.SetColumn(a2, 2); plage.Children.Add(a2);
+                s.Children.Add(plage);
+                s.Children.Add(Ui.Hint("Points ajoutés automatiquement aux coupures et résonances, même très étroites."));
+            }
+            else { s.Children.Add(ac); s.Children.Add(lin); }
+        }
         return s;
     }
 
@@ -2149,7 +2179,7 @@ public sealed partial class MainWindow : Window
             idx++;
         }
         if (double.IsFinite(cLo)) { yMin = Math.Min(yMin, cLo); yMax = Math.Max(yMax, cHi); }
-        if (ac && xHi - xLo < 1)
+        if (ac && xHi - xLo < 0.5)
         {
             // Bande étroite (moins d'une décade, ex. résonance d'un quartz) : graduations ordinaires, fréquence au hertz près.
             var fr = System.Globalization.CultureInfo.GetCultureInfo("fr-FR");

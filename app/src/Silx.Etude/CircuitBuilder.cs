@@ -7,7 +7,10 @@ public static class CircuitBuilder
 {
     public static Analysis AnalysisFor(Banc e, AnalyseKind k) => k switch
     {
-        AnalyseKind.Transitoire => new TranAnalysis(e.Transitoire.Pas, e.Transitoire.Duree, 0, e.Transitoire.Pas),
+        // Pas automatique : pas maximal Durée/200, ngspice affine seul aux fronts ; sinon pas maximal imposé.
+        AnalyseKind.Transitoire => e.Transitoire.Auto
+            ? new TranAnalysis(e.Transitoire.Duree / 1000, e.Transitoire.Duree, 0, e.Transitoire.Duree / 200)
+            : new TranAnalysis(e.Transitoire.Pas, e.Transitoire.Duree, 0, e.Transitoire.Pas),
         _ => new AcAnalysis(e.Ac.Lineaire ? AcSweep.Lin : AcSweep.Dec, PointsAc(e.Ac), Math.Min(e.Ac.FDebut, e.Ac.FFin), Math.Max(e.Ac.FDebut, e.Ac.FFin)),
     };
 

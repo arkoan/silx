@@ -68,9 +68,15 @@ public static class Verification
         {
             var tasks = kinds.Select(async k =>
             {
-                var c = CircuitBuilder.Build(schema, conn, CircuitBuilder.AnalysisFor(etude, k), $"Silx {etude.Nom} {k}");
-                foreach (var d in directives ?? []) c.Directive(d);
-                return (k, await runner.RunAsync(c, ct));
+                Silx.Core.Circuits.Circuit Construire(Silx.Core.Circuits.Analysis a)
+                {
+                    var c = CircuitBuilder.Build(schema, conn, a, $"Silx {etude.Nom} {k}");
+                    foreach (var d in directives ?? []) c.Directive(d);
+                    return c;
+                }
+                // Fréquentiel automatique : balayage grossier puis affinage là où la courbe varie (résonances, coupures).
+                if (k == AnalyseKind.Ac && etude.Ac.Auto) return (k, await Echantillonnage.AcAsync(runner, Construire, etude.Ac.FDebut, etude.Ac.FFin, ct));
+                return (k, await runner.RunAsync(Construire(CircuitBuilder.AnalysisFor(etude, k)), ct));
             }).ToList();
             foreach (var (k, r) in await Task.WhenAll(tasks))
             {

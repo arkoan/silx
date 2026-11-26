@@ -38,6 +38,7 @@ public static class Projet
         public SchemaF Calque { get; set; } = new();
         public double Pas { get; set; } public double Duree { get; set; }
         public double FDebut { get; set; } public double FFin { get; set; } public int PointsParDecade { get; set; } public bool AcLineaire { get; set; }
+        public bool? AcAuto { get; set; } public bool? TranAuto { get; set; }
         public List<CritereGabarit> Criteres { get; set; } = new();
         public List<TraceF> GabaritsDessines { get; set; } = new();
         public List<List<string>> Graphiques { get; set; } = new();
@@ -79,7 +80,7 @@ public static class Projet
             Bancs = e.Bancs.Select(b => new BancF
             {
                 Nom = b.Nom, TypeParDefaut = b.TypeParDefaut, Couleur = b.Couleur, Campagne = b.Campagne.Mode == ModeCampagne.Aucune ? null : b.Campagne, Calque = S(b.Calque),
-                Pas = b.Transitoire.Pas, Duree = b.Transitoire.Duree, FDebut = b.Ac.FDebut, FFin = b.Ac.FFin, PointsParDecade = b.Ac.PointsParDecade, AcLineaire = b.Ac.Lineaire,
+                Pas = b.Transitoire.Pas, Duree = b.Transitoire.Duree, FDebut = b.Ac.FDebut, FFin = b.Ac.FFin, PointsParDecade = b.Ac.PointsParDecade, AcLineaire = b.Ac.Lineaire, AcAuto = b.Ac.Auto, TranAuto = b.Transitoire.Auto,
                 Criteres = b.Gabarits.ToList(),
                 GabaritsDessines = b.GabaritsTraces.Select(g => new TraceF { Analyse = g.Analyse, Relatif = g.Relatif, Ancrage = g.Ancrage, Noeud = g.Noeud, Limite = g.Limite, Points = g.Points.Select(p => new[] { p.X, p.Y }).ToList() }).ToList(),
                 Graphiques = b.Graphiques.Select(g => g.ToList()).ToList(),
@@ -113,7 +114,7 @@ public static class Projet
         {
             var b = new Banc { Nom = bf.Nom, Calque = S(bf.Calque), TypeParDefaut = bf.TypeParDefaut, Couleur = bf.Couleur, Campagne = bf.Campagne ?? new() };
             b.Transitoire.Pas = bf.Pas; b.Transitoire.Duree = bf.Duree;
-            b.Ac.FDebut = bf.FDebut; b.Ac.FFin = bf.FFin; b.Ac.PointsParDecade = bf.PointsParDecade; b.Ac.Lineaire = bf.AcLineaire;
+            b.Ac.FDebut = bf.FDebut; b.Ac.FFin = bf.FFin; b.Ac.PointsParDecade = bf.PointsParDecade; b.Ac.Lineaire = bf.AcLineaire; b.Ac.Auto = bf.AcAuto ?? true; b.Transitoire.Auto = bf.TranAuto ?? true;
             b.Gabarits.AddRange(bf.Criteres);
             b.GabaritsTraces.AddRange(bf.GabaritsDessines.Select(t => new GabaritTrace { Analyse = t.Analyse, Relatif = t.Relatif, Ancrage = t.Ancrage, Noeud = t.Noeud, Limite = t.Limite, Points = t.Points.Where(p => p.Length == 2).Select(p => (p[0], p[1])).ToList() }));
             b.Graphiques.AddRange(bf.Graphiques);

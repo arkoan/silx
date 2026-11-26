@@ -2,12 +2,25 @@ namespace Silx.Etude;
 
 public enum AnalyseKind { Transitoire, Ac }
 
-public sealed class ReglagesTransitoire { public double Pas { get; set; } = 10e-6; public double Duree { get; set; } = 10e-3; }
+public sealed class ReglagesTransitoire
+{
+    public double Pas { get; set; } = 10e-6; public double Duree { get; set; } = 10e-3;
+    /// <summary>
+    /// Pas automatique (défaut) : ngspice choisit son pas (fin aux fronts des stimuli, où il pose des points d'arrêt,
+    /// large ailleurs) et tous ses points sont gardés, sans rééchantillonnage. Sinon le pas maximal est <see cref="Pas"/>.
+    /// </summary>
+    public bool Auto { get; set; } = true;
+}
 public sealed class ReglagesAc
 {
     public double FDebut { get; set; } = 1; public double FFin { get; set; } = 1e6; public int PointsParDecade { get; set; } = 50;
     /// <summary>Balayage linéaire (bande étroite, ex. résonance d'un quartz) : <see cref="PointsParDecade"/> est alors le nombre total de points.</summary>
     public bool Lineaire { get; set; }
+    /// <summary>
+    /// Échantillonnage automatique (défaut) : balayage grossier sur la plage, puis sous-balayages fins là où le gain ou la
+    /// phase varient vite ou dévient de leur tendance (résonances, coupures). Sinon : réglage manuel (décade ou linéaire).
+    /// </summary>
+    public bool Auto { get; set; } = true;
 }
 
 public enum TypeMesure { Depassement, TempsDeMontee, TempsEtablissement, ValeurFinale, BandePassante3dB, GainDc, MargeDePhase, MargeDeGain }

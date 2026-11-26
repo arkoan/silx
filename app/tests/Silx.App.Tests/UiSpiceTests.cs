@@ -460,7 +460,7 @@ public class UiSpiceTests
         banc.Calque.Components.Add(new() { Ref = "I1", Kind = ComponentKind.CurrentSource, Position = new(4, 11), Rotation = 3, Value = "AC 1" });
         banc.Calque.Components.Add(new() { Ref = "GND2", Kind = ComponentKind.Ground, Position = new(4, 11) });
         banc.Calque.Wires.Add(new(new(4, 8), new(10, 8)));
-        banc.Ac.Lineaire = true; banc.Ac.FDebut = 32.72e3; banc.Ac.FFin = 32.82e3; banc.Ac.PointsParDecade = 10001;
+        banc.Ac.FDebut = 10e3; banc.Ac.FFin = 100e3;   // échantillonnage automatique : aucun réglage de points
         banc.Graphiques.Add(["Z"]);
         w.OuvrirDansOnglet(e, "Quartz", null);
         w.SelectBanc(banc);
@@ -468,6 +468,8 @@ public class UiSpiceTests
         Assert.Null(w.Resultats!.Erreur);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
         Shot(w, "60-impedance-quartz.png");
+        var zf = w.PlotControl; zf.Plot.Axes.SetLimitsX(Math.Log10(32.74e3), Math.Log10(32.80e3)); zf.Plot.Axes.AutoScaleY(); zf.Refresh(); w.CaptureRenderedFrame();
+        Shot(w, "60b-impedance-quartz-zoom.png");
         w.OuvrirReglagesBanc(w.Schema);
         Shot(w, "61-reglage-lineaire.png");
     }
