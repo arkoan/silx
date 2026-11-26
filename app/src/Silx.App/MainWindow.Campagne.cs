@@ -232,7 +232,7 @@ public partial class MainWindow
     (double Min, double Max) DessinerCampagne(ScottPlot.Plot p, Pane pane, IReadOnlyList<string> nodes, Func<double, double> X, ScottPlot.Color[] couleurs)
     {
         double lo = double.PositiveInfinity, hi = double.NegativeInfinity;
-        if (ResultatCampagne is not { } r || VueFft) return (lo, hi);
+        if (ResultatCampagne is not { } r || VueAnnexe) return (lo, hi);
         var tirages = r.Tirages.Where(t => t.Erreur == null).Take(400).ToList();
         var gris = Parametres.VersPlot(((ISolidColorBrush)Ui.Muted).Color);
         bool sombre = Ui.Sombre;
@@ -302,7 +302,7 @@ public partial class MainWindow
     /// <summary>Clic sur le graphique : tirage dont une courbe passe à moins de 6 px du pointeur (null si aucun).</summary>
     public ResultatTirage? TirageSous(Point pos)
     {
-        if (ResultatCampagne is not { } r || _active == null || VueFft) return null;
+        if (ResultatCampagne is not { } r || _active == null || VueAnnexe) return null;
         bool ac = Shown == AnalyseKind.Ac;
         double X(double x) => ac ? Math.Log10(x) : x * 1e3;
         var sc = _plot.DisplayScale; var px = new ScottPlot.Pixel((float)(pos.X * sc), (float)(pos.Y * sc));

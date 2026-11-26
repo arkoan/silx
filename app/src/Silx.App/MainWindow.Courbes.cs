@@ -31,9 +31,11 @@ public sealed partial class MainWindow
 
         _viewTran = Icones.Button(Icones.Temporel, "Vue temporelle (banc temporel)", () => AfficherFft(false), 16);
         _viewFft = Icones.Button(Icones.Fft, "Vue spectrale (FFT) du banc temporel : amplitude en dBV selon la fréquence", () => AfficherFft(true), 16);
-        _viewAc = Icones.Button(Icones.Bode, "Vue Bode : suit le type du banc (réglable dans le panneau du banc)", () => { }, 16);
+        _viewAc = Icones.Button(Icones.Bode, "Vue Bode du banc fréquentiel", () => AfficherBruit(false), 16);
+        _viewBruit = Icones.Button(Icones.Bruit, "Vue bruit du banc fréquentiel : densité de bruit en sortie (trait plein) et ramenée à l'entrée (tirets), en V/√Hz", () => AfficherBruit(true), 16);
+        _viewDc = Icones.Button(Icones.TransfertDc, "Caractéristique de transfert DC : sorties en fonction de la source balayée", () => { }, 16);
         var view = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
-        view.Children.Add(_viewTran); view.Children.Add(_viewFft); view.Children.Add(_viewAc);
+        view.Children.Add(_viewTran); view.Children.Add(_viewFft); view.Children.Add(_viewAc); view.Children.Add(_viewBruit); view.Children.Add(_viewDc);
 
         foreach (var (b, lim) in new[] { (_drawHigh, Limite.Haute), (_drawLow, Limite.Basse) })
         {
@@ -220,12 +222,13 @@ public sealed partial class MainWindow
         if (_viewTran != null)
         {
             // La vue suit le type du banc : l'autre est grisée.
-            Ui.SetActive(_viewTran, _banc != null && Shown == AnalyseKind.Transitoire && !VueFft); Ui.SetActive(_viewFft, VueFft); Ui.SetActive(_viewAc, _banc != null && Shown == AnalyseKind.Ac);
-            _viewTran.IsEnabled = _viewFft.IsEnabled = _banc?.Type == AnalyseKind.Transitoire; _viewAc.IsEnabled = _banc?.Type == AnalyseKind.Ac;
+            Ui.SetActive(_viewTran, _banc != null && Shown == AnalyseKind.Transitoire && !VueFft); Ui.SetActive(_viewFft, VueFft); Ui.SetActive(_viewAc, _banc != null && Shown == AnalyseKind.Ac && !VueBruit); Ui.SetActive(_viewBruit, VueBruit);
+            _viewTran.IsEnabled = _viewFft.IsEnabled = _banc?.Type == AnalyseKind.Transitoire; _viewAc.IsEnabled = _viewBruit.IsEnabled = _banc?.Type == AnalyseKind.Ac; _viewBruit.Opacity = _viewBruit.IsEnabled ? 1 : 0.3;
+            _viewDc.IsVisible = _banc?.Type == AnalyseKind.Dc; Ui.SetActive(_viewDc, _viewDc.IsVisible);
             _viewTran.Opacity = _viewTran.IsEnabled ? 1 : 0.3; _viewFft.Opacity = _viewFft.IsEnabled ? 1 : 0.3; _viewAc.Opacity = _viewAc.IsEnabled ? 1 : 0.3;
         }
-        _testTools.IsVisible = _modeTest && _banc != null && !VueFft;
-        _boutonEstomper.IsVisible = ResultatCampagne != null && !VueFft;
+        _testTools.IsVisible = _modeTest && _banc != null && !VueAnnexe;
+        _boutonEstomper.IsVisible = ResultatCampagne != null && !VueAnnexe;
         _boutonEstomper.Content = _estompage == Estompage.Conformes ? "Estomper : conformes" : "Estomper : non conformes";
         Ui.SetActive(_drawHigh, _drawing?.Limite == Limite.Haute); Ui.SetActive(_drawLow, _drawing?.Limite == Limite.Basse);
         _drawHint.Text = _drawing == null ? "" : _drawing.Points.Count == 0
@@ -251,7 +254,7 @@ public sealed partial class MainWindow
     public void StartDrawing(Limite lim)
     {
         var n = ActiveSignals.FirstOrDefault();   // précisé au premier clic : courbe la plus proche
-        if (n == null || _banc == null || VueFft) return;
+        if (n == null || _banc == null || VueAnnexe) return;
         if (_last == null || !_last.Resultats.ContainsKey(Shown)) { _status.Text = "Simulez d'abord : le gabarit se dessine sur la courbe."; return; }
         // Temporel : gabarit accroché au front du stimulus par défaut (il suit un changement de retard).
         _drawing = new GabaritTrace { Analyse = Shown, Noeud = n, Limite = lim, Relatif = Shown == AnalyseKind.Transitoire, Ancrage = Banc.InstantFront };
@@ -297,7 +300,7 @@ public sealed partial class MainWindow
     {
         var sc = _plot.DisplayScale;
         var c = _plot.Plot.GetCoordinates(new ScottPlot.Pixel((float)(pos.X * sc), (float)(pos.Y * sc)));
-        return AxeLog ? (Math.Pow(10, c.X), c.Y) : (c.X * 1e-3, c.Y);
+        return AxeLog ? (Math.Pow(10, c.X), c.Y) : (c.X / EchX, c.Y);
     }
 
     Schematic? _fusionMemo; Banc? _fusionBanc;
@@ -314,8 +317,10 @@ public sealed partial class MainWindow
     string NomSignal(string s) => Signaux.Nom(s, FusionAffichee);
 
     /// <summary>Axe des abscisses en log f (Bode, FFT) ; sinon temps en ms.</summary>
-    bool AxeLog => Shown == AnalyseKind.Ac || VueFft;
-    double XAff(double x) => AxeLog ? Math.Log10(x) : x * 1e3;
+    bool AxeLog => Shown == AnalyseKind.Ac || VueFft;   // bruit : banc fréquentiel, donc log f aussi
+    double XAff(double x) => AxeLog ? Math.Log10(x) : x * EchX;
+    /// <summary>Échelle de l'abscisse linéaire : temps affiché en ms ; grandeur balayée (DC) telle quelle.</summary>
+    double EchX => Shown == AnalyseKind.Transitoire ? 1e3 : 1;
 
     Silx.Core.Raw.RawFile? _spectreRaw; readonly Dictionary<string, (double[], double[])> _spectres = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Courbe affichée d'un signal : v(t), |V| dB (Bode), ou spectre en dBV (vue FFT, mis en cache).</summary>
@@ -323,6 +328,7 @@ public sealed partial class MainWindow
     {
         if (_last == null || !_last.Resultats.TryGetValue(Shown, out var raw)) return null;
         if (!Signaux.Disponible(raw, noeud, FusionAffichee)) return null;
+        if (VueBruit) return _bruit.TryGetValue(noeud, out var cb) && cb.F.Length > 0 ? (cb.F, cb.Sortie.Select(DbBruit).ToArray()) : null;
         if (!VueFft) return Verification.Courbe(Shown, raw, noeud, FusionAffichee);
         if (_spectreRaw != raw) { _spectres.Clear(); _spectreRaw = raw; }
         if (!_spectres.TryGetValue(noeud, out var sp))
@@ -356,7 +362,7 @@ public sealed partial class MainWindow
             e.Handled = true; _zoomStart = e.GetPosition(_plot); _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
             return;
         }
-        if (!VueFft && _hoverVertex is { } hv)   // spectre : pas de gabarit
+        if (!VueAnnexe && _hoverVertex is { } hv)   // spectre : pas de gabarit
         {
             e.Handled = true; _dragVertex = hv; _plot.UserInputProcessor.Disable(); e.Pointer.Capture(_plot);
             return;
@@ -422,7 +428,7 @@ public sealed partial class MainWindow
         if (_banc == null || _last == null) return;
         var pos = e.GetPosition(_plot);
         SurvolerTirage(pos);
-        var hit = _modeTest && !VueFft ? VertexAt(pos) : null;
+        var hit = _modeTest && !VueAnnexe ? VertexAt(pos) : null;
         var hc = hit == null ? CursorAt(pos) : null;
         if (!Nullable.Equals(hit, _hoverVertex) || hc != _hoverCursor)
         {
@@ -483,7 +489,7 @@ public sealed partial class MainWindow
     /// <summary>Phase (degrés, déroulée depuis la plus basse fréquence) de V(nœud) en f, interpolée en log f.</summary>
     double? PhaseAt(string noeud, double f)
     {
-        if (_last == null || Shown != AnalyseKind.Ac || VueFft || !_last.Resultats.TryGetValue(AnalyseKind.Ac, out var raw)) return null;
+        if (_last == null || Shown != AnalyseKind.Ac || VueAnnexe || !_last.Resultats.TryGetValue(AnalyseKind.Ac, out var raw)) return null;
         if (!Signaux.Disponible(raw, noeud, FusionAffichee)) return null;
         var r = Verification.Frequentielle(raw, Signaux.Vecteur(noeud, FusionAffichee)!.Value.Vecteur);
         var fs = r.Frequences.ToArray(); var ph = Unwrap(r.Valeurs.ToArray().Select(z => z.Phase * 180 / Math.PI).ToArray());
@@ -518,7 +524,7 @@ public sealed partial class MainWindow
             var ligne = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(0, 0, 18, 0) };
             ligne.Children.Add(new Border { Width = 10, Height = 3, Background = new SolidColorBrush(Color.FromRgb(c.R, c.G, c.B)), VerticalAlignment = VerticalAlignment.Center });
             ligne.Children.Add(new TextBlock { Text = ac ? $"|{NomSignal(n)}|" : NomSignal(n), FontWeight = FontWeight.SemiBold, FontSize = Ui.Aide });
-            foreach (var (nom, val) in ac ? MesuresBode(xs, ys) : MesuresTemps(xs, ys, Signaux.Unite(n)))
+            foreach (var (nom, val) in ac ? MesuresBode(xs, ys) : Shown == AnalyseKind.Dc ? MesuresTransfert(xs, ys, Signaux.Unite(n), Banc.SourceBalayee?.Unite ?? "V") : MesuresTemps(xs, ys, Signaux.Unite(n)))
                 ligne.Children.Add(new TextBlock { Text = $"{nom} {val}", FontSize = Ui.Aide, Foreground = Ui.Muted, FontFamily = new FontFamily("Menlo, Consolas, monospace") });
             pane.Mesures.Children.Add(ligne);
         }
@@ -535,6 +541,16 @@ public sealed partial class MainWindow
             if (v[i - 1] < moy && v[i] >= moy) montees.Add(t[i - 1] + (moy - v[i - 1]) / (v[i] - v[i - 1]) * (t[i] - t[i - 1]));
         string f = montees.Count >= 3 && max - min > 1e-9 ? SpiceNumber.Format((montees.Count - 1) / (montees[^1] - montees[0]), "Hz") : "—";
         return [("min", SpiceNumber.Format(min, u)), ("max", SpiceNumber.Format(max, u)), ("c-c", SpiceNumber.Format(max - min, u)), ("moy", SpiceNumber.Format(moy, u)), ("f", f)];
+    }
+
+    /// <summary>Caractéristique DC : min, max, seuil de basculement (mi-excursion), pente maximale (gain).</summary>
+    public static IEnumerable<(string, string)> MesuresTransfert(double[] x, double[] y, string u, string ux)
+    {
+        var c = new Silx.Mesures.Courbes.CourbeTemporelle(x, y);
+        string Essai(Func<Silx.Mesures.Courbes.CourbeTemporelle, double> f, string unite)
+        { try { return SpiceNumber.Format(f(c), unite); } catch (Silx.Mesures.MesureImpossibleException) { return "—"; } }
+        return [("min", SpiceNumber.Format(y.Min(), u)), ("max", SpiceNumber.Format(y.Max(), u)), ("seuil", Essai(MesuresDc.Seuil, ux)),
+            ("pente max", Essai(MesuresDc.PenteMax, u == ux ? "V/V" : $"{u}/{ux}"))];
     }
 
     /// <summary>Gain basse fréquence, fréquence de coupure −3 dB, pente sur la dernière décade.</summary>
@@ -558,8 +574,9 @@ public sealed partial class MainWindow
         var bySignal = _cursors.Where(c => ActiveSignals.Contains(c.Noeud)).GroupBy(c => c.Noeud).ToList();
         _readout.IsVisible = bySignal.Count > 0 && _banc != null && _last != null;
         if (!_readout.IsVisible) return;
-        bool ac = Shown == AnalyseKind.Ac && !VueFft, fft = VueFft;   // Bode : phase et pente ; FFT : fréquence et dBV
-        string ux = ac || fft ? "Hz" : "s", uy = ac ? "dB" : fft ? "dBV" : "V";
+        bool ac = Shown == AnalyseKind.Ac && !VueAnnexe, fft = VueAnnexe;   // Bode : phase et pente ; FFT / bruit : fréquence et densité
+        bool dc = Shown == AnalyseKind.Dc;   // caractéristique DC : abscisse = source balayée ; Δ donne la pente
+        string ux = ac || fft ? "Hz" : dc ? Banc.SourceBalayee?.Unite ?? "V" : "s", uy = ac || VueBruit ? "dB" : fft ? "dBV" : "V";
         var g = new Grid { ColumnDefinitions = new("Auto,14,Auto,14,Auto,14,Auto,14,Auto") };
         int row = 0;
         void Cell(string t, int col, IBrush? b = null, bool bold = false, bool right = true)
@@ -568,7 +585,7 @@ public sealed partial class MainWindow
             Grid.SetRow(tb, row); Grid.SetColumn(tb, col); g.Children.Add(tb);
         }
         void NewRow() { g.RowDefinitions.Add(new RowDefinition(GridLength.Auto)); }
-        NewRow(); Cell("", 0); Cell(ac || fft ? "f" : "t", 2, Ui.Muted); Cell(ac ? "gain" : fft ? "amplitude" : "tension", 4, Ui.Muted); if (!fft) Cell(ac ? "phase" : "1/Δt", 6, Ui.Muted); if (ac) Cell("pente", 8, Ui.Muted); row++;
+        NewRow(); Cell("", 0); Cell(ac || fft ? "f" : dc ? Banc.SourceBalayee?.Ref ?? "x" : "t", 2, Ui.Muted); Cell(ac ? "gain" : VueBruit ? "densité" : fft ? "amplitude" : "valeur", 4, Ui.Muted); if (!fft) Cell(ac ? "phase" : dc ? "pente" : "1/Δt", 6, Ui.Muted); if (ac) Cell("pente", 8, Ui.Muted); row++;
         foreach (var grp in bySignal)
         {
             var col = colorOf(grp.Key); var brush = new SolidColorBrush(Color.FromArgb(255, col.R, col.G, col.B));
@@ -577,7 +594,7 @@ public sealed partial class MainWindow
             foreach (var c in grp.OrderBy(c => c.Nom))
             {
                 NewRow(); Cell($"  {c.Nom}", 0, brush, right: false); Cell(SpiceNumber.Format(c.X, ux), 2);
-                Cell(CurveAt(c.Noeud, c.X) is { } y ? SpiceNumber.Format(y, uyS) : "—", 4);
+                Cell(CurveAt(c.Noeud, c.X) is { } y ? VueBruit ? FormatBruit(y) : SpiceNumber.Format(y, uyS) : "—", 4);
                 if (ac) Cell(PhaseAt(c.Noeud, c.X) is { } ph ? $"{ph:0.0}°".Replace('.', ',') : "—", 6);
                 row++;
             }
@@ -593,6 +610,7 @@ public sealed partial class MainWindow
                     if (PhaseAt(ab[0].Noeud, ab[0].X) is { } pa && PhaseAt(ab[1].Noeud, ab[1].X) is { } pb) Cell($"{pb - pa:+0.0;-0.0;0}°".Replace('.', ','), 6, Ui.AccentBrush, bold: true);
                     Cell(Math.Abs(Math.Log10(ab[1].X / ab[0].X)) > 1e-9 ? $"{dy / Math.Log10(ab[1].X / ab[0].X):0.#} dB/déc".Replace('.', ',') : "", 8, Ui.AccentBrush, bold: true);
                 }
+                else if (dc) Cell(Math.Abs(dx) > 0 ? SpiceNumber.Format(dy / dx, uyS == ux ? "V/V" : $"{uyS}/{ux}") : "—", 6, Ui.AccentBrush, bold: true);
                 else if (!fft) Cell(Math.Abs(dx) > 0 ? SpiceNumber.Format(1 / Math.Abs(dx), "Hz") : "—", 6, Ui.AccentBrush, bold: true);
                 row++;
             }
@@ -608,7 +626,7 @@ public sealed partial class MainWindow
             for (int i = 0; i < g.Points.Count; i++)
             {
                 var q = g.Points[i];
-                var px = _plot.Plot.GetPixel(new ScottPlot.Coordinates(Shown == AnalyseKind.Ac ? Math.Log10(q.X) : q.X * 1e3, q.Y));
+                var px = _plot.Plot.GetPixel(new ScottPlot.Coordinates(XAff(q.X), q.Y));
                 if (Math.Abs(px.X / sc - pos.X) < 9 && Math.Abs(px.Y / sc - pos.Y) < 9) return (g, i);
             }
         return null;
@@ -660,8 +678,9 @@ public sealed partial class MainWindow
         }
         p.ShowGrid(); p.Axes.Left.IsVisible = p.Axes.Bottom.IsVisible = p.Axes.Top.IsVisible = true;
         if (VueFft) { RenderSpectre(pane, raw, nodesOk, isActive); return; }
+        if (VueBruit) { RenderBruit(pane, nodesOk, isActive); return; }
         bool ac = Shown == AnalyseKind.Ac;
-        double X(double x) => ac ? Math.Log10(x) : x * 1e3;
+        double X(double x) => ac ? Math.Log10(x) : x * EchX;
         var nodes = nodesOk;
         double yMin = double.PositiveInfinity, yMax = double.NegativeInfinity, xLo = double.PositiveInfinity, xHi = double.NegativeInfinity;
         double iMin = double.PositiveInfinity, iMax = double.NegativeInfinity;
@@ -710,12 +729,18 @@ public sealed partial class MainWindow
             };
             p.Axes.Bottom.Label.Text = "Fréquence"; p.Axes.Left.Label.Text = "Gain (dB)";
         }
+        else if (Shown == AnalyseKind.Dc)
+        {
+            var sb = Banc.SourceBalayee;
+            p.Axes.Bottom.Label.Text = sb is { } s ? $"{s.Ref} ({s.Unite})" : "Grandeur balayée"; p.Axes.Left.Label.Text = "Tension (V)";
+            p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic { LabelFormatter = x => SpiceNumber.Format(x, "") };
+        }
         else { p.Axes.Bottom.Label.Text = "Temps (ms)"; p.Axes.Left.Label.Text = "Tension (V)"; }
 
         if (_modeTest)
         {
-            if (!ac && Banc.RecalerGabarits()) ReevaluateTraces();
-            if (!ac && Banc.TracesActives.Any(g => g.Relatif && pane.Signaux.Contains(g.Noeud)))
+            if (Shown == AnalyseKind.Transitoire && Banc.RecalerGabarits()) ReevaluateTraces();
+            if (Shown == AnalyseKind.Transitoire && Banc.TracesActives.Any(g => g.Relatif && pane.Signaux.Contains(g.Noeud)))
             {
                 // Repère du front du stimulus auquel les gabarits relatifs sont accrochés.
                 var fl = p.Add.VerticalLine(X(Banc.InstantFront));
@@ -798,7 +823,7 @@ public sealed partial class MainWindow
 
     /// <summary>Vue FFT d'un banc temporel : amplitude crête (dBV) de chaque signal, fréquence en échelle log.</summary>
     /// <summary>Un courant en vue temporelle se trace sur l'axe de droite.</summary>
-    bool AxeCourant(string n) => Signaux.EstCourant(n) && Shown == AnalyseKind.Transitoire && !VueFft;
+    bool AxeCourant(string n) => Signaux.EstCourant(n) && Shown is AnalyseKind.Transitoire or AnalyseKind.Dc && !VueFft;
     ScottPlot.IYAxis AxeY(string n) => AxeCourant(n) ? _plot.Plot.Axes.Right : _plot.Plot.Axes.Left;
 
     /// <summary>Curseurs : réticule pointillé, point sur la courbe, lettre (temporel, Bode et FFT).</summary>
@@ -817,6 +842,88 @@ public sealed partial class MainWindow
             bool haut = yc > yMin + 0.7 * (yMax - yMin);   // près du haut : étiquette sous le point
             lt.LabelAlignment = haut ? ScottPlot.Alignment.UpperRight : ScottPlot.Alignment.LowerRight; lt.LabelOffsetX = -6; lt.LabelOffsetY = haut ? 6 : -6; lt.LabelPadding = 3;
         }
+    }
+
+    // ───────────────────────── vue bruit ─────────────────────────
+    readonly Dictionary<string, CourbeBruit> _bruit = new(StringComparer.OrdinalIgnoreCase);
+    ResultatEtude? _bruitPour; bool _bruitEnCours; string? _bruitErreur;
+    /// <summary>Densité de bruit tracée en dB (1 V/√Hz = 0 dB), graduée en V/√Hz.</summary>
+    static double DbBruit(double v) => 20 * Math.Log10(Math.Max(v, 1e-30));
+    static string FormatBruit(double db) => SpiceNumber.Format(Math.Pow(10, db / 20), "V/√Hz");
+
+    /// <summary>Calcule (en tâche de fond) le bruit des nœuds affichés qui manquent, puis redessine.</summary>
+    void DemanderBruit(IEnumerable<string> noeuds)
+    {
+        if (_last != _bruitPour) { _bruit.Clear(); _bruitErreur = null; _bruitPour = _last; if (_last != null) foreach (var (k, v) in _last.Bruit) _bruit[k] = v; }
+        var manquants = noeuds.Where(n => !Signaux.EstCourant(n) && !_bruit.ContainsKey(n)).ToList();
+        if (manquants.Count == 0 || _bruitEnCours || _bruitErreur != null || _banc == null) return;
+        _bruitEnCours = true; var pour = _last; var banc = _banc;
+        Lancer(async () =>
+        {
+            try
+            {
+                var (c, err) = await Bruit.CalculerAsync(_etude, banc, manquants);
+                if (pour != _bruitPour) return;
+                foreach (var (k, v) in c) _bruit[k] = v;
+                _bruitErreur = err;
+                foreach (var n in manquants.Where(n => !_bruit.ContainsKey(n))) _bruit[n] = new CourbeBruit(n, [], [], [], double.NaN, double.NaN);
+            }
+            finally { _bruitEnCours = false; }
+            RefreshPlot(keepLimits: false);
+        }, "analyse de bruit");
+    }
+
+    void RenderBruit(Pane pane, List<string> nodes, bool isActive)
+    {
+        var p = _plot.Plot;
+        DemanderBruit(nodes);
+        double yMin = double.PositiveInfinity, yMax = double.NegativeInfinity, xLo = double.PositiveInfinity, xHi = double.NegativeInfinity;
+        pane.Mesures.Children.Clear();
+        foreach (var n in nodes.Take(8))
+        {
+            if (!_bruit.TryGetValue(n, out var cb) || cb.F.Length == 0) continue;
+            var color = CouleurSignal(n, pane.Signaux.IndexOf(n));
+            var xs = cb.F.Select(Math.Log10).ToArray();
+            var so = p.Add.ScatterLine(xs, cb.Sortie.Select(DbBruit).ToArray());
+            so.LegendText = $"bruit en sortie {NomSignal(n)}"; so.LineWidth = (float)Parametres.Courant.EpaisseurCourbes; so.Color = color;
+            var en = p.Add.ScatterLine(xs, cb.Entree.Select(DbBruit).ToArray());
+            en.LegendText = $"ramené à l'entrée"; en.LineWidth = 1.5f; en.Color = color.WithAlpha(0.6); en.LinePattern = ScottPlot.LinePattern.Dashed;
+            // Une densité nulle (nœud tenu par une source idéale) ne fixe pas l'échelle.
+            foreach (var y in cb.Sortie.Concat(cb.Entree).Where(v => v > 1e-25).Select(DbBruit)) { yMin = Math.Min(yMin, y); yMax = Math.Max(yMax, y); }
+            xLo = Math.Min(xLo, xs[0]); xHi = Math.Max(xHi, xs[^1]);
+            var ligne = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(0, 0, 18, 0) };
+            ligne.Children.Add(new Border { Width = 10, Height = 3, Background = new SolidColorBrush(Color.FromRgb(color.R, color.G, color.B)), VerticalAlignment = VerticalAlignment.Center });
+            ligne.Children.Add(new TextBlock { Text = NomSignal(n), FontWeight = FontWeight.SemiBold, FontSize = Ui.Aide });
+            foreach (var (nom, val) in new[] { ("total sortie", SpiceNumber.Format(cb.TotalSortie, "V") + " eff."), ("total entrée", SpiceNumber.Format(cb.TotalEntree, "V") + " eff."),
+                ("à 1 kHz", cb.SortieA(1e3) is { } d ? SpiceNumber.Format(d, "V/√Hz") : "—") })
+                ligne.Children.Add(new TextBlock { Text = $"{nom} {val}", FontSize = Ui.Aide, Foreground = Ui.Muted, FontFamily = new FontFamily("Menlo, Consolas, monospace") });
+            pane.Mesures.Children.Add(ligne);
+        }
+        p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic
+        {
+            MinorTickGenerator = new ScottPlot.TickGenerators.LogMinorTickGenerator(), IntegerTicksOnly = true,
+            LabelFormatter = x => SpiceNumber.Format(Math.Pow(10, x), "Hz")
+        };
+        p.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic { LabelFormatter = FormatBruit };
+        p.Axes.Bottom.Label.Text = "Fréquence"; p.Axes.Left.Label.Text = "Densité de bruit (V/√Hz)";
+        p.Title(""); p.HideLegend();
+        if (_panes.Count > 1 && pane != _panes[^1]) p.Axes.Bottom.Label.Text = "";
+        if (!double.IsFinite(yMax))
+        {
+            p.Axes.Left.IsVisible = p.Axes.Bottom.IsVisible = false; p.HideGrid();
+            var t = p.Add.Text(_bruitErreur ?? (_bruitEnCours ? "Analyse de bruit en cours…" : "Bruit indisponible pour ces signaux (tensions de nœud seulement)"), 0, 0);
+            t.LabelFontSize = 14; t.LabelFontColor = ScottPlot.Color.FromHex("#5b6170"); t.LabelAlignment = ScottPlot.Alignment.MiddleCenter;
+            p.Axes.SetLimits(-1, 1, -1, 1);
+            if (isActive) _readout.IsVisible = false; _plot.Refresh(); return;
+        }
+        ScottPlot.Color ColorOf(string n) => CouleurSignal(n, pane.Signaux.IndexOf(n));
+        DessinerCurseurs(p, pane, Math.Log10, ColorOf, yMin, yMax);
+        if (isActive) RefreshReadout(ColorOf);
+        yMin = Math.Max(yMin, yMax - 120);   // 120 dB de dynamique au plus
+        double marge = Math.Max(3, (yMax - yMin) * 0.08);
+        p.Axes.SetLimits(xLo, xHi, yMin - marge, yMax + marge);
+        BornerAuxDonnees(p, xLo, xHi, yMin - marge, yMax + marge);
+        _plot.Refresh();
     }
 
     void RenderSpectre(Pane pane, Silx.Core.Raw.RawFile raw, List<string> nodes, bool isActive)

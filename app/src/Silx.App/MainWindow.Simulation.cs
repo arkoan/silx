@@ -37,6 +37,30 @@ public sealed partial class MainWindow
         if (_banc != null && _banc.Type != _typeAffiche) { _typeAffiche = _banc.Type; _cursors.Clear(); RefreshSide(); RefreshBenchBar(); RefreshPlot(); }
         RefreshPlotToolbar();
         RefreshProperties();
+        if (!_chargement && _opVisible) Lancer(MajPointFonctionnementAsync, "point de fonctionnement");
+    }
+
+    // ───────────────────────── point de fonctionnement (.op) ─────────────────────────
+    bool _opVisible; CancellationTokenSource? _ctsOp;
+    public bool PointFonctionnementVisible => _opVisible;
+
+    /// <summary>Affiche ou masque le point de fonctionnement continu sur le schéma (circuit seul, ou avec le banc actif).</summary>
+    public async Task AfficherPointFonctionnementAsync(bool visible)
+    {
+        _opVisible = visible; Ui.SetActive(_boutonOp, visible);
+        await MajPointFonctionnementAsync();
+    }
+
+    async Task MajPointFonctionnementAsync()
+    {
+        _ctsOp?.Cancel();
+        if (!_opVisible) { _canvas.PointFonctionnement = null; return; }
+        var cts = _ctsOp = new CancellationTokenSource();
+        var r = await PointFonctionnement.CalculerAsync(_etude, _banc, cts.Token);
+        if (cts.IsCancellationRequested) return;
+        _canvas.PointFonctionnement = r;
+        _status.Text = r.Erreur != null ? "⛔ " + r.Erreur
+            : $"Point de fonctionnement {(_banc == null ? "du circuit seul" : $"avec le banc « {_banc.Nom} »")} : {r.Tensions.Count - 1} nœud(s), {r.Courants.Count} courant(s).";
     }
 
     // ───────────────────────── simulation ─────────────────────────
@@ -76,7 +100,7 @@ public sealed partial class MainWindow
             }
             else
             {
-                _status.Text = $"« {Banc.Nom} » simulé en {sw.ElapsedMilliseconds} ms ({string.Join(" + ", res.Resultats.Keys.Select(k => k == AnalyseKind.Ac ? "AC" : "transitoire"))}) · {res.Respectes}/{res.Nombre} contrainte(s) respectée(s)";
+                _status.Text = $"« {Banc.Nom} » simulé en {sw.ElapsedMilliseconds} ms ({string.Join(" + ", res.Resultats.Keys.Select(k => k switch { AnalyseKind.Ac => "AC", AnalyseKind.Dc => "balayage DC", _ => "transitoire" }))}) · {res.Respectes}/{res.Nombre} contrainte(s) respectée(s)";
                 SetVerdict(res.Nombre == 0 ? null : res.Global);
             }
             RefreshGabarits(); RefreshPlot(keepLimits); RefreshBenchBar();

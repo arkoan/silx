@@ -1,6 +1,6 @@
 namespace Silx.Etude;
 
-public enum AnalyseKind { Transitoire, Ac }
+public enum AnalyseKind { Transitoire, Ac, Dc }
 
 public sealed class ReglagesTransitoire
 {
@@ -23,7 +23,13 @@ public sealed class ReglagesAc
     public bool Auto { get; set; } = true;
 }
 
-public enum TypeMesure { Depassement, TempsDeMontee, TempsEtablissement, ValeurFinale, BandePassante3dB, GainDc, MargeDePhase, MargeDeGain, Frequence, AmplitudeCreteACrete, GainMax, LargeurBande3dB, ValeurEfficace, ValeurMoyenne, Thd }
+public enum TypeMesure { Depassement, TempsDeMontee, TempsEtablissement, ValeurFinale, BandePassante3dB, GainDc, MargeDePhase, MargeDeGain, Frequence, AmplitudeCreteACrete, GainMax, LargeurBande3dB, ValeurEfficace, ValeurMoyenne, Thd, MaximumDc, MinimumDc, SeuilDc, PenteMaxDc, BruitSortieTotal, BruitEntreeTotal, DensiteBruit1k }
+
+public static class TypesAnalyse
+{
+    /// <summary>« temporel », « fréquentiel », « DC ».</summary>
+    public static string Libelle(AnalyseKind k) => k switch { AnalyseKind.Ac => "fréquentiel", AnalyseKind.Dc => "DC", _ => "temporel" };
+}
 
 public static class TypesMesure
 {
@@ -46,6 +52,13 @@ public static class TypesMesure
         new(TypeMesure.LargeurBande3dB, "Largeur de bande à −3 dB (passe-bande)", "Hz", AnalyseKind.Ac),
         new(TypeMesure.MargeDePhase, "Marge de phase (gain de boucle)", "°", AnalyseKind.Ac),
         new(TypeMesure.MargeDeGain, "Marge de gain (gain de boucle)", "dB", AnalyseKind.Ac),
+        new(TypeMesure.BruitSortieTotal, "Bruit total en sortie (sur la plage)", "V", AnalyseKind.Ac),
+        new(TypeMesure.BruitEntreeTotal, "Bruit total ramené à l'entrée (sur la plage)", "V", AnalyseKind.Ac),
+        new(TypeMesure.DensiteBruit1k, "Densité de bruit en sortie à 1 kHz", "V/√Hz", AnalyseKind.Ac),
+        new(TypeMesure.MaximumDc, "Valeur maximale sur le balayage", "V", AnalyseKind.Dc),
+        new(TypeMesure.MinimumDc, "Valeur minimale sur le balayage", "V", AnalyseKind.Dc),
+        new(TypeMesure.SeuilDc, "Seuil de basculement (mi-excursion)", "V", AnalyseKind.Dc),
+        new(TypeMesure.PenteMaxDc, "Pente maximale (gain DC)", "V/V", AnalyseKind.Dc),
     ];
 
     public static Info Get(TypeMesure t) => Tous.First(x => x.Type == t);
@@ -104,6 +117,9 @@ public sealed class Banc
     /// <summary>Couleur choisie pour un signal (nœud → « #rrggbb ») ; sinon la couleur de sa place dans le graphique.</summary>
     public Dictionary<string, string> CouleursSignaux { get; } = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Source qui fixe le type du banc (null s'il n'y en a pas).</summary>
+    /// <summary>Source balayée d'un banc DC et sa grandeur (« V1 (V) »), pour l'axe des abscisses.</summary>
+    public (string Ref, string Unite)? SourceBalayee => Calque.Components.FirstOrDefault(k => k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource
+        && Stimulus.Lire(k.Value).Forme == FormeStimulus.BalayageDc) is { } s ? (s.Ref, s.Kind == ComponentKind.CurrentSource ? "A" : "V") : null;
     public PlacedComponent? PremierStimulus => Calque.Components.FirstOrDefault(k => k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource);
     public IEnumerable<CritereGabarit> CriteresActifs => Gabarits.Where(g => g.Info.Analyse == Type);
     public IEnumerable<GabaritTrace> TracesActives => GabaritsTraces.Where(g => g.Analyse == Type);

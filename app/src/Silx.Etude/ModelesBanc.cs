@@ -1,13 +1,13 @@
 namespace Silx.Etude;
 
 /// <summary>Modèle de banc de test : un stimulus prêt à brancher et un premier critère sur la sortie.</summary>
-public enum ModeleBanc { Echelon, Sinus, Bode, Vide }
+public enum ModeleBanc { Echelon, Sinus, Bode, TransfertDc, Vide }
 
 public static class ModelesBanc
 {
     public static string Libelle(ModeleBanc m) => m switch
     {
-        ModeleBanc.Echelon => "Échelon (réponse indicielle)", ModeleBanc.Sinus => "Sinus", ModeleBanc.Bode => "Réponse en fréquence (Bode)", _ => "Banc vide"
+        ModeleBanc.Echelon => "Échelon (réponse indicielle)", ModeleBanc.Sinus => "Sinus", ModeleBanc.Bode => "Réponse en fréquence (Bode)", ModeleBanc.TransfertDc => "Caractéristique de transfert DC", _ => "Banc vide"
     };
 
     /// <summary>
@@ -16,12 +16,13 @@ public static class ModelesBanc
     /// </summary>
     public static Banc Creer(Etude e, ModeleBanc m, string? entree, string? sortie, string nom)
     {
-        var b = new Banc { Nom = nom, TypeParDefaut = m == ModeleBanc.Bode ? AnalyseKind.Ac : AnalyseKind.Transitoire };
+        var b = new Banc { Nom = nom, TypeParDefaut = m == ModeleBanc.Bode ? AnalyseKind.Ac : m == ModeleBanc.TransfertDc ? AnalyseKind.Dc : AnalyseKind.Transitoire };
         if (m == ModeleBanc.Vide || entree == null) return b;
         var valeur = m switch
         {
             ModeleBanc.Echelon => "PULSE(0 1 0.0005 1e-06 1e-06 1 2)",
             ModeleBanc.Sinus => "SIN(0 1 1000 0)",
+            ModeleBanc.TransfertDc => "DCSWEEP(0 5 0.01)",
             _ => "DC 0 AC 1",
         };
         if (m == ModeleBanc.Sinus) { b.Transitoire.Duree = 5e-3; b.Transitoire.Pas = 2e-6; }
@@ -31,6 +32,7 @@ public static class ModelesBanc
             {
                 ModeleBanc.Echelon => new CritereGabarit { Mesure = TypeMesure.TempsDeMontee, Noeud = sortie },
                 ModeleBanc.Bode => new CritereGabarit { Mesure = TypeMesure.BandePassante3dB, Noeud = sortie },
+                ModeleBanc.TransfertDc => new CritereGabarit { Mesure = TypeMesure.PenteMaxDc, Noeud = sortie },
                 _ => new CritereGabarit { Mesure = TypeMesure.ValeurFinale, Noeud = sortie },
             });
         if (m == ModeleBanc.Sinus) b.Gabarits.Clear();   // pas de mesure scalaire évidente : les mesures par trace suffisent

@@ -29,7 +29,7 @@ public sealed partial class MainWindow
         int n = Banc.CriteresActifs.Count() + Banc.TracesActives.Count();
         _resumePlan.Text = n == 0 ? "Aucune contrainte : ajoutez un critère ou dessinez un gabarit sur les courbes."
             : ResumeCampagne() is { } rc ? rc
-            : _last is { Erreur: null } r && r.Nombre > 0 ? $"{r.Respectes}/{r.Nombre} respectée(s) · banc {(Banc.Type == AnalyseKind.Ac ? "fréquentiel" : "temporel")}"
+            : _last is { Erreur: null } r && r.Nombre > 0 ? $"{r.Respectes}/{r.Nombre} respectée(s) · banc {TypesAnalyse.Libelle(Banc.Type)}"
             : $"{n} contrainte(s) · pas encore simulé";
         // Signaux contrôlables : nœuds du schéma et courants sondés dans les graphiques du banc.
         var nodes = Connectivity.Build(SchemaCourant).AllNodes.Concat(_panes.SelectMany(p => p.Signaux).Where(Signaux.EstCourant).Distinct()).ToList();
@@ -149,7 +149,7 @@ public sealed partial class MainWindow
         return card;
     }
 
-    static string Fx(AnalyseKind k, double x) => k == AnalyseKind.Ac ? SpiceNumber.Format(x, "Hz") : SpiceNumber.Format(x, "s");
+    string Fx(AnalyseKind k, double x) => k switch { AnalyseKind.Ac => SpiceNumber.Format(x, "Hz"), AnalyseKind.Dc => SpiceNumber.Format(x, Banc.SourceBalayee?.Unite ?? "V"), _ => SpiceNumber.Format(x, "s") };
 
     /// <summary>Un critère a changé : les résultats affichés ne correspondent plus.</summary>
     void Invalidate()
@@ -158,7 +158,7 @@ public sealed partial class MainWindow
         if (_banc != null && _last is { Erreur: null } r)
         {
             var crit = Banc.CriteresActifs.Where(g => r.Resultats.ContainsKey(g.Info.Analyse))
-                .Select(g => new ResultatCritere(g, Verification.Evaluer(g, r.Resultats[g.Info.Analyse], SchemaCourant))).ToList();
+                .Select(g => new ResultatCritere(g, Verification.Evaluer(g, r.Resultats[g.Info.Analyse], SchemaCourant, r.Bruit))).ToList();
             _last = r with { Criteres = crit };
             SetVerdict(_last.Nombre == 0 ? null : _last.Global);
         }

@@ -87,6 +87,28 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
 ### 3.2 Moteur de simulation
 - Backend ngspice (CLI dans un premier temps, `libngspice` si besoin de perf)
 - Types d'analyse supportés : DC, AC, Transient, Noise, FFT
+- **Analyse DC** — **faite** :
+  - *Caractéristique de transfert* (.dc) : un banc dont le premier stimulus a la forme « **balayage DC** » (de, à,
+    pas ; enregistrée `DCSWEEP(de à pas)`, écrite « DC de » + `.dc` dans la netlist ; 10 000 points au plus, pas
+    négatif si la plage descend) est un banc **DC** : ses courbes ont pour abscisse la source balayée (« V1 (V) »,
+    ou en A pour une source de courant), courants sur l'axe de droite. Mesures sous le graphique : min, max,
+    **seuil** (abscisse où la sortie franchit le milieu de son excursion), **pente max** (gain DC). Critères :
+    valeur maximale, valeur minimale, seuil de basculement, pente maximale ; gabarits dessinés comme ailleurs.
+    Curseurs : Δ donne la pente. Modèle de banc « Caractéristique de transfert DC » (0 → 5 V, pas 10 mV).
+  - *Point de fonctionnement* (.op) : bouton « V » cerclé de la barre d'outils (et palette de commandes). Sur le
+    schéma, la **tension de chaque nœud** (étiquette bleue près de la broche la plus en haut à gauche du nœud) et le
+    **courant de chaque composant** (étiquette verte : entrant par la broche 1 ; collecteur / drain pour un
+    transistor), sans chevauchement. Avec un banc actif, ses stimuli sont à leur valeur continue (début du
+    balayage, valeur à t = 0, polarisation du petit signal) ; recalculé à chaque modification tant qu'il est affiché.
+- **Analyse de bruit** (.noise) — **faite** : sur un banc **fréquentiel**, bouton « bruit » de la barre des courbes
+  (à côté de Bode). Pour chaque tension de nœud affichée (les courants sont ignorés), une analyse .noise sur la plage
+  du banc (20 points par décade), entrée = la source petit signal du banc ; les nœuds sont calculés en parallèle,
+  en tâche de fond. Tracé : densité de bruit **en sortie** (trait plein) et **ramenée à l'entrée** (tirets), en
+  V/√Hz sur échelle logarithmique (120 dB de dynamique au plus). Sous le graphique : bruit total en sortie et ramené
+  à l'entrée (V efficaces intégrés sur la plage), densité à 1 kHz. Curseurs : fréquence et densité. Critères (banc
+  fréquentiel) : bruit total en sortie, bruit total ramené à l'entrée, densité de bruit en sortie à 1 kHz ; calculés
+  avec la simulation (une analyse .noise par nœud contrôlé), et aussi en campagne. Vérifié : √(4kTR) et √(kT/C)
+  d'un filtre RC.
 - **Échantillonnage adaptatif (mode « Auto », par défaut)** :
   - *Temporel* : ngspice choisit son pas (pas maximal = durée / 200) ; il pose un point d'arrêt à chaque coin des
     stimuli (fronts) et y resserre ses points, puis les espace sur les paliers. Tous les points calculés sont
@@ -249,6 +271,23 @@ Chaque démo est conforme sous ngspice (test automatique).
 - Visualiseur de courbes interactif (temporel, AC bode, FFT, histogrammes
   Monte Carlo), avec possibilité de superposer les traces d'un run
   sélectionné directement sur le schéma (probes visuelles sur les nœuds)
+- **Barre de menus native** (en haut de l'écran sur macOS) — **faite** :
+  - *Silx* : À propos de Silx, Paramètres… (⌘,) ; Masquer et Quitter (⌘Q) fournis par macOS.
+  - *Fichier* : Nouveau projet (⌘N), Ouvrir… (⌘O), Ouvrir un projet récent (10 derniers ouverts ou enregistrés,
+    « Effacer la liste »), Enregistrer (⌘S), Enregistrer sous… (⇧⌘S), Exporter (schéma, courbes, les deux en
+    PDF/SVG/PNG ; points des courbes et mesures en CSV ; rapport Markdown), Fermer le projet (⌘W).
+  - *Édition* : Annuler (⌘Z), Rétablir (⇧⌘Z), Couper, Copier, Coller, Dupliquer (⌘D), Supprimer, Tout sélectionner
+    (⌘A), Pivoter (⌘R), Miroir, Rechercher une commande ou un composant… (⌘K). Dans un champ texte, ces commandes
+    agissent sur le texte.
+  - *Affichage* : Schéma seul / Schéma et courbes / Courbes seules (F1, F2, F3), zoom avant, arrière, tout voir
+    (⌘+, ⌘−, ⌘0), tiroir du bas (netlist, vérifications, journal, campagne, réduire), explorateur, palette, panneau
+    de propriétés, thème (clair, sombre, système).
+  - *Placer* : résistance, condensateur, inductance, diode, sources de tension et de courant, masse, étiquette, fil,
+    sonde (lettre du raccourci rappelée dans le libellé, sans raccourci de menu pour ne pas gêner la saisie),
+    importer un modèle SPICE.
+  - *Simulation* : Lancer (⌘↵ ; ⌘R reste « pivoter »), Arrêter (⌘.), simulation automatique, point de
+    fonctionnement DC, nouveau banc (modèles), réglages du banc et campagne, circuit sous test.
+  - *Aide* : manuel en ligne (README du dépôt), gestes et raccourcis, palette de commandes, démos.
 - **Icônes légères** : icônes au trait dessinées sur une grille 24×24 commune et mises à l'échelle telles quelles
   (même corps optique pour toutes, pas d'étirement jusqu'au bord), 16 px par défaut, **trait de 1,15 px** quelle
   que soit la taille ; boutons-icônes avec 6 px de marge.

@@ -61,11 +61,17 @@ public sealed partial class MainWindow : Window
     readonly Button _modeSim = new(), _modeTestBtn = new();
     readonly StackPanel _testTools = new() { Orientation = Orientation.Horizontal, Spacing = 6 };
     readonly Button _drawHigh = new(), _drawLow = new();
-    Button _viewTran = null!, _viewAc = null!, _viewFft = null!;
+    Button _viewTran = null!, _viewAc = null!, _viewFft = null!, _viewDc = null!, _viewBruit = null!, _boutonOp = null!;
     bool _vueFft;
     /// <summary>Vue spectrale (FFT) d'un banc temporel : amplitude en dBV selon la fréquence.</summary>
     public bool VueFft => _vueFft && _banc?.Type == AnalyseKind.Transitoire;
     public void AfficherFft(bool fft) { if (_vueFft != fft) _cursors.Clear(); _vueFft = fft; if (fft) EndDrawing(false); RefreshPlotToolbar(); RefreshPlot(); }
+    bool _vueBruit;
+    /// <summary>Vue bruit d'un banc fréquentiel : densité de bruit en sortie et ramenée à l'entrée (analyse .noise).</summary>
+    public bool VueBruit => _vueBruit && _banc?.Type == AnalyseKind.Ac;
+    public void AfficherBruit(bool bruit) { if (_vueBruit != bruit) _cursors.Clear(); _vueBruit = bruit; if (bruit) EndDrawing(false); RefreshPlotToolbar(); RefreshPlot(); }
+    /// <summary>Vue annexe (spectre FFT ou bruit) : pas de gabarit ni de campagne.</summary>
+    bool VueAnnexe => VueFft || VueBruit;
     // Édition des points d'un gabarit : survol (grossit) puis glisser.
     (GabaritTrace G, int I)? _hoverVertex, _dragVertex;
     // Curseurs de mesure : deux au plus par courbe (A, B), ils suivent la courbe.
@@ -225,6 +231,7 @@ public sealed partial class MainWindow : Window
             ActiverProjet(exemple);
             Disposer(Disposition.Mixte);
         }
+        CreerMenus();
         ActiverZone(Zone.Schema);
         _status.Text = "Clic : placer / sélectionner · glisser : déplacer · clic droit ou molette : vue · ⌘R : pivoter · W : fil · Suppr · ⌘Z / ⇧⌘Z";
     }
@@ -391,7 +398,7 @@ public sealed partial class MainWindow : Window
         try
         {
             var p = OuvrirDansOnglet(Projet.Ouvrir(chemin), Path.GetFileNameWithoutExtension(chemin), chemin);
-            _status.Text = $"Projet ouvert : {chemin}";
+            _status.Text = $"Projet ouvert : {chemin}"; RetenirRecent(chemin);
             return p;
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or System.Text.Json.JsonException or UnauthorizedAccessException)
@@ -424,7 +431,7 @@ public sealed partial class MainWindow : Window
         {
             Projet.Enregistrer(p.Etude, chemin);
             p.Chemin = chemin; p.Nom = Path.GetFileNameWithoutExtension(chemin); p.MarquerEnregistre();
-            _status.Text = $"Projet enregistré : {chemin}";
+            _status.Text = $"Projet enregistré : {chemin}"; RetenirRecent(chemin);
             RafraichirOnglets();
             return true;
         }
@@ -611,7 +618,9 @@ public sealed partial class MainWindow : Window
             if (Parametres.Courant.SimulationAuto != _simAuto) { Parametres.Courant.SimulationAuto = _simAuto; Parametres.Courant.Enregistrer(); }
         };
         ToolTip.SetTip(_auto, "Simulation automatique : relancée seule après chaque modification quand le calcul dure moins d'une seconde");
-        rightSide.Children.Add(_etat); rightSide.Children.Add(_verdict); rightSide.Children.Add(_auto); rightSide.Children.Add(_simulate);
+        _boutonOp = Icones.Button(Icones.PointFonctionnement, "Point de fonctionnement DC sur le schéma : tension de chaque nœud, courant de chaque composant (stimuli à leur valeur continue)",
+            () => Lancer(() => AfficherPointFonctionnementAsync(!_opVisible), "point de fonctionnement"));
+        rightSide.Children.Add(_etat); rightSide.Children.Add(_verdict); rightSide.Children.Add(_boutonOp); rightSide.Children.Add(_auto); rightSide.Children.Add(_simulate);
         rightSide.Children.Add(Icones.Button(Icones.Reglages, "Paramètres de Silx (⌘,) : général, affichage (couleur des tests…), composants", () => OuvrirParametres()));
         var g = new Grid { ColumnDefinitions = new("*,Auto") };
         g.Children.Add(bar); g.Children.Add(rightSide); Grid.SetColumn(rightSide, 1);

@@ -49,7 +49,7 @@ public sealed partial class MainWindow
         foreach (var b in e.Bancs)
         {
             var r = res.GetValueOrDefault(b);
-            sb.AppendLine($"| {b.Nom} | {(b.Type == AnalyseKind.Ac ? "fréquentiel" : "temporel")} | {(r == null || r.Erreur != null ? "—" : $"{r.Respectes}/{r.Nombre}")} | {TexteVerdict(r)} |");
+            sb.AppendLine($"| {b.Nom} | {TypesAnalyse.Libelle(b.Type)} | {(r == null || r.Erreur != null ? "—" : $"{r.Respectes}/{r.Nombre}")} | {TexteVerdict(r)} |");
         }
         sb.AppendLine();
         int i = 0;
@@ -58,7 +58,8 @@ public sealed partial class MainWindow
             var r = res.GetValueOrDefault(b);
             sb.AppendLine($"## Banc « {b.Nom} »").AppendLine();
             var stim = b.Calque.Components.Where(k => k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource).Select(k => $"{k.Ref} : {Stimulus.Lire(k.Value).Resume(k.Kind == ComponentKind.CurrentSource)}");
-            sb.AppendLine($"Analyse {(b.Type == AnalyseKind.Ac ? $"fréquentielle de {SpiceNumber.Format(b.Ac.FDebut, "Hz")} à {SpiceNumber.Format(b.Ac.FFin, "Hz")}" : $"temporelle sur {SpiceNumber.Format(b.Transitoire.Duree, "s")}")}. Stimuli : {string.Join(" ; ", stim.DefaultIfEmpty("aucun"))}.").AppendLine();
+            if (b.Type == AnalyseKind.Dc && b.PremierStimulus is { } sd) sb.AppendLine($"Caractéristique de transfert DC : {sd.Ref} {Stimulus.Lire(sd.Value).Resume(sd.Kind == ComponentKind.CurrentSource)}.");
+            else sb.AppendLine($"Analyse {(b.Type == AnalyseKind.Ac ? $"fréquentielle de {SpiceNumber.Format(b.Ac.FDebut, "Hz")} à {SpiceNumber.Format(b.Ac.FFin, "Hz")}" : $"temporelle sur {SpiceNumber.Format(b.Transitoire.Duree, "s")}")}. Stimuli : {string.Join(" ; ", stim.DefaultIfEmpty("aucun"))}.").AppendLine();
             if (r?.Erreur is { } err) { sb.AppendLine($"Simulation impossible : {err}").AppendLine(); continue; }
             if (r != null && r.Nombre > 0)
             {

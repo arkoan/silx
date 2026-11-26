@@ -27,11 +27,11 @@ public static class ExportDonnees
     {
         var sb = new StringBuilder();
         var dispo = signaux.Distinct(StringComparer.OrdinalIgnoreCase).Where(s => Signaux.Disponible(raw, s, fusion)).ToList();
-        if (k == AnalyseKind.Transitoire)
+        if (k is AnalyseKind.Transitoire or AnalyseKind.Dc)
         {
             var cols = dispo.Select(s => Verification.Courbe(k, raw, s, fusion)).ToList();
-            var x = cols.Count > 0 ? cols[0].X : Verification.Temporelle(raw, "time").Temps.ToArray();
-            Ligne(sb, dispo.Select(s => $"{Signaux.Nom(s, fusion)} ({Signaux.Unite(s)})").Prepend("temps (s)"));
+            var x = cols.Count > 0 ? cols[0].X : [];
+            Ligne(sb, dispo.Select(s => $"{Signaux.Nom(s, fusion)} ({Signaux.Unite(s)})").Prepend(k == AnalyseKind.Dc ? raw.Variables[0].Name : "temps (s)"));
             for (int i = 0; i < x.Length; i++) Ligne(sb, cols.Select(c => Nombre(c.Y[i])).Prepend(Nombre(x[i])));
         }
         else
@@ -60,7 +60,7 @@ public static class ExportDonnees
     {
         var sb = new StringBuilder();
         Ligne(sb, ["banc", banc.Nom]);
-        Ligne(sb, ["analyse", banc.Type == AnalyseKind.Ac ? "fréquentielle" : "temporelle"]);
+        Ligne(sb, ["analyse", TypesAnalyse.Libelle(banc.Type)]);
         sb.Append('\n');
         Ligne(sb, ["contrainte", "signal", "mini", "maxi", "valeur", "unité", "verdict", "détail"]);
         foreach (var c in banc.CriteresActifs)

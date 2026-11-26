@@ -973,4 +973,74 @@ public class UiTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    /// <summary>Banc « caractéristique de transfert DC » et point de fonctionnement affiché sur le schéma.</summary>
+    [AvaloniaFact]
+    public async Task Transfert_dc_et_point_de_fonctionnement()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var b = w.EtudeCourante.Bancs[1];
+        b.Calque.Components.Single(k => k.Ref == "V1").Value = "DCSWEEP(0 5 0.05)";
+        b.Gabarits.Clear(); b.GabaritsTraces.Clear();
+        w.SelectBanc(b);
+        await w.SimulateAsync();
+        Assert.Equal(Silx.Etude.AnalyseKind.Dc, b.Type);
+        Assert.Equal("V1 (V)", w.PlotControl.Plot.Axes.Bottom.Label.Text);
+        Shot(w, "80-transfert-dc.png");
+        await w.AfficherPointFonctionnementAsync(true);
+        Assert.Null(w.Canevas.PointFonctionnement?.Erreur);
+        Assert.Equal(0, w.Canevas.PointFonctionnement!.Tensions["OUT"], 6);   // début du balayage : V1 = 0
+        b.Calque.Components.Single(k => k.Ref == "V1").Value = "DC 5";
+        await w.AfficherPointFonctionnementAsync(true);
+        Assert.Equal(4.95, w.Canevas.PointFonctionnement!.Tensions["OUT"], 2);
+        Shot(w, "81-point-de-fonctionnement.png");
+        await w.AfficherPointFonctionnementAsync(false);
+        Assert.Null(w.Canevas.PointFonctionnement);
+    }
+
+    /// <summary>Vue bruit d'un banc fréquentiel : densités en sortie et ramenée à l'entrée.</summary>
+    [AvaloniaFact]
+    public async Task Vue_bruit()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        w.SelectBanc(w.EtudeCourante.Bancs[1]);
+        await w.SimulateAsync();
+        w.AfficherBruit(true);
+        Assert.True(w.VueBruit);
+        for (int i = 0; i < 100 && w.PlotControl.Plot.Axes.Left.Label.Text != "Densité de bruit (V/√Hz)"; i++) { await Task.Delay(50); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+        for (int i = 0; i < 100 && w.PlotControl.Plot.GetPlottables().Count() < 2; i++) { await Task.Delay(50); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+        Assert.True(w.PlotControl.Plot.GetPlottables().Count() >= 2);
+        Shot(w, "82-vue-bruit.png");
+        w.AfficherBruit(false);
+        Assert.False(w.VueBruit);
+    }
+
+    /// <summary>Barre de menus native : structure, raccourcis, commandes exécutables, projets récents.</summary>
+    [AvaloniaFact]
+    public async Task Barre_de_menus()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var menus = Avalonia.Controls.NativeMenu.GetMenu(w)!;
+        var titres = menus.Items.OfType<Avalonia.Controls.NativeMenuItem>().Select(m => m.Header).ToList();
+        Assert.Equal(["Fichier", "Édition", "Affichage", "Placer", "Simulation", "Aide"], titres);
+        Avalonia.Controls.NativeMenuItem Chercher(Avalonia.Controls.NativeMenu m, string t) =>
+            m.Items.OfType<Avalonia.Controls.NativeMenuItem>().Select(i => i.Header == t ? i : i.Menu is { } s ? Chercher(s, t) : null).FirstOrDefault(x => x != null)!;
+        Assert.NotNull(Chercher(menus, "Enregistrer").Gesture);
+        Assert.NotNull(Chercher(menus, "Ouvrir un projet récent").Menu);
+        Assert.NotNull(Avalonia.Controls.NativeMenu.GetMenu(Avalonia.Application.Current!));   // menu « Silx » : À propos, Paramètres
+        w.SelectBanc(w.EtudeCourante.Bancs[1]);
+        Chercher(menus, "Point de fonctionnement DC (afficher / masquer)").Command!.Execute(null);
+        for (int i = 0; i < 100 && w.Canevas.PointFonctionnement == null; i++) { await Task.Delay(30); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); }
+        Assert.True(w.PointFonctionnementVisible);
+        Chercher(menus, "Courbes seules").Command!.Execute(null);
+        Assert.Equal(MainWindow.Disposition.Courbes, w.DispositionActive);
+        var dir = Directory.CreateTempSubdirectory("silx-menus").FullName;
+        try
+        {
+            var f = Path.Combine(dir, "essai.silx");
+            Assert.True(w.EnregistrerSous(w.ProjetActif, f));
+            Assert.Contains(Chercher(menus, "Ouvrir un projet récent").Menu!.Items.OfType<Avalonia.Controls.NativeMenuItem>(), i => i.Header!.StartsWith("essai"));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

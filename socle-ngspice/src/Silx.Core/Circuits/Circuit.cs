@@ -11,6 +11,8 @@ public abstract record Analysis;
 public sealed record OpAnalysis : Analysis;
 public sealed record DcAnalysis(string Source, double Start, double Stop, double Step) : Analysis;
 public sealed record AcAnalysis(AcSweep Sweep, int PointsPerSweep, double FStart, double FStop) : Analysis;
+/// <summary>Analyse de bruit : densité de bruit sur v(Output[, Reference]) et rapportée à l'entrée Source (petit signal).</summary>
+public sealed record NoiseAnalysis(string Output, string Source, AcSweep Sweep, int PointsPerSweep, double FStart, double FStop, string? Reference = null) : Analysis;
 public sealed record TranAnalysis(double Step, double Stop, double Start = 0, double? MaxStep = null) : Analysis;
 public enum AcSweep { Dec, Oct, Lin }
 

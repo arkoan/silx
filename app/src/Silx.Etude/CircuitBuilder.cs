@@ -11,6 +11,11 @@ public static class CircuitBuilder
         AnalyseKind.Transitoire => e.Transitoire.Auto
             ? new TranAnalysis(e.Transitoire.Duree / 1000, e.Transitoire.Duree, 0, e.Transitoire.Duree / 200)
             : new TranAnalysis(e.Transitoire.Pas, e.Transitoire.Duree, 0, e.Transitoire.Pas),
+        // Balayage DC : la source du banc à forme « balayage DC » (pas ramené à au plus 10 000 points).
+        AnalyseKind.Dc when e.Calque.Components.FirstOrDefault(k => k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource
+            && Stimulus.Lire(k.Value).Forme == FormeStimulus.BalayageDc) is { } src && Stimulus.Lire(src.Value) is var st
+            => new DcAnalysis(src.Ref, st["de"], st["a"], PasDc(st["de"], st["a"], st["pas"])),
+        AnalyseKind.Dc => new OpAnalysis(),
         _ => new AcAnalysis(e.Ac.Lineaire ? AcSweep.Lin : AcSweep.Dec, PointsAc(e.Ac), Math.Min(e.Ac.FDebut, e.Ac.FFin), Math.Max(e.Ac.FDebut, e.Ac.FFin)),
     };
 
@@ -18,6 +23,15 @@ public static class CircuitBuilder
     /// Points de l'analyse AC : linéaire, au moins 2 ; en décade, assez de points par décade pour en avoir au moins 100
     /// sur la plage (une bande de 10 Hz à 50 points par décade n'en donnerait qu'un).
     /// </summary>
+    /// <summary>Pas du balayage DC : signé comme la plage, au plus 10 000 points, jamais nul.</summary>
+    public static double PasDc(double de, double a, double pas)
+    {
+        double plage = a - de, p = Math.Abs(pas);
+        if (plage == 0) return 1;
+        if (!(p > 0) || Math.Abs(plage) / p > 10_000) p = Math.Abs(plage) / 10_000;
+        return Math.Sign(plage) * p;
+    }
+
     public static int PointsAc(ReglagesAc a)
     {
         if (a.Lineaire) return Math.Max(a.PointsParDecade, 2);
@@ -54,6 +68,7 @@ public static class CircuitBuilder
         {
             TranAnalysis t => $".tran {G(t.Step)} {G(t.Stop)}",
             AcAnalysis a => $".ac {a.Sweep.ToString().ToLowerInvariant()} {a.PointsPerSweep} {G(a.FStart)} {G(a.FStop)}",
+            DcAnalysis d => $".dc {d.Source} {G(d.Start)} {G(d.Stop)} {G(d.Step)}",
             _ => ".op",
         });
         sb.AppendLine(".end");
@@ -72,7 +87,7 @@ public static class CircuitBuilder
             return new Component(k.Ref, k.Pins.Select(N).ToList(), k.Kind is ComponentKind.Resistor or ComponentKind.Capacitor or ComponentKind.Inductor
                 ? SpiceNumber.NormaliserValeur(k.Value)
                 // Sources : les formes propres à Silx (PRBS) sont développées en PWL.
-                : k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource && Stimulus.Lire(k.Value) is { Forme: FormeStimulus.Prbs } st ? st.VersNetlist()
+                : k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource && Stimulus.Lire(k.Value) is { Forme: FormeStimulus.Prbs or FormeStimulus.BalayageDc } st ? st.VersNetlist()
                 : k.Value.Trim());
         if (d.CodeXspice is { } code)
             // Porte / bascule XSPICE : ports numériques internes, reliés au schéma par les ponts (voir Auxiliaires).
