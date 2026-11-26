@@ -8,7 +8,7 @@ public static class CircuitBuilder
     public static Analysis AnalysisFor(Banc e, AnalyseKind k) => k switch
     {
         AnalyseKind.Transitoire => new TranAnalysis(e.Transitoire.Pas, e.Transitoire.Duree, 0, e.Transitoire.Pas),
-        _ => new AcAnalysis(AcSweep.Dec, e.Ac.PointsParDecade, e.Ac.FDebut, e.Ac.FFin),
+        _ => new AcAnalysis(e.Ac.Lineaire ? AcSweep.Lin : AcSweep.Dec, e.Ac.PointsParDecade, e.Ac.FDebut, e.Ac.FFin),
     };
 
     /// <summary>Construit le circuit. Suppose un ERC sans erreur (sinon le socle lève).</summary>

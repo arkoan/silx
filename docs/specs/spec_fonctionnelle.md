@@ -80,6 +80,9 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
 ### 3.2 Moteur de simulation
 - Backend ngspice (CLI dans un premier temps, `libngspice` si besoin de perf)
 - Types d'analyse supportés : DC, AC, Transient, Noise, FFT
+- Analyse AC en décade (défaut) ou **linéaire sur une bande étroite** (option du banc), pour les résonances très
+  aiguës : un quartz 32,768 kHz (Q ≈ 67 000) a une résonance large d'environ 0,5 Hz, invisible avec 50 points
+  par décade. Sur moins d'une décade, l'axe des fréquences est gradué au hertz près.
 - Exécution en parallèle de runs indépendants, bornée au nombre de cœurs
   disponibles
 

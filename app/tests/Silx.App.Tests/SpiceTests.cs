@@ -299,4 +299,36 @@ public class SpiceTests
         var (f, db) = Verification.Courbe(AnalyseKind.Ac, r.Resultats[AnalyseKind.Ac], "OUT");
         Assert.InRange(f[Array.IndexOf(db, db.Max())], 32600, 32950);
     }
+
+    /// <summary>
+    /// Impédance du quartz 32,768 kHz (source de courant AC 1 A : |V| = |Z|) en balayage linéaire étroit :
+    /// résonance série à 32 763 Hz sous 35 kΩ, résonance parallèle ~26 Hz plus haut (≫ 1 MΩ). En décade, elle passe entre deux points.
+    /// </summary>
+    [Fact]
+    public async Task Impedance_du_quartz_32k_en_balayage_lineaire()
+    {
+        var q = BibliothequeBase.Definitions().Single(d => d.Nom == "Quartz 32,768 kHz");
+        var e = new Silx.Etude.Etude(); var s = e.Schema;
+        s.Components.Add(new() { Ref = "X1", Kind = ComponentKind.Spice, Definition = q, Position = new(0, 0) });   // (0,0)-(3,0)
+        s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(3, 0) });
+        s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(0, 0), Value = "Z" });
+        var banc = new Banc { Type = AnalyseKind.Ac };
+        banc.Calque.Components.Add(new() { Ref = "I1", Kind = ComponentKind.CurrentSource, Position = new(-6, 3), Rotation = 3, Value = "AC 1" });   // (−6,3)→(−6,0)
+        banc.Calque.Components.Add(new() { Ref = "GND2", Kind = ComponentKind.Ground, Position = new(-6, 3) });
+        banc.Calque.Components.Add(new() { Ref = "NET2", Kind = ComponentKind.Label, Position = new(-6, 0), Value = "Z" });
+        banc.Ac.Lineaire = true; banc.Ac.FDebut = 32.70e3; banc.Ac.FFin = 32.85e3; banc.Ac.PointsParDecade = 15001;
+        var r = await Verification.RunAsync(e, banc, []);
+        Assert.Null(r.Erreur);
+        var (f, db) = Verification.Courbe(AnalyseKind.Ac, r.Resultats[AnalyseKind.Ac], "Z");
+        int imin = Array.IndexOf(db, db.Min()), imax = Array.IndexOf(db, db.Max());
+        Assert.InRange(f[imin], 32755, 32770);                       // série
+        Assert.InRange(Math.Pow(10, db[imin] / 20), 34e3, 36e3);     // |Z| = R1 = 35 kΩ
+        Assert.InRange(f[imax] - f[imin], 20, 32);                   // parallèle : fs·C1/(2·C0) ≈ 26 Hz plus haut
+        Assert.True(Math.Pow(10, db[imax] / 20) > 1e7);
+        // Décade, 50 points par décade : la résonance est manquée (seul C0 apparaît).
+        banc.Ac.Lineaire = false; banc.Ac.FDebut = 1e3; banc.Ac.FFin = 1e6; banc.Ac.PointsParDecade = 50;
+        var r2 = await Verification.RunAsync(e, banc, []);
+        var (_, db2) = Verification.Courbe(AnalyseKind.Ac, r2.Resultats[AnalyseKind.Ac], "Z");
+        Assert.True(Math.Pow(10, db2.Min() / 20) > 1e5);
+    }
 }

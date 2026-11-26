@@ -1498,8 +1498,18 @@ public sealed partial class MainWindow : Window
         ac.Children.Add(Ui.Field("De", SpiceNumber.Format(Banc.Ac.FDebut, "Hz"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) Banc.Ac.FDebut = x; }));
         var to = Ui.Field("À", SpiceNumber.Format(Banc.Ac.FFin, "Hz"), v => { if (SpiceNumber.ParseOrNull(v) is > 0 and var x) Banc.Ac.FFin = x; });
         Grid.SetColumn(to, 2); ac.Children.Add(to);
-        var pts = Ui.Field("Pts/déc.", Banc.Ac.PointsParDecade.ToString(), v => { if (int.TryParse(v, out var x) && x > 0) Banc.Ac.PointsParDecade = x; });
+        var pts = Ui.Field(Banc.Ac.Lineaire ? "Points" : "Pts/déc.", Banc.Ac.PointsParDecade.ToString(), v => { if (int.TryParse(v, out var x) && x > 0) Banc.Ac.PointsParDecade = x; });
         Grid.SetColumn(pts, 4); ac.Children.Add(pts);
+        var lin = new CheckBox { Content = "Balayage linéaire (bande étroite)", IsChecked = Banc.Ac.Lineaire, FontSize = Ui.Aide };
+        ToolTip.SetTip(lin, "Pour une résonance très étroite (quartz : quelques hertz de large) : balayez linéairement une bande étroite autour de la fréquence, avec assez de points (ex. 32,70 k à 32,85 kHz, 20 000 points).");
+        lin.IsCheckedChanged += (_, _) =>
+        {
+            Banc.Ac.Lineaire = lin.IsChecked == true;
+            if (Banc.Ac.Lineaire && Banc.Ac.PointsParDecade < 1000) Banc.Ac.PointsParDecade = 10000;
+            if (!Banc.Ac.Lineaire && Banc.Ac.PointsParDecade > 1000) Banc.Ac.PointsParDecade = 50;
+            ResultatsPerimes();
+            if (_bulleBanc?.IsOpen == true && _bulleBanc.Target is Control ancre) { _bulleBanc.Hide(); OuvrirReglagesBanc(ancre); }
+        };
 
         var type = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         foreach (var (k, icon, label) in new[] { (AnalyseKind.Transitoire, Icones.Temporel, "Temporel"), (AnalyseKind.Ac, Icones.Bode, "Fréquentiel") })
@@ -1524,7 +1534,7 @@ public sealed partial class MainWindow : Window
         }
         else s.Children.Add(type);
         if (Banc.Type == AnalyseKind.Transitoire) { s.Children.Add(Ui.SubTitle("Transitoire (.tran)")); s.Children.Add(tran); }
-        else { s.Children.Add(Ui.SubTitle("Petit signal (.ac, décade)")); s.Children.Add(ac); }
+        else { s.Children.Add(Ui.SubTitle(Banc.Ac.Lineaire ? "Petit signal (.ac, linéaire)" : "Petit signal (.ac, décade)")); s.Children.Add(ac); s.Children.Add(lin); }
         return s;
     }
 
@@ -2109,7 +2119,14 @@ public sealed partial class MainWindow : Window
             idx++;
         }
         if (double.IsFinite(cLo)) { yMin = Math.Min(yMin, cLo); yMax = Math.Max(yMax, cHi); }
-        if (ac)
+        if (ac && xHi - xLo < 1)
+        {
+            // Bande étroite (moins d'une décade, ex. résonance d'un quartz) : graduations ordinaires, fréquence au hertz près.
+            var fr = System.Globalization.CultureInfo.GetCultureInfo("fr-FR");
+            p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic { LabelFormatter = x => Math.Pow(10, x).ToString("#,0.#", fr) + " Hz" };
+            p.Axes.Bottom.Label.Text = "Fréquence"; p.Axes.Left.Label.Text = "Gain (dB)";
+        }
+        else if (ac)
         {
             p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic
             {

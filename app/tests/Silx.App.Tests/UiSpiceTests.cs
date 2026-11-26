@@ -444,4 +444,30 @@ public class UiSpiceTests
         w.SelectBanc(null);
         Shot(w, "59-alimentation-circuit.png");
     }
+
+    /// <summary>Impédance du quartz 32,768 kHz affichée en balayage linéaire étroit.</summary>
+    [AvaloniaFact]
+    public async Task Impedance_du_quartz_affichee()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var q = w.Bibliotheque.Definitions.Single(d => d.Nom == "Quartz 32,768 kHz");
+        var e = new Silx.Etude.Etude(); var s = e.Schema;
+        s.Components.Add(new() { Ref = "X1", Kind = ComponentKind.Spice, Definition = q, Position = new(10, 8) });
+        s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(13, 8) });
+        s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(10, 8), Value = "Z" });
+        var banc = new Banc { Nom = "Impédance", Type = AnalyseKind.Ac }; e.Bancs.Add(banc);
+        banc.Calque.Components.Add(new() { Ref = "I1", Kind = ComponentKind.CurrentSource, Position = new(4, 11), Rotation = 3, Value = "AC 1" });
+        banc.Calque.Components.Add(new() { Ref = "GND2", Kind = ComponentKind.Ground, Position = new(4, 11) });
+        banc.Calque.Wires.Add(new(new(4, 8), new(10, 8)));
+        banc.Ac.Lineaire = true; banc.Ac.FDebut = 32.72e3; banc.Ac.FFin = 32.82e3; banc.Ac.PointsParDecade = 10001;
+        banc.Graphiques.Add(["Z"]);
+        w.OuvrirDansOnglet(e, "Quartz", null);
+        w.SelectBanc(banc);
+        await w.SimulateAsync();
+        Assert.Null(w.Resultats!.Erreur);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Shot(w, "60-impedance-quartz.png");
+        w.OuvrirReglagesBanc(w.Schema);
+        Shot(w, "61-reglage-lineaire.png");
+    }
 }

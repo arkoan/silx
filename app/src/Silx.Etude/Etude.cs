@@ -3,7 +3,12 @@ namespace Silx.Etude;
 public enum AnalyseKind { Transitoire, Ac }
 
 public sealed class ReglagesTransitoire { public double Pas { get; set; } = 10e-6; public double Duree { get; set; } = 10e-3; }
-public sealed class ReglagesAc { public double FDebut { get; set; } = 1; public double FFin { get; set; } = 1e6; public int PointsParDecade { get; set; } = 50; }
+public sealed class ReglagesAc
+{
+    public double FDebut { get; set; } = 1; public double FFin { get; set; } = 1e6; public int PointsParDecade { get; set; } = 50;
+    /// <summary>Balayage linéaire (bande étroite, ex. résonance d'un quartz) : <see cref="PointsParDecade"/> est alors le nombre total de points.</summary>
+    public bool Lineaire { get; set; }
+}
 
 public enum TypeMesure { Depassement, TempsDeMontee, TempsEtablissement, ValeurFinale, BandePassante3dB, GainDc, MargeDePhase, MargeDeGain }
 
