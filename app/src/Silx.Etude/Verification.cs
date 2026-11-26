@@ -127,6 +127,8 @@ public static class Verification
             TypeMesure.TempsDeMontee => Catalogue.TempsDeMontee,
             TypeMesure.TempsEtablissement => Catalogue.TempsEtablissement2Pct,
             TypeMesure.ValeurFinale => new Mesure<CourbeTemporelle>("Valeur finale", "V", c => Transitoire.ValeurFinale(c)),
+            TypeMesure.Frequence => new Mesure<CourbeTemporelle>("Fréquence", "Hz", MesuresEtablies.Frequence),
+            TypeMesure.AmplitudeCreteACrete => new Mesure<CourbeTemporelle>("Amplitude crête à crête", "V", MesuresEtablies.CreteACrete),
             _ => null
         };
         IMesure<ReponseFrequentielle>? mf = g.Mesure switch
@@ -135,6 +137,8 @@ public static class Verification
             TypeMesure.GainDc => new Mesure<ReponseFrequentielle>("Gain BF", "dB", r => Frequentiel.Db(r.Valeurs[0])),
             TypeMesure.MargeDePhase => Catalogue.MargeDePhase,
             TypeMesure.MargeDeGain => Catalogue.MargeDeGain,
+            TypeMesure.GainMax => new Mesure<ReponseFrequentielle>("Gain maximal", "dB", r => r.Valeurs.ToArray().Max(z => Frequentiel.Db(z))),
+            TypeMesure.LargeurBande3dB => new Mesure<ReponseFrequentielle>("Largeur de bande à −3 dB", "Hz", MesuresEtablies.LargeurBande3dB),
             _ => null
         };
         if (bornes.Min is null && bornes.Max is null)

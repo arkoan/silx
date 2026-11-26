@@ -307,9 +307,12 @@ public class UiTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         var demo = w.ProjetActif;
         Assert.False(demo.Modifie);
+        int n0 = w.Projets.Count;   // l'exemple RC et les autres démonstrations
+        Assert.Equal(1 + Silx.Etude.Demos.Toutes.Count, n0);
+        Assert.Equal("Exemple RC", demo.Nom);
         await w.SimulateAsync();
         var vide = w.NouveauProjet();
-        Assert.Equal(2, w.Projets.Count);
+        Assert.Equal(n0 + 1, w.Projets.Count);
         Assert.Empty(w.EtudeCourante.Schema.Components);
         // Modifier le projet vide, revenir à la démo : chacun garde son contenu et ses résultats.
         w.EtudeCourante.Bancs.Add(new Silx.Etude.Banc { Nom = "Banc A" });
@@ -326,9 +329,9 @@ public class UiTests
             Assert.True(w.EnregistrerSous(demo, chemin));
             Assert.Equal("filtre-rc", demo.Nom); Assert.False(demo.Modifie);
             w.FermerSansDemander(demo);
-            Assert.Single(w.Projets);
+            Assert.Equal(n0, w.Projets.Count);
             var r = w.OuvrirFichier(chemin)!;
-            Assert.Equal(2, w.Projets.Count);
+            Assert.Equal(n0 + 1, w.Projets.Count);
             Assert.Same(r, w.ProjetActif);
             Assert.False(r.Modifie);
             Assert.Equal(Silx.Etude.Projet.VersJson(demo.Etude), Silx.Etude.Projet.VersJson(r.Etude));
@@ -816,5 +819,22 @@ public class UiTests
         w.EstompageTirages = MainWindow.Estompage.NonConformes;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
         Shot(w, "63-balayage-tirage-choisi.png");
+    }
+
+    /// <summary>Démos ouvertes au démarrage : captures de chacune, simulée sur son premier banc.</summary>
+    [AvaloniaFact]
+    public async Task Captures_des_demos()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        int i = 0;
+        foreach (var p in w.Projets.Where(p => p.Nom != "Exemple RC").ToList())
+        {
+            w.ActiverProjet(p);
+            w.SelectBanc(p.Etude.Bancs[0]);
+            await w.SimulateAsync();
+            Assert.Null(w.Resultats!.Erreur);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+            Shot(w, $"64-demo-{++i}.png");
+        }
     }
 }

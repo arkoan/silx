@@ -47,6 +47,7 @@ public sealed partial class MainWindow
             new("Aide-mémoire des gestes et raccourcis", "?", "Aide", () => AfficherAide()),
             new("Circuit sous test", "", "Bancs", () => SelectBanc(null)),
         };
+        foreach (var d in Demos.Toutes) { var dd = d; l.Add(new($"Ouvrir la démo « {d.Nom} »", "", "Fichier", () => OuvrirDansOnglet(dd.Creer(), dd.Nom, null))); }
         foreach (var m in Enum.GetValues<ModeleBanc>())
         {
             var mm = m;

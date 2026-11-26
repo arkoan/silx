@@ -213,7 +213,10 @@ public sealed partial class MainWindow : Window
             if (choix is 0 or 1) { _fermetureConfirmee = true; Close(); }
         };
 
-        OuvrirDansOnglet(EtudeModel.Demo(), "Exemple RC", null);
+        // Démarrage : l'exemple RC au premier plan, et les autres démonstrations dans des onglets voisins (variété).
+        var exemple = OuvrirDansOnglet(EtudeModel.Demo(), "Exemple RC", null);
+        foreach (var (nom, creer) in Demos.Toutes) OuvrirDansOnglet(creer(), nom, null);
+        ActiverProjet(exemple);
         Disposer(Disposition.Mixte);
         ActiverZone(Zone.Schema);
         _status.Text = "Clic : placer / sélectionner · glisser : déplacer · clic droit ou molette : vue · ⌘R : pivoter · W : fil · Suppr · ⌘Z / ⇧⌘Z";

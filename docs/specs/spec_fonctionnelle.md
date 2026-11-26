@@ -111,6 +111,8 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
   - distorsion harmonique totale (THD)
   - gain DC, offset
   - (extensible : liste ouverte, ajout de nouvelles mesures sans toucher au moteur)
+- Mesures ajoutées : fréquence et amplitude crête à crête en régime établi (dernier quart du signal : oscillateurs,
+  signaux périodiques), gain maximal et largeur de bande à −3 dB autour du maximum (passe-bande)
 - Évaluation automatique pass/fail contre un ou plusieurs gabarits
 - Gabarits dessinés : leurs points se posent et se déplacent dans la zone de tracé visible seulement (ils
   restent toujours attrapables)
@@ -145,6 +147,15 @@ reste-t-il conforme avec des composants réels ? ».
   sondés et les mesures sont gardés.
 - *Plus tard* : combinaison de plusieurs dimensions (ex : Monte Carlo × thermique), tirages corrélés par
   lot, dispersion des paramètres de modèle (datasheet min / max), coins process (modèles extrêmes).
+
+### 3.4 bis Projets de démonstration
+Ouverts en onglets à chaque démarrage, à côté de l'exemple RC (variété), et depuis la palette de commandes :
+- **Filtre à quartz 4 MHz** : échelle de deux quartz, terminaisons 470 Ω ; critères gain maximal et largeur de
+  bande, gabarits de bande passante et de réjection.
+- **Oscillateur Colpitts** : 2N3904 à émetteur commun, ≈ 2,2 MHz ; alimentation dans le circuit de base, impulsion
+  de démarrage dans le banc ; critères de fréquence et d'amplitude.
+- **Ampli émetteur commun** : BC547B, ≈ 42 dB de 100 Hz à 800 kHz ; campagne Monte-Carlo réglée (résistances ± 5 %).
+Chaque démo est conforme sous ngspice (test automatique).
 
 ### 3.5 Stimuli
 - Bibliothèque de stimuli standards (échelon, rampe, sinus, bruit, PWL, PRBS)
