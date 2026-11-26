@@ -1,5 +1,5 @@
 # Silx — tests et application téléchargeable.
-# À chaque poussée : tests (socle, mesures, application) puis Silx.app macOS en artefact (.dmg).
+# À chaque poussée : tests (socle, mesures, application, serveur MCP) puis Silx.app macOS en artefact (.dmg).
 # Sur une étiquette vX.Y.Z : le .dmg est aussi publié dans une release GitHub.
 name: build
 
@@ -34,6 +34,8 @@ jobs:
         run: dotnet test mesures
       - name: Tests de l'application
         run: dotnet test app/tests/Silx.App.Tests
+      - name: Tests du serveur MCP
+        run: dotnet test mcp
 
   ngspice:
     runs-on: macos-latest
@@ -78,6 +80,8 @@ jobs:
         run: |
           app/build/Silx.app/Contents/Resources/ngspice/bin/ngspice -v
           otool -L app/build/Silx.app/Contents/Resources/ngspice/bin/ngspice
+      - name: Vérification du serveur MCP embarqué
+        run: app/build/Silx.app/Contents/MacOS/silx-mcp --version
       - uses: actions/upload-artifact@v4
         with:
           name: Silx-macos-arm64
