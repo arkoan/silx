@@ -807,16 +807,21 @@ public class UiTests
         await w.SimulateAsync();
         var r = w.ResultatCampagne!;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
-        Assert.Equal(MainWindow.Estompage.Conformes, w.EstompageTirages);
+        Assert.Equal(MainWindow.Estompage.NonConformes, w.EstompageTirages);   // hors gabarit : grisées
         Shot(w, "62-balayage-teintes.png");
         // Clic sur la courbe V(OUT) du tirage R1 = 2 k (dernier) au milieu du graphique.
         var t = r.Tirages[^1]; var c = t.Courbes["OUT"]; int k = Array.FindIndex(c.X, x => x >= 3e-3);
         var plot = w.PlotControl; var px = plot.Plot.GetPixel(new ScottPlot.Coordinates(c.X[k] * 1e3, c.Y[k]));
         var pos = new Avalonia.Point(px.X / plot.DisplayScale, px.Y / plot.DisplayScale);
         Assert.Same(t, w.TirageSous(pos));
+        w.SurvolerTirage(pos);                                   // survol : info-bulle avec la valeur
+        Assert.Same(t, w.TirageSurvole);
+        Assert.Contains("R1 = 2", Avalonia.Controls.ToolTip.GetTip(plot) as string);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        Shot(w, "65-survol-tirage.png");
         w.ChoisirTirage(w.TirageSous(pos));
         Assert.Contains("R1 = 2", w.Statut);
-        w.EstompageTirages = MainWindow.Estompage.NonConformes;
+        w.EstompageTirages = MainWindow.Estompage.Conformes;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
         Shot(w, "63-balayage-tirage-choisi.png");
     }

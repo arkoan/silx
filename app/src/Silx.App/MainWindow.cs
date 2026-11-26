@@ -898,6 +898,7 @@ public sealed partial class MainWindow : Window
             plot.AddHandler(PointerMovedEvent, OnPlotMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel);
             plot.AddHandler(PointerReleasedEvent, OnPlotReleased, Avalonia.Interactivity.RoutingStrategies.Tunnel);
             plot.AddHandler(PointerWheelChangedEvent, OnPlotWheel, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            plot.PointerExited += (_, _) => { if (_tirageSurvole != null) { _tirageSurvole = null; ToolTip.SetIsOpen(plot, false); RefreshPlot(keepLimits: true); } };
             var host = new Grid(); host.Children.Add(plot);
             var frame = new Border { BorderThickness = new Thickness(2, 0, 0, 0), Margin = new Thickness(0, i == 0 ? 0 : 3, 0, 0) };
             var pane = new Pane { Signaux = lists[i], Plot = plot, Host = host, Frame = frame };
@@ -1154,6 +1155,7 @@ public sealed partial class MainWindow : Window
         }
         if (_banc == null || _last == null || VueFft) return;
         var pos = e.GetPosition(_plot);
+        SurvolerTirage(pos);
         var hit = _modeTest ? VertexAt(pos) : null;
         var hc = hit == null ? CursorAt(pos) : null;
         if (!Nullable.Equals(hit, _hoverVertex) || hc != _hoverCursor)

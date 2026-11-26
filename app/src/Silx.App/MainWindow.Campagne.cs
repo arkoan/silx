@@ -206,7 +206,9 @@ public partial class MainWindow
     // ───────────────────────── courbes superposées ─────────────────────────
     /// <summary>Ce que le rendu des tirages estompe : les conformes (défaut) ou les non conformes.</summary>
     public enum Estompage { Conformes, NonConformes }
-    Estompage _estompage = Estompage.Conformes;
+    Estompage _estompage = Estompage.NonConformes;
+    ResultatTirage? _tirageSurvole;
+    public ResultatTirage? TirageSurvole => _tirageSurvole;
     public Estompage EstompageTirages { get => _estompage; set { _estompage = value; RefreshPlotToolbar(); RefreshPlot(keepLimits: true); } }
 
     /// <summary>Un tirage franchit-il une contrainte portant sur ce signal ? (Sans contrainte sur le signal : verdict global du tirage.)</summary>
@@ -224,16 +226,15 @@ public partial class MainWindow
 
     /// <summary>
     /// Courbes des tirages sous les courbes nominales : une teinte par signal (celle de sa pastille) pour tous ses tirages,
-    /// plus ou moins claire selon la valeur balayée ; les tirages estompés (conformes par défaut) en pastel et trait fin,
-    /// les autres dans la teinte du signal, trait épais bordé de rouge s'ils sont non conformes. Le tirage choisi est
-    /// en bleu avec sa valeur.
+    /// plus ou moins claire selon la valeur balayée ; les tirages estompés (non conformes par défaut) simplement grisés.
+    /// Le tirage survolé est épaissi, le tirage choisi est en bleu avec sa valeur.
     /// </summary>
     (double Min, double Max) DessinerCampagne(ScottPlot.Plot p, Pane pane, IReadOnlyList<string> nodes, Func<double, double> X, ScottPlot.Color[] couleurs)
     {
         double lo = double.PositiveInfinity, hi = double.NegativeInfinity;
         if (ResultatCampagne is not { } r || VueFft) return (lo, hi);
         var tirages = r.Tirages.Where(t => t.Erreur == null).Take(400).ToList();
-        var rouge = Parametres.VersPlot(Parametres.Courant.NonConforme);
+        var gris = Parametres.VersPlot(((ISolidColorBrush)Ui.Muted).Color);
         bool sombre = Ui.Sombre;
         var avant = new List<(double[] X, double[] Y, ScottPlot.Color C, bool Echec)>();
         for (int i = 0; i < tirages.Count; i++)
@@ -250,19 +251,20 @@ public partial class MainWindow
                 bool echec = EchecSur(t, nodes[j]);
                 bool estompe = _estompage == Estompage.Conformes ? !echec : echec;
                 if (t == _tirageChoisi) continue;   // dessiné en dernier
+                if (t == _tirageSurvole) { avant.Add((xs, c.Y, teinte, true)); continue; }
                 if (estompe)
                 {
+                    // Estompé : simplement grisé, trait fin.
                     var sc = p.Add.ScatterLine(xs, c.Y);
-                    sc.Color = sombre ? teinte.WithAlpha(0.28) : Eclaircir(teinte, 0.62).WithAlpha(0.85); sc.LineWidth = 1f;
+                    sc.Color = gris.WithAlpha(sombre ? 0.35 : 0.3); sc.LineWidth = 1f;
                 }
-                else avant.Add((xs, c.Y, teinte, echec));
+                else avant.Add((xs, c.Y, teinte, false));
             }
         }
-        // Courbes mises en avant par-dessus les estompées ; liseré rouge sous les non conformes.
-        foreach (var (xs, ys, teinte, echec) in avant)
+        // Courbes mises en avant par-dessus les grisées ; celle survolée plus épaisse.
+        foreach (var (xs, ys, teinte, survole) in avant)
         {
-            if (echec) { var bord = p.Add.ScatterLine(xs, ys); bord.Color = rouge.WithAlpha(0.75); bord.LineWidth = 4.5f; }
-            var sc = p.Add.ScatterLine(xs, ys); sc.Color = teinte; sc.LineWidth = echec ? 2f : 1.6f;
+            var sc = p.Add.ScatterLine(xs, ys); sc.Color = teinte; sc.LineWidth = survole ? 3f : 1.6f;
         }
         if (_tirageChoisi is { Erreur: null } choisi)
         {
@@ -278,6 +280,21 @@ public partial class MainWindow
                 }
         }
         return (lo, hi);
+    }
+
+    /// <summary>Survol du graphique : info-bulle avec la valeur du tirage sous le pointeur, et sa courbe épaissie.</summary>
+    public void SurvolerTirage(Point pos)
+    {
+        var t = ResultatCampagne != null ? TirageSous(pos) : null;
+        if (t == _tirageSurvole) return;
+        _tirageSurvole = t;
+        if (t == null) { ToolTip.SetIsOpen(_plot, false); ToolTip.SetTip(_plot, null); }
+        else
+        {
+            ToolTip.SetTip(_plot, $"{t.Tirage.Libelle} · {(t.Conforme ? "conforme" : $"{t.Echecs} contrainte(s) franchie(s)")}" + (t.Tirage.Valeurs.Count > 1 ? "\n" + ValeursTirage(t) : "") + "\nClic : sélectionner");
+            ToolTip.SetPlacement(_plot, PlacementMode.Pointer); ToolTip.SetIsOpen(_plot, true);
+        }
+        RefreshPlot(keepLimits: true);
     }
 
     /// <summary>Clic sur le graphique : tirage dont une courbe passe à moins de 6 px du pointeur (null si aucun).</summary>
