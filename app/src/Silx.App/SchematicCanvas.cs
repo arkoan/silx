@@ -409,7 +409,8 @@ public sealed class SchematicCanvas : Control
                 var hit = touches.LastOrDefault(c => c.IsElectrical) ?? touches.LastOrDefault();
                 var wire = hit == null ? Schematic.Wires.LastOrDefault(w => HitWire(w, pos)) : null;
                 bool maj = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
-                if (hit == null && wire == null && e.ClickCount >= 2 && _underlay != null
+                // Depuis un banc : un clic sur un composant du circuit sous test ouvre ses valeurs (la topologie reste verrouillée).
+                if (hit == null && wire == null && _underlay != null && !maj
                     && _underlay.Components.Where(c => c.IsElectrical && HitTest(c, pos)).LastOrDefault() is { } duCircuit)
                 { DoubleClicCircuit?.Invoke(duCircuit); break; }
                 if (hit == null && wire == null)

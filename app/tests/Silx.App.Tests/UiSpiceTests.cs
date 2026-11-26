@@ -347,4 +347,29 @@ public class UiSpiceTests
         w.ProposerReferences("Logique", w.Schema);
         Shot(w, "50-palette-logique.png");
     }
+
+    /// <summary>Depuis un banc : les valeurs du circuit sous test se modifient (clic sur le composant estompé, ou liste du panneau).</summary>
+    [AvaloniaFact]
+    public async Task Valeurs_du_circuit_modifiables_depuis_un_banc()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var banc = w.EtudeCourante.Bancs[0];
+        w.SelectBanc(banc);
+        await w.SimulateAsync();
+        var tm = banc.Gabarits.Single(g => g.Mesure == TypeMesure.TempsDeMontee);
+        double avant = w.Resultats!.Criteres.Single(c => c.Critere == tm).Resultat.Valeur!.Value;
+        // Clic simple sur R1 (circuit sous test, estompé) : sa bulle s'ouvre.
+        var p = Ecran(w, 6, 8);
+        w.MouseDown(p, MouseButton.Left); w.MouseUp(p, MouseButton.Left);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(w.BulleOuverte);
+        var r1 = w.EtudeCourante.Schema.Components.Single(k => k.Ref == "R1");
+        w.ModifierValeurCircuit(r1, "2k");
+        Assert.Equal("2k", r1.Value);
+        Assert.Same(banc, w.BancActif);   // on reste dans le banc
+        await w.SimulateAsync();
+        double apres = w.Resultats!.Criteres.Single(c => c.Critere == tm).Resultat.Valeur!.Value;
+        Assert.InRange(apres / avant, 1.9, 2.1);   // τ = RC double
+        Shot(w, "54-valeurs-depuis-banc.png");
+    }
 }

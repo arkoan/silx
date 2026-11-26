@@ -1381,6 +1381,8 @@ public sealed partial class MainWindow : Window
         _benchPanel.Children.Add(_resumePlan);
         _benchPanel.Children.Add(_gabarits);
         _benchPanel.Children.Add(Ui.Hint("Gabarits dessinés : sous les courbes, « Limite haute » ou « Limite basse ». Réglages du banc (nom, analyse) : roue dentée de sa pastille."));
+        _benchPanel.Children.Add(Ui.Rule());
+        _benchPanel.Children.Add(ValeursCircuit());
         RefreshGabarits();
     }
 
@@ -1568,6 +1570,46 @@ public sealed partial class MainWindow : Window
 
     /// <summary>Vrai pendant la reconstruction d'un panneau : les zones de saisie retirées perdent le focus et ne doivent rien réécrire.</summary>
     bool _reconstruction;
+    /// <summary>
+    /// Depuis un banc : valeurs des composants du circuit sous test, modifiables (on est en conception) ;
+    /// la topologie du circuit reste verrouillée. La modification vaut pour tous les bancs.
+    /// </summary>
+    Control ValeursCircuit()
+    {
+        var sp = new StackPanel { Spacing = 4 };
+        sp.Children.Add(Ui.Title("Valeurs du circuit"));
+        var modifiables = _etude.Schema.Components.Where(k => k.Kind is ComponentKind.Resistor or ComponentKind.Capacitor or ComponentKind.Inductor or ComponentKind.Diode
+                                                            or ComponentKind.VoltageSource or ComponentKind.CurrentSource or ComponentKind.Spice)
+            .OrderBy(k => k.Ref, StringComparer.Ordinal).ToList();
+        if (modifiables.Count == 0) { sp.Children.Add(Ui.Hint("Le circuit sous test n'a pas de valeur à régler.")); return sp; }
+        foreach (var k in modifiables)
+        {
+            var g = new Grid { ColumnDefinitions = new("60,*") };
+            g.Children.Add(new TextBlock { Text = k.Ref, FontWeight = FontWeight.SemiBold, FontSize = Ui.Texte, VerticalAlignment = VerticalAlignment.Center });
+            var t = new TextBox { Text = k.Value, FontSize = 12, PlaceholderText = k.Kind == ComponentKind.Spice ? "paramètres d'instance" : "" };
+            var kk = k;
+            void Ok() { if (!_reconstruction && (t.Text ?? "") != kk.Value) ModifierValeurCircuit(kk, t.Text ?? ""); }
+            t.KeyDown += (_, e) => { if (e.Key == Key.Enter) Ok(); }; t.LostFocus += (_, _) => Ok();
+            Grid.SetColumn(t, 1); g.Children.Add(t);
+            sp.Children.Add(g);
+        }
+        sp.Children.Add(Ui.Hint("Modifiables depuis chaque banc, pour la mise au point : la valeur change pour tous les bancs. Un clic sur un composant estompé du schéma ouvre aussi sa bulle. Le câblage du circuit, lui, se modifie depuis « Circuit sous test »."));
+        return sp;
+    }
+
+    /// <summary>Change la valeur d'un composant du circuit sous test sans quitter le banc (vaut pour tous les bancs).</summary>
+    public void ModifierValeurCircuit(PlacedComponent c, string valeur)
+    {
+        if (c.Value == valeur) return;
+        c.Value = valeur;
+        _results.Clear(); SetVerdict(null); _canvas.InvalidateVisual();
+        RefreshGabarits(); RefreshBenchBar();
+        _status.Text = $"{c.Ref} = {valeur} dans le circuit sous test (tous les bancs).";
+        ResultatsPerimes();
+        if (_bulle?.IsOpen == true && _bulleContenu != null && _bulleComposant == c) { _cible = _bulleContenu; Proprietes(); _cible = _props; }
+        Avalonia.Threading.Dispatcher.UIThread.Post(RefreshSide);   // liste « Valeurs du circuit » à jour, après la fin de la saisie
+    }
+
     void EditerSelection(string reference, string valeur)
     {
         if (_reconstruction) return;
