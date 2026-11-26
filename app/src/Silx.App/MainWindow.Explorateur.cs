@@ -49,7 +49,7 @@ public sealed partial class MainWindow
         if (defs.Count > 0)
         {
             Noeud(0, "Composants importés", false, null);
-            foreach (var d in defs) { var dd = d; Noeud(1, d.Nom, false, () => _ = OuvrirEditeurAsync(dd), detail: d.Description); }
+            foreach (var d in defs) { var dd = d; Noeud(1, d.Nom, false, () => Lancer(() => OuvrirEditeurAsync(dd), "éditeur de symbole"), detail: d.Description); }
         }
     }
 }

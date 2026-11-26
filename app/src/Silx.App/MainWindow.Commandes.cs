@@ -18,13 +18,13 @@ public sealed partial class MainWindow
     {
         var l = new List<Commande>
         {
-            new("Simuler", "F5", "Simulation", () => _ = SimulateAsync()),
+            new("Simuler", "F5", "Simulation", () => Lancer(() => SimulateAsync(), "simulation")),
             new("Simulation automatique (activer / couper)", "", "Simulation", () => SimulationAutomatique = !SimulationAutomatique),
             new("Nouveau projet", "⌘N", "Fichier", () => NouveauProjet()),
-            new("Ouvrir un projet", "⌘O", "Fichier", () => _ = OuvrirProjetAsync()),
-            new("Enregistrer", "⌘S", "Fichier", () => _ = EnregistrerAsync(_projet!, false)),
-            new("Enregistrer sous", "⇧⌘S", "Fichier", () => _ = EnregistrerAsync(_projet!, true)),
-            new("Exporter le rapport de test", "", "Fichier", () => _ = ExporterRapportAsync()),
+            new("Ouvrir un projet", "⌘O", "Fichier", () => Lancer(() => OuvrirProjetAsync(), "ouverture d'un projet")),
+            new("Enregistrer", "⌘S", "Fichier", () => Lancer(() => EnregistrerAsync(_projet!, false), "enregistrement")),
+            new("Enregistrer sous", "⇧⌘S", "Fichier", () => Lancer(() => EnregistrerAsync(_projet!, true), "enregistrement")),
+            new("Exporter le rapport de test", "", "Fichier", () => Lancer(() => ExporterRapportAsync(), "export du rapport")),
             new("Ouvrir l'exemple RC", "", "Fichier", () => OuvrirDansOnglet(EtudeModel.Demo(), "Exemple RC", null)),
             new("Tracer un fil", "W", "Dessin", () => _canvas.Tool = Tool.Wire),
             new("Sonde : afficher une tension", "P", "Dessin", () => _canvas.Tool = Tool.Probe),

@@ -38,6 +38,7 @@ public static class Verification
     /// <summary>Chemin de ngspice : variable SILX_NGSPICE, sinon emplacements Homebrew, sinon PATH.</summary>
     public static string NgspiceExecutable()
     {
+        if (NgspiceForce.Value is { } force) return force;
         var env = Environment.GetEnvironmentVariable("SILX_NGSPICE");
         if (!string.IsNullOrWhiteSpace(env)) return env;
         foreach (var p in new[] { "/opt/homebrew/bin/ngspice", "/usr/local/bin/ngspice", "/usr/bin/ngspice" })
@@ -47,6 +48,12 @@ public static class Verification
 
     /// <param name="variante">Modifie le schéma fusionné (copie) avant la simulation : valeurs d'une campagne.</param>
     /// <param name="directives">Directives ajoutées à la netlist (ex. « .options temp=85 »).</param>
+    /// <summary>Durée maximale d'une simulation (SILX_DELAI_SIMULATION en secondes pour la changer).</summary>
+    public static TimeSpan DelaiMax => DelaiForce.Value ?? (int.TryParse(Environment.GetEnvironmentVariable("SILX_DELAI_SIMULATION"), out var s) && s > 0 ? TimeSpan.FromSeconds(s) : TimeSpan.FromMinutes(5));
+    /// <summary>Remplacements limités au flux asynchrone courant (tests) : exécutable ngspice et durée maximale.</summary>
+    public static readonly AsyncLocal<string?> NgspiceForce = new();
+    public static readonly AsyncLocal<TimeSpan?> DelaiForce = new();
+
     public static async Task<ResultatEtude> RunAsync(Etude circuit, Banc etude, IEnumerable<AnalyseKind> toujours, CancellationToken ct = default,
         Action<Schematic>? variante = null, IReadOnlyList<string>? directives = null)
     {
@@ -64,6 +71,10 @@ public static class Verification
         var runner = new NgspiceRunner { Executable = NgspiceExecutable(), Compatibilite = schema.Components.Any(k => k.Kind == ComponentKind.Spice) ? "psa" : null };
         var raws = new Dictionary<AnalyseKind, RawFile>();
         var journal = new System.Text.StringBuilder();
+        // Garde-fou : un circuit qui fait tourner ngspice sans fin est arrêté (processus tué) au bout de DelaiMax.
+        using var delai = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        delai.CancelAfter(DelaiMax);
+        var ctUtilisateur = ct; ct = delai.Token;
         try
         {
             var tasks = kinds.Select(async k =>
@@ -84,8 +95,12 @@ public static class Verification
                 journal.AppendLine($"── {k} : {r.Raw.PointCount} points, {r.Elapsed.TotalMilliseconds:0} ms").AppendLine(r.Log.Trim());
             }
         }
+        catch (OperationCanceledException) when (!ctUtilisateur.IsCancellationRequested && delai.IsCancellationRequested)
+        { return new(raws, [], [], erc, journal.ToString(), $"Simulation arrêtée au bout de {(DelaiMax.TotalSeconds < 120 ? $"{DelaiMax.TotalSeconds:0} s" : $"{DelaiMax.TotalMinutes:0} min")} : réduisez la durée ou le nombre de points, ou cherchez une instabilité du circuit."); }
         catch (OperationCanceledException) { throw; }
         catch (NgspiceException ex) { return new(raws, [], [], erc, ex.Log, ex.Message); }
+        catch (System.ComponentModel.Win32Exception ex)
+        { return new(raws, [], [], erc, journal.ToString(), $"ngspice introuvable ({runner.Executable}) : installez-le (brew install ngspice) ou indiquez son chemin dans la variable SILX_NGSPICE. Détail : {ex.Message}"); }
         catch (Exception ex) { return new(raws, [], [], erc, journal.ToString(), ex.Message); }
 
         // Une analyse qui ne produit qu'un point (plage trop étroite, trop peu de points) ne se trace ni ne se mesure.

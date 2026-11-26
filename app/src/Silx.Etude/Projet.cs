@@ -91,7 +91,18 @@ public static class Projet
     }
 
     // ── fichier → étude ──
+    /// <summary>
+    /// Lit un projet. Toute incohérence du fichier (champ manquant, valeur absurde) devient une
+    /// <see cref="InvalidDataException"/> au message clair : l'appelant n'a qu'un type d'erreur à traiter.
+    /// </summary>
     public static Etude DepuisJson(string json)
+    {
+        try { return Lire(json); }
+        catch (Exception ex) when (ex is not InvalidDataException and not OutOfMemoryException)
+        { throw new InvalidDataException($"Projet illisible ou abîmé : {ex.Message}", ex); }
+    }
+
+    static Etude Lire(string json)
     {
         var f = JsonSerializer.Deserialize<Fichier>(json, Json) ?? throw new InvalidDataException("Projet vide.");
         if (f.Version > VersionFormat) throw new InvalidDataException($"Projet enregistré par une version plus récente de Silx (format {f.Version}).");

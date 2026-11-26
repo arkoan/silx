@@ -71,4 +71,21 @@ public class CampagneTests
         // Mesures inchangées à la précision près : temps de montée 2,2 RC.
         Assert.InRange(r.Criteres.Single(c => c.Critere.Mesure == TypeMesure.TempsDeMontee).Resultat.Valeur!.Value, 2.15e-3, 2.25e-3);
     }
+
+    /// <summary>Gestion des erreurs : ngspice absent et simulation trop longue donnent un message clair, sans exception.</summary>
+    [Fact]
+    public async Task Ngspice_absent_ou_trop_long_message_clair()
+    {
+        var (e, b) = Exemple();
+        // Remplacements limités à ce test (les autres tests simulent en parallèle).
+        Verification.NgspiceForce.Value = "/chemin/inexistant/ngspice";
+        var r = await Verification.RunAsync(e, b, []);
+        Assert.Contains("ngspice introuvable", r.Erreur);
+        Verification.NgspiceForce.Value = null;
+        Verification.DelaiForce.Value = TimeSpan.FromSeconds(1);
+        b.Transitoire.Auto = false; b.Transitoire.Duree = 10; b.Transitoire.Pas = 1e-9;   // calcul démesuré
+        r = await Verification.RunAsync(e, b, []);
+        Assert.Contains("arrêtée au bout de 1 s", r.Erreur);
+        Verification.DelaiForce.Value = null;
+    }
 }

@@ -72,4 +72,11 @@ public class ProjetTests
         Assert.Throws<InvalidDataException>(() => Projet.DepuisJson("""{ "Version": 99 }"""));
         Assert.Throws<InvalidDataException>(() => Projet.DepuisJson("""{ "Version": 1, "Circuit": { "Composants": [ { "Ref": "X1", "Type": "Spice", "Composant": "Inconnu" } ] } }"""));
     }
+
+    /// <summary>Fichier abîmé (JSON invalide, champ nul) : une seule erreur claire, InvalidDataException.</summary>
+    [Theory]
+    [InlineData("{ pas du json")]
+    [InlineData("{\"Version\": 2, \"Circuit\": null, \"Bancs\": null}")]
+    [InlineData("{\"Version\": 99}")]
+    public void Projet_abime_erreur_claire(string json) => Assert.Throws<InvalidDataException>(() => Projet.DepuisJson(json));
 }
