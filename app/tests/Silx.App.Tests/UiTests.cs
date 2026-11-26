@@ -925,15 +925,15 @@ public class UiTests
     [AvaloniaFact]
     public async Task Pincement_zoom_homogene()
     {
-        Assert.InRange(Silx.App.SchematicCanvas.FacteurPincement(0.02), 1.019, 1.021);   // sensibilité normale
-        Assert.InRange(Silx.App.SchematicCanvas.FacteurPincement(-0.02), 0.979, 0.981);
+        Assert.InRange(Silx.App.SchematicCanvas.FacteurPincement(0.02), 1.031, 1.033);   // sensibilité normale, gain 1,6
+        Assert.InRange(Silx.App.SchematicCanvas.FacteurPincement(-0.02), 0.967, 0.969);
         Assert.Equal(2, Silx.App.SchematicCanvas.FacteurPincement(5));                     // borné
         var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
         await w.SimulateAsync();
         Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
         double z0 = w.Canevas.Zoom;
         w.Canevas.ZoomPincement(new Avalonia.Point(300, 200), 0.1);
-        Assert.InRange(w.Canevas.Zoom / z0, 1.09, 1.11);
+        Assert.InRange(w.Canevas.Zoom / z0, 1.15, 1.17);
         var plot = w.PlotControl; var l0 = plot.Plot.Axes.GetLimits();
         var centre = new Avalonia.Point(plot.Bounds.Width / 2, plot.Bounds.Height / 2);
         MainWindow.ZoomerCourbe(plot, centre, 2);

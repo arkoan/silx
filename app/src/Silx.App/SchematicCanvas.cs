@@ -599,7 +599,9 @@ public sealed class SchematicCanvas : Control
     /// écran tactile : rapport d'échelle − 1), modulé par la sensibilité du zoom (Paramètres), borné à ×0,5…×2.
     /// </summary>
     public static double FacteurPincement(double variation) =>
-        Math.Clamp(1 + variation * Math.Log(Parametres.Courant.BaseZoom) / Math.Log(1.06), 0.5, 2);
+        Math.Clamp(1 + variation * GainPincement * Math.Log(Parametres.Courant.BaseZoom) / Math.Log(1.06), 0.5, 2);
+    /// <summary>Amplification du geste de pincement (1,6 : réglé sur le pavé du MacBook de Régis, « un peu plus rapide »).</summary>
+    public const double GainPincement = 1.6;
 
     public void ZoomPincement(Point pos, double variation) => ZoomAt(pos, FacteurPincement(variation));
 
