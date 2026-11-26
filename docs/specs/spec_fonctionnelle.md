@@ -75,7 +75,9 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
   manuellement)
 - Export de la netlist générée (format SPICE standard, pour interopérabilité
   avec d'autres outils si besoin)
-- Export du schéma (image, PDF) pour documentation
+- Export du schéma (image, PDF) pour documentation — **fait** : bouton « Exporter » (et palette de commandes) : le
+  schéma (cadré en entier, avec le calque du banc affiché), les courbes du banc, ou les deux, en **PDF** (vectoriel,
+  une page par vue), **SVG** (vectoriel, vues empilées) ou **PNG** (2× pour l'impression) ; toujours en thème clair.
 
 ### 3.2 Moteur de simulation
 - Backend ngspice (CLI dans un premier temps, `libngspice` si besoin de perf)

@@ -941,4 +941,31 @@ public class UiTests
         Assert.InRange((l1.Right - l1.Left) / (l0.Right - l0.Left), 0.45, 0.55);   // horizontal
         Assert.InRange((l1.Top - l1.Bottom) / (l0.Top - l0.Bottom), 0.45, 0.55);   // et vertical
     }
+
+    /// <summary>Export du schéma et des courbes en PDF (une page par vue), SVG et PNG.</summary>
+    [AvaloniaFact]
+    public async Task Export_pdf_svg_png()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        w.SelectBanc(w.EtudeCourante.Bancs[0]);
+        await w.SimulateAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        var dir = Directory.CreateTempSubdirectory("silx-export").FullName;
+        try
+        {
+            var pdf = Path.Combine(dir, "tout.pdf"); await w.ExporterVersAsync(pdf, MainWindow.ContenuExport.Tout);
+            var octets = File.ReadAllBytes(pdf);
+            Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(octets, 0, 4));
+            Assert.Equal(1 + w.SignauxGraphiques.Count, System.Text.RegularExpressions.Regex.Matches(System.Text.Encoding.Latin1.GetString(octets), @"/Type\s*/Page[^s]").Count);
+            Assert.Equal(MainWindow.LargeurExport, w.DernierExportSchema.Width);
+            var svg = Path.Combine(dir, "schema.svg"); await w.ExporterVersAsync(svg, MainWindow.ContenuExport.Schema);
+            var texte = File.ReadAllText(svg);
+            Assert.Contains("<svg", texte); Assert.Contains("R1", texte);   // texte vectoriel
+            var png = Path.Combine(dir, "tout.png"); await w.ExporterVersAsync(png, MainWindow.ContenuExport.Tout);
+            Assert.Equal(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, File.ReadAllBytes(png)[..4]);
+            if (Environment.GetEnvironmentVariable("SILX_SHOT_DIR") is { } sd) File.Copy(png, Path.Combine(sd, "70-export.png"), true);
+            await Assert.ThrowsAsync<ArgumentException>(() => w.ExporterVersAsync(Path.Combine(dir, "x.doc"), MainWindow.ContenuExport.Schema));
+        }
+        finally { Directory.Delete(dir, true); }
+    }
 }

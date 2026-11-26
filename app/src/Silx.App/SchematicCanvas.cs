@@ -189,11 +189,11 @@ public sealed class SchematicCanvas : Control
         _pan = pos - before * _zoom; InvalidateVisual();
     }
     /// <summary>Cadre le schéma entier (circuit et calque) dans la vue.</summary>
-    public void FitAll()
+    public void FitAll(double zoomMax = ZoomCadrageMax)
     {
         var pts = AllComponents.SelectMany(c => c.Pins).Concat(AllWires.SelectMany(w => new[] { w.A, w.B })).ToList();
         if (pts.Count == 0 || Bounds.Width < 10) return;
-        FitGrid(pts.Min(p => p.X) - 3, pts.Min(p => p.Y) - 4, pts.Max(p => p.X) + 5, pts.Max(p => p.Y) + 3, ZoomCadrageMax);
+        FitGrid(pts.Min(p => p.X) - 3, pts.Min(p => p.Y) - 4, pts.Max(p => p.X) + 5, pts.Max(p => p.Y) + 3, zoomMax);
     }
     void FitGrid(double x0, double y0, double x1, double y1, double maxZoom)
     {
