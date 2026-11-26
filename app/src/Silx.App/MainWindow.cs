@@ -191,6 +191,9 @@ public sealed partial class MainWindow : Window
             else if (cmd && e.Key == Key.W) { e.Handled = true; await FermerProjetAsync(_projet!); }
         };
         _veille.Tick += (_, _) => RafraichirOnglets();
+        // Filet de sécurité : une erreur imprévue (dans un gestionnaire d'événement ou une tâche) est signalée et
+        // journalisée au lieu de fermer l'application.
+        Avalonia.Threading.Dispatcher.UIThread.UnhandledException += (_, e) => { e.Handled = true; SignalerErreur(e.Exception, "interface"); };
         // Thème « Système » : suit le passage de macOS en clair ou sombre.
         if (Application.Current is { } app)
             app.ActualThemeVariantChanged += (_, _) =>
@@ -1603,6 +1606,21 @@ public sealed partial class MainWindow : Window
         });
     }
     public bool BulleOuverte => _bulle?.IsOpen == true;
+    public string Statut => _status.Text ?? "";
+
+    /// <summary>Erreur interne : message dans la barre d'état, détail dans ~/Library/Logs/Silx/silx.log.</summary>
+    public void SignalerErreur(Exception ex, string ou)
+    {
+        string? fichier = null;
+        try
+        {
+            var dir = Environment.GetEnvironmentVariable("SILX_JOURNAL") is { Length: > 0 } j ? j : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Logs", "Silx");
+            Directory.CreateDirectory(dir); fichier = Path.Combine(dir, "silx.log");
+            File.AppendAllText(fichier, $"── {DateTime.Now:yyyy-MM-dd HH:mm:ss} · {ou}\n{ex}\n\n");
+        }
+        catch (Exception) { /* journal impossible : le message suffit */ }
+        _status.Text = $"⛔ Erreur ({ou}) : {ex.Message}" + (fichier != null ? " — détail dans ~/Library/Logs/Silx/silx.log" : "");
+    }
     Action? _bulleValider, _bulleAnnuler;
     public IEnumerable<TextBox> ChampsBulle => _bulleContenu?.GetLogicalDescendants().OfType<TextBox>() ?? [];
     /// <summary>Boutons de la bulle d'édition (tests).</summary>
@@ -2065,7 +2083,19 @@ public sealed partial class MainWindow : Window
     void RefreshPlot(bool keepLimits = false)
     {
         var active = _plot;
-        foreach (var pane in _panes.ToList()) { _plot = pane.Plot; RenderPane(pane, keepLimits); }
+        foreach (var pane in _panes.ToList())
+        {
+            _plot = pane.Plot;
+            try { RenderPane(pane, keepLimits); }
+            catch (Exception ex)
+            {
+                // Une courbe impossible à tracer ne doit jamais fermer l'application.
+                SignalerErreur(ex, "tracé des courbes");
+                var p = pane.Plot.Plot; p.Clear();
+                var t = p.Add.Text("Courbes impossibles à tracer : " + ex.Message, 0, 0); t.LabelFontSize = 13; t.LabelAlignment = ScottPlot.Alignment.MiddleCenter;
+                p.Axes.SetLimits(-1, 1, -1, 1); pane.Plot.Refresh();
+            }
+        }
         _plot = active;
     }
 

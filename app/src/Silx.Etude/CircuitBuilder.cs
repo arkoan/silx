@@ -8,8 +8,20 @@ public static class CircuitBuilder
     public static Analysis AnalysisFor(Banc e, AnalyseKind k) => k switch
     {
         AnalyseKind.Transitoire => new TranAnalysis(e.Transitoire.Pas, e.Transitoire.Duree, 0, e.Transitoire.Pas),
-        _ => new AcAnalysis(e.Ac.Lineaire ? AcSweep.Lin : AcSweep.Dec, e.Ac.PointsParDecade, e.Ac.FDebut, e.Ac.FFin),
+        _ => new AcAnalysis(e.Ac.Lineaire ? AcSweep.Lin : AcSweep.Dec, PointsAc(e.Ac), Math.Min(e.Ac.FDebut, e.Ac.FFin), Math.Max(e.Ac.FDebut, e.Ac.FFin)),
     };
+
+    /// <summary>
+    /// Points de l'analyse AC : linéaire, au moins 2 ; en décade, assez de points par décade pour en avoir au moins 100
+    /// sur la plage (une bande de 10 Hz à 50 points par décade n'en donnerait qu'un).
+    /// </summary>
+    public static int PointsAc(ReglagesAc a)
+    {
+        if (a.Lineaire) return Math.Max(a.PointsParDecade, 2);
+        double decades = Math.Abs(Math.Log10(Math.Max(a.FFin, 1e-30) / Math.Max(a.FDebut, 1e-30)));
+        int ppd = Math.Max(a.PointsParDecade, 1);
+        return decades * ppd >= 100 || decades <= 0 ? ppd : (int)Math.Min(Math.Ceiling(100 / Math.Max(decades, 1e-9)), 1_000_000_000);
+    }
 
     /// <summary>Construit le circuit. Suppose un ERC sans erreur (sinon le socle lève).</summary>
     public static Circuit Build(Schematic s, Connectivity c, Analysis analysis, string title = "Silx")

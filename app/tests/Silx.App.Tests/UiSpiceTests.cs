@@ -16,6 +16,7 @@ static class BibliothequeDeTest
     {
         var id = Guid.NewGuid().ToString("N");
         Environment.SetEnvironmentVariable("SILX_COMPOSANTS", Path.Combine(Path.GetTempPath(), "silx-tests-" + id));
+        Environment.SetEnvironmentVariable("SILX_JOURNAL", Path.Combine(Path.GetTempPath(), "silx-tests-" + id));
         Environment.SetEnvironmentVariable("SILX_PARAMETRES", Path.Combine(Path.GetTempPath(), "silx-tests-" + id, "parametres.json"));   // pas les préférences de l'utilisateur
     }
 }
@@ -469,5 +470,28 @@ public class UiSpiceTests
         Shot(w, "60-impedance-quartz.png");
         w.OuvrirReglagesBanc(w.Schema);
         Shot(w, "61-reglage-lineaire.png");
+    }
+
+    /// <summary>
+    /// Plantage signalé : analyse en décade de 32 670 à 32 680 Hz (50 points par décade → un seul point), le tracé levait
+    /// une exception. Désormais au moins 100 points, et une erreur de tracé est signalée sans fermer l'application.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Bande_etroite_en_decade_ne_plante_plus()
+    {
+        Assert.True(CircuitBuilder.PointsAc(new ReglagesAc { FDebut = 32670, FFin = 32680, PointsParDecade = 50 }) * Math.Log10(32680.0 / 32670) >= 99);
+        Assert.Equal(50, CircuitBuilder.PointsAc(new ReglagesAc { FDebut = 1, FFin = 1e6, PointsParDecade = 50 }));
+        Assert.Equal(2, CircuitBuilder.PointsAc(new ReglagesAc { Lineaire = true, PointsParDecade = 1 }));
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var bode = w.EtudeCourante.Bancs[1];
+        bode.Ac.FDebut = 32670; bode.Ac.FFin = 32680; bode.Ac.PointsParDecade = 50; bode.Ac.Lineaire = false;
+        w.SelectBanc(bode);
+        await w.SimulateAsync();
+        Assert.Null(w.Resultats!.Erreur);
+        Assert.True(w.Resultats.Resultats[AnalyseKind.Ac].PointCount >= 100);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        // Filet de sécurité : une erreur de tracé est affichée, pas propagée.
+        w.SignalerErreur(new InvalidOperationException("essai"), "test");
+        Assert.Contains("essai", w.Statut);
     }
 }

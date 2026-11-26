@@ -82,6 +82,9 @@ public static class Verification
         catch (NgspiceException ex) { return new(raws, [], [], erc, ex.Log, ex.Message); }
         catch (Exception ex) { return new(raws, [], [], erc, journal.ToString(), ex.Message); }
 
+        // Une analyse qui ne produit qu'un point (plage trop étroite, trop peu de points) ne se trace ni ne se mesure.
+        if (raws.Values.FirstOrDefault(r => r.PointCount < 2) is { } court)
+            return new(raws, [], [], erc, journal.ToString(), $"L'analyse n'a produit que {court.PointCount} point : élargissez la plage ou augmentez le nombre de points (bande étroite : balayage linéaire).");
         var criteres = etude.CriteresActifs.Select(g => new ResultatCritere(g, Evaluer(g, raws[g.Info.Analyse]))).ToList();
         var traces = etude.TracesActives.Select(g => new ResultatTrace(g, EvaluerTrace(g, raws[g.Analyse]))).ToList();
         return new(raws, criteres, traces, erc, journal.ToString(), null);
