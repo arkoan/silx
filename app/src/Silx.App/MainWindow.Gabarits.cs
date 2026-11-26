@@ -104,7 +104,7 @@ public sealed partial class MainWindow
         txt.Children.Add(new TextBlock { Text = titre, FontWeight = FontWeight.SemiBold, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis });
         txt.Children.Add(new TextBlock { Text = detail, FontSize = 11.5, Foreground = v == Verdict.Fail ? Ui.FailBrush : Ui.Muted, TextWrapping = TextWrapping.Wrap });
         Grid.SetColumn(txt, 1); g.Children.Add(txt);
-        var del = new Button { Content = Icones.Make(Icones.Croix, 10, Ui.Muted), Background = Brushes.Transparent, Padding = new Thickness(4), VerticalAlignment = VerticalAlignment.Top };
+        var del = new Button { Content = Icones.Make(Icones.Croix, 12, Ui.Muted), Background = Brushes.Transparent, Padding = new Thickness(4), VerticalAlignment = VerticalAlignment.Top };
         ToolTip.SetTip(del, tipRetirer); del.Click += (_, e) => { e.Handled = true; retirer(); };
         Grid.SetColumn(del, 2); g.Children.Add(del);
         bool ouverte = _ligneOuverte == cle;

@@ -21,7 +21,7 @@ public sealed partial class MainWindow
     {
         void Seg(Button b, string icon, string tip, bool test)
         {
-            b.Content = Icones.Make(icon, 17); b.Padding = new Thickness(7, 4); b.Background = Brushes.Transparent; b.CornerRadius = new CornerRadius(6); ToolTip.SetTip(b, tip);
+            b.Content = Icones.Make(icon, 16); b.Padding = new Thickness(7, 4); b.Background = Brushes.Transparent; b.CornerRadius = new CornerRadius(6); ToolTip.SetTip(b, tip);
             b.Click += (_, _) => { _modeTest = test; if (!test) EndDrawing(false); RefreshPlotToolbar(); RefreshPlot(); };
         }
         Seg(_modeSim, Icones.ModeSimulation, "Mode simulation : courbes seules", false);
@@ -29,15 +29,15 @@ public sealed partial class MainWindow
         var seg = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
         seg.Children.Add(_modeSim); seg.Children.Add(_modeTestBtn);
 
-        _viewTran = Icones.Button(Icones.Temporel, "Vue temporelle (banc temporel)", () => AfficherFft(false), 17);
-        _viewFft = Icones.Button(Icones.Fft, "Vue spectrale (FFT) du banc temporel : amplitude en dBV selon la fréquence", () => AfficherFft(true), 17);
-        _viewAc = Icones.Button(Icones.Bode, "Vue Bode : suit le type du banc (réglable dans le panneau du banc)", () => { }, 17);
+        _viewTran = Icones.Button(Icones.Temporel, "Vue temporelle (banc temporel)", () => AfficherFft(false), 16);
+        _viewFft = Icones.Button(Icones.Fft, "Vue spectrale (FFT) du banc temporel : amplitude en dBV selon la fréquence", () => AfficherFft(true), 16);
+        _viewAc = Icones.Button(Icones.Bode, "Vue Bode : suit le type du banc (réglable dans le panneau du banc)", () => { }, 16);
         var view = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
         view.Children.Add(_viewTran); view.Children.Add(_viewFft); view.Children.Add(_viewAc);
 
         foreach (var (b, lim) in new[] { (_drawHigh, Limite.Haute), (_drawLow, Limite.Basse) })
         {
-            b.Content = Icones.Make(lim == Limite.Haute ? Icones.LimiteHaute : Icones.LimiteBasse, 17, Ui.FailBrush);
+            b.Content = Icones.Make(lim == Limite.Haute ? Icones.LimiteHaute : Icones.LimiteBasse, 16, Ui.FailBrush);
             b.Padding = new Thickness(7, 4); b.Background = Brushes.Transparent; b.CornerRadius = new CornerRadius(6);
             ToolTip.SetTip(b, lim == Limite.Haute ? "Dessiner une limite haute : zone interdite au-dessus" : "Dessiner une limite basse : zone interdite en dessous");
             var l = lim; b.Click += (_, _) => StartDrawing(l);
@@ -53,7 +53,7 @@ public sealed partial class MainWindow
         var probes = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 1 };
         _probeBtn = Icones.Button(Icones.Sonde, "Sonde (P) : survolez le schéma pour voir l'équipotentiel, cliquez pour l'ajouter au graphique actif ; Échap pour finir", () => _canvas.Tool = _canvas.Tool == Tool.Probe ? Tool.Select : Tool.Probe, 17);
         probes.Children.Add(_probeBtn);
-        probes.Children.Add(Icones.Button(Icones.Graphique, "Ajouter un graphique sous les autres (les sondes iront dedans)", () => AddPane(), 17));
+        probes.Children.Add(Icones.Button(Icones.Graphique, "Ajouter un graphique sous les autres (les sondes iront dedans)", () => AddPane(), 16));
 
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Margin = new Thickness(6, 2) };
         bar.Children.Add(probes); bar.Children.Add(Ui.Separator());
@@ -160,7 +160,7 @@ public sealed partial class MainWindow
             var nc = n; pastille.Click += (_, e) => { e.Handled = true; ProposerCouleurSignal(nc, pastille); };
             chip.Children.Add(pastille);
             chip.Children.Add(new TextBlock { Text = NomSignal(n), FontSize = 11.5, VerticalAlignment = VerticalAlignment.Center });
-            var x = new Button { Content = Icones.Make(Icones.Croix, 9, Ui.Muted), Padding = new Thickness(2), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
+            var x = new Button { Content = Icones.Make(Icones.Croix, 12, Ui.Muted), Padding = new Thickness(2), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
             ToolTip.SetTip(x, $"Retirer {NomSignal(n)} de ce graphique");
             var nn = n; x.Click += (_, e) => { e.Handled = true; pane.Signaux.Remove(nn); _cursors.RemoveAll(k => k.Noeud == nn && !_panes.Any(p => p != pane && p.Signaux.Contains(nn))); RebuildPanes(); RefreshPlot(); };
             chip.Children.Add(x);

@@ -295,7 +295,7 @@ public sealed partial class MainWindow : Window
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
             row.Children.Add(new TextBlock { Text = p.Nom, FontSize = Ui.Texte, FontWeight = actif ? FontWeight.SemiBold : FontWeight.Normal, VerticalAlignment = VerticalAlignment.Center });
             if (modif) row.Children.Add(new Border { Width = 7, Height = 7, CornerRadius = new CornerRadius(4), Background = Ui.WarnBrush, VerticalAlignment = VerticalAlignment.Center });
-            var x = new Button { Content = Icones.Make(Icones.Croix, 9, Ui.Muted), Padding = new Thickness(3), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
+            var x = new Button { Content = Icones.Make(Icones.Croix, 12, Ui.Muted), Padding = new Thickness(3), Background = Brushes.Transparent, VerticalAlignment = VerticalAlignment.Center };
             ToolTip.SetTip(x, "Fermer ce projet (⌘W)");
             var pp = p; x.Click += async (_, ev) => { ev.Handled = true; await FermerProjetAsync(pp); };
             row.Children.Add(x);
@@ -530,11 +530,11 @@ public sealed partial class MainWindow : Window
             if (removable != null)
             {
                 // Roue dentée : réglages du banc (nom, analyse) dans une bulle.
-                var reg = new Button { Content = Icones.Make(Icones.Reglages, 12, Ui.Muted), Padding = new Thickness(3), Background = Brushes.Transparent, CornerRadius = new CornerRadius(8), Margin = new Thickness(2, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+                var reg = new Button { Content = Icones.Make(Icones.Reglages, 13, Ui.Muted), Padding = new Thickness(3), Background = Brushes.Transparent, CornerRadius = new CornerRadius(8), Margin = new Thickness(2, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center };
                 ToolTip.SetTip(reg, $"Réglages du banc « {removable.Nom} » : nom, analyse");
                 var rb = removable; reg.Click += (_, e) => { e.Handled = true; if (_banc != rb) SelectBanc(rb); OuvrirReglagesBanc(reg); };
                 row.Children.Add(reg);
-                var x = new Button { Content = Icones.Make(Icones.Croix, 10, Ui.Muted), Padding = new Thickness(3), Background = Brushes.Transparent, CornerRadius = new CornerRadius(8), Margin = new Thickness(2, 0, -6, 0), VerticalAlignment = VerticalAlignment.Center };
+                var x = new Button { Content = Icones.Make(Icones.Croix, 12, Ui.Muted), Padding = new Thickness(3), Background = Brushes.Transparent, CornerRadius = new CornerRadius(8), Margin = new Thickness(2, 0, -6, 0), VerticalAlignment = VerticalAlignment.Center };
                 ToolTip.SetTip(x, $"Supprimer le banc « {removable.Nom} »");
                 x.Click += (_, e) => { e.Handled = true; DeleteBanc(removable); };
                 row.Children.Add(x);

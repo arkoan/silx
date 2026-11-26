@@ -63,18 +63,29 @@ static class Icones
     public const string ImporterSpice = "M14 3H6v18h12V7z M14 3v4h4 M12 10v7 M9 14l3 3 3-3";
     public const string EditerSymbole = "M4 5h9v12H4z M1 8h3 M1 14h3 M13 8h2 M14 20l6-6 2 2-6 6h-2z";
 
-    public static Control Make(string data, double size = 18, IBrush? brush = null, bool filled = false) => new Avalonia.Controls.Shapes.Path
+    /// <summary>Taille par défaut d'une icône (px) et épaisseur du trait à l'écran (px, la même quelle que soit la taille).</summary>
+    public const double Taille = 16, Trait = 1.15;
+
+    /// <summary>
+    /// Icône dessinée sur sa grille 24×24 puis mise à l'échelle : toutes les icônes ont le même corps optique (une icône
+    /// petite reste petite) et le même trait fin, au lieu d'être étirées chacune jusqu'au bord.
+    /// </summary>
+    public static Control Make(string data, double size = Taille, IBrush? brush = null, bool filled = false) => new Viewbox
     {
-        Data = Geometry.Parse(data), Width = size, Height = size, Stretch = Stretch.Uniform,
-        Stroke = filled ? null : brush ?? Ui.Ink, Fill = filled ? brush ?? Ui.Ink : null,
-        StrokeThickness = 1.7, StrokeLineCap = PenLineCap.Round, StrokeJoin = PenLineJoin.Round,
+        Width = size, Height = size, Stretch = Stretch.Uniform,
         VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center,
+        Child = new Avalonia.Controls.Shapes.Path
+        {
+            Data = Geometry.Parse(data), Width = 24, Height = 24, Stretch = Stretch.None,
+            Stroke = filled ? null : brush ?? Ui.Ink, Fill = filled ? brush ?? Ui.Ink : null,
+            StrokeThickness = Trait * 24 / size, StrokeLineCap = PenLineCap.Round, StrokeJoin = PenLineJoin.Round,
+        },
     };
 
     /// <summary>Bouton-icône carré avec info-bulle (le nom et le raccourci y sont).</summary>
-    public static Button Button(string data, string tip, Action click, double size = 18)
+    public static Button Button(string data, string tip, Action click, double size = Taille)
     {
-        var b = new Button { Content = Make(data, size), Padding = new Thickness(7), Background = Brushes.Transparent, CornerRadius = new CornerRadius(6), VerticalAlignment = VerticalAlignment.Center };
+        var b = new Button { Content = Make(data, size), Padding = new Thickness(6), Background = Brushes.Transparent, CornerRadius = new CornerRadius(6), VerticalAlignment = VerticalAlignment.Center };
         ToolTip.SetTip(b, tip); ToolTip.SetShowOnDisabled(b, true);
         b.Click += (_, _) => click();
         return b;

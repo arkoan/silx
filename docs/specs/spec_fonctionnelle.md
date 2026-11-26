@@ -249,6 +249,9 @@ Chaque démo est conforme sous ngspice (test automatique).
 - Visualiseur de courbes interactif (temporel, AC bode, FFT, histogrammes
   Monte Carlo), avec possibilité de superposer les traces d'un run
   sélectionné directement sur le schéma (probes visuelles sur les nœuds)
+- **Icônes légères** : icônes au trait dessinées sur une grille 24×24 commune et mises à l'échelle telles quelles
+  (même corps optique pour toutes, pas d'étirement jusqu'au bord), 16 px par défaut, **trait de 1,15 px** quelle
+  que soit la taille ; boutons-icônes avec 6 px de marge.
 
 ### 3.9 Intégration IA (MCP)
 - Serveur MCP exposant les tools nécessaires aux quatre rôles IA :
