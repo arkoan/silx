@@ -236,7 +236,7 @@ public partial class MainWindow
         var tirages = r.Tirages.Where(t => t.Erreur == null).Take(400).ToList();
         var gris = Parametres.VersPlot(((ISolidColorBrush)Ui.Muted).Color);
         bool sombre = Ui.Sombre;
-        var avant = new List<(double[] X, double[] Y, ScottPlot.Color C, bool Echec)>();
+        var avant = new List<(double[] X, double[] Y, ScottPlot.Color C, bool Echec, ScottPlot.IYAxis Axe)>();
         for (int i = 0; i < tirages.Count; i++)
         {
             var t = tirages[i];
@@ -245,26 +245,28 @@ public partial class MainWindow
             for (int j = 0; j < nodes.Count && j < couleurs.Length; j++)
             {
                 if (!t.Courbes.TryGetValue(nodes[j], out var c) && !t.Courbes.TryGetValue(nodes[j].ToUpperInvariant(), out c)) continue;
-                lo = Math.Min(lo, c.Y.Min()); hi = Math.Max(hi, c.Y.Max());
+                bool courant = AxeCourant(nodes[j]);
+                if (!courant) { lo = Math.Min(lo, c.Y.Min()); hi = Math.Max(hi, c.Y.Max()); }
                 var xs = c.X.Select(X).ToArray();
                 var teinte = r.Mode == ModeCampagne.Balayage ? (k < 0.5 ? Eclaircir(couleurs[j], (0.5 - k) * 0.9) : Assombrir(couleurs[j], (k - 0.5) * 0.6)) : couleurs[j];
                 bool echec = EchecSur(t, nodes[j]);
                 bool estompe = _estompage == Estompage.Conformes ? !echec : echec;
                 if (t == _tirageChoisi) continue;   // dessiné en dernier
-                if (t == _tirageSurvole) { avant.Add((xs, c.Y, teinte, true)); continue; }
+                var axe = AxeY(nodes[j]);
+                if (t == _tirageSurvole) { avant.Add((xs, c.Y, teinte, true, axe)); continue; }
                 if (estompe)
                 {
                     // Estompé : simplement grisé, trait fin.
-                    var sc = p.Add.ScatterLine(xs, c.Y);
+                    var sc = p.Add.ScatterLine(xs, c.Y); sc.Axes.YAxis = axe;
                     sc.Color = gris.WithAlpha(sombre ? 0.35 : 0.3); sc.LineWidth = 1f;
                 }
-                else avant.Add((xs, c.Y, teinte, false));
+                else avant.Add((xs, c.Y, teinte, false, axe));
             }
         }
         // Courbes mises en avant par-dessus les grisées ; celle survolée plus épaisse.
-        foreach (var (xs, ys, teinte, survole) in avant)
+        foreach (var (xs, ys, teinte, survole, axe) in avant)
         {
-            var sc = p.Add.ScatterLine(xs, ys); sc.Color = teinte; sc.LineWidth = survole ? 3f : 1.6f;
+            var sc = p.Add.ScatterLine(xs, ys); sc.Axes.YAxis = axe; sc.Color = teinte; sc.LineWidth = survole ? 3f : 1.6f;
         }
         if (_tirageChoisi is { Erreur: null } choisi)
         {
@@ -273,8 +275,8 @@ public partial class MainWindow
                 if (choisi.Courbes.TryGetValue(n, out var c) || choisi.Courbes.TryGetValue(n.ToUpperInvariant(), out c))
                 {
                     var xs = c.X.Select(X).ToArray();
-                    var sc = p.Add.ScatterLine(xs, c.Y); sc.Color = bleu; sc.LineWidth = 2.8f;
-                    var lt = p.Add.Text(choisi.Tirage.Libelle, xs[^1], c.Y[^1]);
+                    var sc = p.Add.ScatterLine(xs, c.Y); sc.Axes.YAxis = AxeY(n); sc.Color = bleu; sc.LineWidth = 2.8f;
+                    var lt = p.Add.Text(choisi.Tirage.Libelle, xs[^1], c.Y[^1]); lt.Axes.YAxis = AxeY(n);
                     lt.LabelFontColor = ScottPlot.Colors.White; lt.LabelBackgroundColor = bleu; lt.LabelFontSize = 11; lt.LabelBold = true;
                     lt.LabelAlignment = ScottPlot.Alignment.LowerRight; lt.LabelOffsetY = -6; lt.LabelPadding = 3;
                 }
@@ -311,8 +313,8 @@ public partial class MainWindow
                 if (!t.Courbes.TryGetValue(n, out var c) && !t.Courbes.TryGetValue(n.ToUpperInvariant(), out c)) continue;
                 for (int i = 0; i + 1 < c.X.Length; i++)
                 {
-                    var a = _plot.Plot.GetPixel(new ScottPlot.Coordinates(X(c.X[i]), c.Y[i]));
-                    var b = _plot.Plot.GetPixel(new ScottPlot.Coordinates(X(c.X[i + 1]), c.Y[i + 1]));
+                    var a = _plot.Plot.GetPixel(new ScottPlot.Coordinates(X(c.X[i]), c.Y[i]), _plot.Plot.Axes.Bottom, AxeY(n));
+                    var b = _plot.Plot.GetPixel(new ScottPlot.Coordinates(X(c.X[i + 1]), c.Y[i + 1]), _plot.Plot.Axes.Bottom, AxeY(n));
                     if (Math.Max(a.X, b.X) < px.X - dmin || Math.Min(a.X, b.X) > px.X + dmin) continue;
                     double d = DistanceSegment(px.X, px.Y, a.X, a.Y, b.X, b.Y);
                     if (d < dmin) { dmin = d; meilleur = t; }

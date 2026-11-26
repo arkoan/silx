@@ -107,10 +107,14 @@ public static class Verification
     }
 
     /// <summary>Courbe affichée et contrôlée : v(t) en transitoire, |v| en dB en AC.</summary>
-    public static (double[] X, double[] Y) Courbe(AnalyseKind k, RawFile raw, string noeud)
+    public static (double[] X, double[] Y) Courbe(AnalyseKind k, RawFile raw, string noeud) => Courbe(k, raw, noeud, null);
+
+    /// <summary>Courbe d'un signal (tension de nœud, ou courant de broche résolu sur le schéma fusionné <paramref name="f"/>).</summary>
+    public static (double[] X, double[] Y) Courbe(AnalyseKind k, RawFile raw, string signal, Schematic? f)
     {
-        if (k == AnalyseKind.Transitoire) { var c = Temporelle(raw, $"v({noeud})"); return (c.Temps.ToArray(), c.Valeurs.ToArray()); }
-        var r = Frequentielle(raw, $"v({noeud})");
+        var (vec, signe) = Signaux.Vecteur(signal, f) ?? throw new ArgumentException($"Signal « {signal} » indisponible.");
+        if (k == AnalyseKind.Transitoire) { var c = Temporelle(raw, vec); return (c.Temps.ToArray(), c.Valeurs.ToArray().Select(v => v * signe).ToArray()); }
+        var r = Frequentielle(raw, vec);
         return (r.Frequences.ToArray(), r.Valeurs.ToArray().Select(Frequentiel.Db).ToArray());
     }
 

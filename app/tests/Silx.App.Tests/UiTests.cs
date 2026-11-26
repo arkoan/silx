@@ -183,8 +183,8 @@ public class UiTests
         w.AjouterGraphique();
         Assert.Equal(Silx.App.Tool.Probe, w.Canevas.Tool);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        // Milieu du fil R1–C1 (nœud OUT) puis broche gauche de R1 (nœud IN).
-        foreach (var g in new[] { new Silx.Etude.GridPoint(4, 8) })
+        // Milieu du fil R1–C1 : un fil donne la tension de son nœud (OUT) ; une broche donnerait un courant.
+        foreach (var g in new[] { new Silx.Etude.GridPoint(9, 8) })
         {
             var pt = w.Canevas.TranslatePoint(w.Canevas.ScreenOf(g), w)!.Value;
             w.MouseMove(pt); Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -193,7 +193,7 @@ public class UiTests
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         }
         Assert.Equal(2, w.SignauxGraphiques.Count);
-        Assert.Equal(["IN"], w.SignauxGraphiques[1]);
+        Assert.Equal(["OUT"], w.SignauxGraphiques[1]);
         w.Canevas.Tool = Silx.App.Tool.Select;
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Shot(w, "13-deux-graphiques.png");

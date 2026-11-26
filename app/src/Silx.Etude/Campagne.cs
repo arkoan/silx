@@ -185,7 +185,8 @@ public static class Campagnes
     {
         banc.RecalerGabarits();
         var c = banc.Campagne;
-        var plan = Plan(c, banc.Fusion(circuit.Schema), out var avert);
+        var fusion = banc.Fusion(circuit.Schema);
+        var plan = Plan(c, fusion, out var avert);
         var resultats = new ResultatTirage[plan.Count];
         int faits = 0;
         using var porte = new SemaphoreSlim(Math.Max(1, Environment.ProcessorCount));
@@ -200,8 +201,8 @@ public static class Campagnes
                 var courbes = new Dictionary<string, (double[], double[])>();
                 if (r.Erreur == null && r.Resultats.TryGetValue(banc.Type, out var raw))
                     foreach (var n in signaux.Distinct(StringComparer.OrdinalIgnoreCase))
-                        if (raw.Variables.Any(v => string.Equals(v.Name, $"v({n})", StringComparison.OrdinalIgnoreCase)))
-                            courbes[n] = Reduire(Verification.Courbe(banc.Type, raw, n));
+                        if (Signaux.Disponible(raw, n, fusion))
+                            courbes[n] = Reduire(Verification.Courbe(banc.Type, raw, n, fusion));
                 resultats[t.Index] = new ResultatTirage(t, r.Nombre == 0 ? Verdict.Pass : r.Global,
                     r.Criteres.ToDictionary(x => x.Critere, x => x.Resultat), r.Traces.ToDictionary(x => x.Gabarit, x => x.Resultat), courbes, r.Erreur);
             }

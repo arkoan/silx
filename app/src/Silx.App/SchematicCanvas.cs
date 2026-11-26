@@ -62,6 +62,43 @@ public sealed class SchematicCanvas : Control
     public DefinitionComposant? PlaceDefinition { get; private set; }
     Schematic? _dragOrigin; GridPoint _dragStart;
     string? _probeNode;
+    (PlacedComponent C, int I)? _probePin;
+    bool _sondeImplicite;
+    /// <summary>
+    /// Sonde implicite : le graphique a la main (zone des courbes active) ; survoler le schéma montre ce que l'on
+    /// sonderait (net : tension, broche : courant) et un clic l'ajoute au graphique, sans changer d'outil.
+    /// </summary>
+    public bool SondeImplicite { get => _sondeImplicite; set { if (_sondeImplicite == value) return; _sondeImplicite = value; _probeNode = null; _probePin = null; InvalidateVisual(); } }
+    bool SondeActive => _tool == Tool.Probe || (_sondeImplicite && _tool == Tool.Select);
+    /// <summary>Un net ou une broche est visé par la sonde : un clic l'ajoute au graphique.</summary>
+    public bool SondeVisee => SondeActive && _inside && (_probePin != null || _probeNode is { } n && n != "0");
+
+    /// <summary>Broche d'un composant électrique sous le pointeur (à un tiers de pas près) : sonde de courant.</summary>
+    (PlacedComponent C, int I)? BrocheSonde(Point pos)
+    {
+        var d = Grid * _zoom * 0.35;
+        foreach (var c in AllComponents.Where(c => c.IsElectrical).Reverse())
+        {
+            var pins = c.Pins;
+            for (int i = 0; i < pins.Count; i++)
+            { var sp = ToScreen(pins[i]); if (Math.Abs(sp.X - pos.X) < d && Math.Abs(sp.Y - pos.Y) < d) return (c, i); }
+        }
+        return null;
+    }
+
+    void Viser(Point pos)
+    {
+        _probePin = BrocheSonde(pos);
+        _probeNode = _probePin == null ? NodeAt(pos) : null;
+    }
+
+    /// <summary>Envoie la cible de la sonde : nom de nœud (tension) ou « I(R1:2) » (courant entrant dans la broche).</summary>
+    bool Sonder()
+    {
+        if (_probePin is { } bp) { Probed?.Invoke(Signaux.Courant(bp.C, bp.I)); return true; }
+        if (_probeNode is { } node && node != "0") { Probed?.Invoke(node); return true; }
+        return false;
+    }
 
     Tool _tool = Tool.Select;
     readonly Stack<(Schematic S, List<List<Wire>> Calques)> _undo = new(), _redo = new();
@@ -382,7 +419,7 @@ public sealed class SchematicCanvas : Control
         switch (_tool)
         {
             case Tool.Probe:
-                if (NodeAt(pos) is { } node && node != "0") Probed?.Invoke(node);
+                Viser(pos); Sonder();
                 break;
             case Tool.ZoomWindow:
                 _zoomStart = pos; break;
@@ -401,6 +438,8 @@ public sealed class SchematicCanvas : Control
                 }
                 break;
             case Tool.Select:
+                // Sonde implicite (graphique actif) : un clic sur un net ou une broche l'ajoute au graphique.
+                if (_sondeImplicite && pt.Properties.IsLeftButtonPressed) { Viser(pos); if (Sonder()) { InvalidateVisual(); break; } }
                 // Glisser depuis une broche (du schéma édité ou du circuit dessous) : tracé d'un fil, sans changer d'outil.
                 if (!e.KeyModifiers.HasFlag(KeyModifiers.Shift) && e.ClickCount == 1 && BrocheSous(pos) is { } broche)
                 {
@@ -457,7 +496,13 @@ public sealed class SchematicCanvas : Control
         var pos = e.GetPosition(this); _inside = true; _lastPos = pos;
         if (_panning) { _pan += pos - _panLast; _panLast = pos; }
         _cursor = Snap(pos);
-        if (_tool == Tool.Probe) _probeNode = NodeAt(pos);
+        if (SondeActive)
+        {
+            var (n0, p0) = (_probeNode, _probePin);
+            Viser(pos);
+            if (_sondeImplicite && _tool == Tool.Select) Cursor = _probePin != null || _probeNode != null ? new Cursor(StandardCursorType.Hand) : Cursor.Default;
+            if (n0 != _probeNode || !Nullable.Equals(p0, _probePin)) InvalidateVisual();
+        }
         if (_tool == Tool.Select && _dragging == null && _boxStart == null)
         {
             // Broche survolée : on peut en tirer un fil (anneau et pointeur en croix).
@@ -699,7 +744,7 @@ public sealed class SchematicCanvas : Control
             if (n >= 3) ctx.DrawEllipse(layer ? CouleurCalque : WireBrush, null, ToScreen(p), 3.2 * _zoom / 2 + 1, 3.2 * _zoom / 2 + 1);
         }
 
-        if (_tool == Tool.Probe && _probeNode is { } pn && pn != "0" && _inside)
+        if (SondeActive && _probeNode is { } pn && pn != "0" && _inside)
         {
             // Équipotentiel survolé : fils et broches surlignés.
             var conn = Connectivity.Build(Merged());
@@ -709,7 +754,16 @@ public sealed class SchematicCanvas : Control
                 ctx.DrawEllipse(new SolidColorBrush(Color.Parse("#f59e0b"), 0.7), null, ToScreen(p), 6, 6);
         }
         foreach (var c in Schematic.Components) DrawComponent(ctx, c, c == _selected || _multi.Contains(c) ? Accent : layer ? CouleurCalque : c.Kind == ComponentKind.Label ? LabelBrush : Ink, 1);
-        if (_tool == Tool.Probe && _inside)
+        if (SondeActive && _inside && _probePin is { } bp)
+        {
+            // Broche visée : sonde de courant (anneau, flèche d'entrée et nom du courant).
+            var p = ToScreen(bp.C.Pins[bp.I]); var or = new SolidColorBrush(Color.Parse("#0e7490"));
+            ctx.DrawEllipse(null, new Pen(or, 2.5), p, 7, 7);
+            var t = new FormattedText(Signaux.Nom(Signaux.Courant(bp.C, bp.I), Merged()) + " entrant", System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight, new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold), 12, Brushes.White);
+            var r = new Rect(p.X + 12, p.Y - 30, t.Width + 10, t.Height + 4);
+            ctx.DrawRectangle(or, null, r, 3, 3); ctx.DrawText(t, new Point(r.X + 5, r.Y + 2));
+        }
+        else if (SondeActive && _inside)
         {
             // Pointe de sonde + nom du nœud visé.
             var c0 = _lastPos; var tip = new Pen(new SolidColorBrush(Color.Parse("#b45309")), 2);

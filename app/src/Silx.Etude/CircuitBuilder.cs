@@ -132,6 +132,7 @@ public static class CircuitBuilder
     /// <summary>Modèles de diodes intégrés utilisés, puis texte SPICE de chaque définition importée (une fois par modèle).</summary>
     public static IEnumerable<string> Directives(Schematic s)
     {
+        yield return ".options savecurrents";   // courants des composants, pour les sondes de courant
         foreach (var m in s.Components.Where(k => k.Kind == ComponentKind.Diode).Select(k => k.Value.Trim().ToUpperInvariant()).Distinct())
             if (DiodeModels.All.TryGetValue(m, out var line)) yield return line;
         foreach (var v in s.Components.Where(k => k.Kind == ComponentKind.Spice && k.Definition?.CodeXspice != null).Select(TensionLogique).Distinct())

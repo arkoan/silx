@@ -128,11 +128,12 @@ public sealed partial class MainWindow
         double X(double x) => ac ? Math.Log10(x) : x * 1e3;
         var conn = Connectivity.Build(b.Fusion(e.Schema));
         var signaux = (b.Graphiques.FirstOrDefault() is { Count: > 0 } g ? g : conn.NamedNodes.ToList())
-            .Where(n => raw.Variables.Any(v => string.Equals(v.Name, $"v({n})", StringComparison.OrdinalIgnoreCase))).ToList();
+            .Where(n => Signaux.Disponible(raw, n, b.Fusion(e.Schema))).ToList();
         foreach (var n in signaux)
         {
-            var (xs, ys) = Verification.Courbe(b.Type, raw, n);
-            var sc = p.Add.ScatterLine(xs.Select(X).ToArray(), ys); sc.LegendText = ac ? $"|V({n})| (dB)" : $"V({n})"; sc.LineWidth = 2;
+            var f = b.Fusion(e.Schema);
+            var (xs, ys) = Verification.Courbe(b.Type, raw, n, f);
+            var sc = p.Add.ScatterLine(xs.Select(X).ToArray(), ys); sc.LegendText = ac ? $"|{Signaux.Nom(n, f)}| (dB)" : Signaux.Nom(n, f); sc.LineWidth = 2;
         }
         foreach (var t in b.TracesActives.Where(t => signaux.Contains(t.Noeud)))
         {

@@ -497,4 +497,39 @@ public class UiSpiceTests
         w.SignalerErreur(new InvalidOperationException("essai"), "test");
         Assert.Contains("essai", w.Statut);
     }
+
+    /// <summary>
+    /// Sonde implicite : graphique actif, survol du schéma → un net donne une tension, une broche un courant ; le clic
+    /// l'ajoute au graphique sans donner la main au schéma. Schéma actif : pas de sonde.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Sonde_implicite_tension_et_courant()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        var banc = w.EtudeCourante.Bancs[0];
+        w.SelectBanc(banc);
+        await w.SimulateAsync();
+        w.ActiverZone(MainWindow.Zone.Courbes);
+        // Broche haute de C1 (11,8) : courant entrant dans C1.
+        var p = Ecran(w, 11, 8);
+        w.MouseMove(p); Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.True(w.Schema.SondeVisee);
+        Shot(w, "68-sonde-courant.png");
+        w.MouseDown(p, MouseButton.Left); w.MouseUp(p, MouseButton.Left);
+        Assert.Equal(MainWindow.Zone.Courbes, w.ZoneActive);          // le graphique garde la main
+        Assert.Contains("I(C1:1)", w.SignauxActifs);
+        // Milieu du fil R1–C1 (9,8) : tension du nœud OUT (déjà tracée) ; fil du bas (6,11) : masse, rien.
+        var q = Ecran(w, 9, 8); w.MouseMove(q); w.MouseDown(q, MouseButton.Left); w.MouseUp(q, MouseButton.Left);
+        Assert.Contains("OUT", w.SignauxActifs);
+        await w.SimulateAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        var raw = w.Resultats!.Resultats[AnalyseKind.Transitoire];
+        var (_, i) = Verification.Courbe(AnalyseKind.Transitoire, raw, "I(C1:1)", banc.Fusion(w.EtudeCourante.Schema));
+        Assert.InRange(i.Max(), 0.5e-3, 1.05e-3);                       // charge de C1 : 1 V / 1 kΩ au front
+        Shot(w, "69-courant-trace.png");
+        // Schéma actif : plus de sonde, le clic sélectionne.
+        w.ActiverZone(MainWindow.Zone.Schema);
+        w.MouseMove(p);
+        Assert.False(w.Schema.SondeVisee);
+    }
 }

@@ -95,6 +95,12 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
 - Saisie des valeurs en notation ingénieur dans tous les champs : « M » majuscule et « meg » = méga (2 MHz,
   4,7 MΩ), « m » minuscule = milli (3 ms, 10 mHz) ; unités tolérées (Hz, s, V, A, Ω, F, H, dB, %). Les valeurs
   de R, C, L sont réécrites sans ambiguïté dans la netlist (« 1meg », jamais « 1M » que SPICE lit milli).
+- **Sonde implicite** : quand le graphique a la main (zone des courbes active), survoler le schéma montre ce qu'on
+  sonderait, sans choisir d'outil : un **net** (fil, étiquette) → sa **tension** ; une **broche** → le **courant qui
+  y entre** (« I(R1) », « I(Q1, C) », lu dans les vecteurs « .options savecurrents » de ngspice ; indisponible pour
+  un sous-circuit ou un composant logique). Un clic l'ajoute au graphique actif sans donner la main au schéma ;
+  quand le schéma a la main, pas de sonde (le clic sélectionne). En temporel, les courants ont leur axe à droite.
+  L'outil Sonde (P) reste disponible et suit les mêmes règles.
 - Courbes : curseurs A / B (double-clic ou touches A et B) en temporel, en Bode et sur la **vue FFT** (fréquence,
   amplitude en dBV, écarts). **Couleur d'un signal** au choix : clic sur sa pastille au-dessus du graphique
   (nuancier, code hexadécimal, « par défaut ») ; enregistrée par banc dans le projet et reprise par les courbes de
