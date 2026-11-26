@@ -83,6 +83,9 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
 - Analyse AC en décade (défaut) ou **linéaire sur une bande étroite** (option du banc), pour les résonances très
   aiguës : un quartz 32,768 kHz (Q ≈ 67 000) a une résonance large d'environ 0,5 Hz, invisible avec 50 points
   par décade. Sur moins d'une décade, l'axe des fréquences est gradué au hertz près.
+  En décade, Silx garantit au moins 100 points sur la plage demandée.
+- Robustesse : une erreur de simulation, de mesure ou de tracé est signalée dans la barre d'état et journalisée
+  (~/Library/Logs/Silx/silx.log) ; elle ne ferme jamais l'application.
 - Exécution en parallèle de runs indépendants, bornée au nombre de cœurs
   disponibles
 
