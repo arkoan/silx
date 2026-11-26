@@ -989,6 +989,12 @@ public sealed partial class MainWindow : Window
             plot.AddHandler(PointerMovedEvent, OnPlotMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel);
             plot.AddHandler(PointerReleasedEvent, OnPlotReleased, Avalonia.Interactivity.RoutingStrategies.Tunnel);
             plot.AddHandler(PointerWheelChangedEvent, OnPlotWheel, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            plot.AddHandler(PointerTouchPadGestureMagnifyEvent, OnPlotMagnify, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+            // Écran tactile : même zoom homogène au pincement.
+            plot.GestureRecognizers.Add(new PinchGestureRecognizer());
+            double echelle = 1; var pl = plot;
+            plot.AddHandler(InputElement.PinchEvent, (_, e) => { ZoomerCourbe(pl, e.ScaleOrigin, Math.Clamp(e.Scale / echelle, 0.5, 2)); echelle = e.Scale; e.Handled = true; });
+            plot.AddHandler(InputElement.PinchEndedEvent, (_, _) => echelle = 1);
             plot.PointerExited += (_, _) => { if (_tirageSurvole != null) { _tirageSurvole = null; ToolTip.SetIsOpen(plot, false); RefreshPlot(keepLimits: true); } };
             var host = new Grid(); host.Children.Add(plot);
             var frame = new Border { BorderThickness = new Thickness(2, 0, 0, 0), Margin = new Thickness(0, i == 0 ? 0 : 3, 0, 0) };
@@ -2552,6 +2558,24 @@ public sealed partial class MainWindow : Window
         var c = ap.Plot.GetCoordinates(new ScottPlot.Pixel((float)(pos.X * sc), (float)(pos.Y * sc)));
         var l = ap.Plot.Axes.GetLimits();
         ap.Plot.Axes.SetLimitsX(c.X - (c.X - l.Left) / f, c.X + (l.Right - c.X) / f);
+        ap.Refresh();
+    }
+
+    /// <summary>Pincement sur une courbe : zoom homogène (temps ou fréquence et axe vertical) autour du pointeur, borné aux données.</summary>
+    void OnPlotMagnify(object? sender, PointerDeltaEventArgs e)
+    {
+        if (sender is not AvaPlot ap) return;
+        e.Handled = true;
+        ZoomerCourbe(ap, e.GetPosition(ap), SchematicCanvas.FacteurPincement(e.Delta.X));
+    }
+
+    /// <summary>Zoom homogène d'un graphique d'un facteur <paramref name="f"/> autour d'un point (coordonnées du contrôle).</summary>
+    public static void ZoomerCourbe(AvaPlot ap, Point pos, double f)
+    {
+        var sc = ap.DisplayScale;
+        var c = ap.Plot.GetCoordinates(new ScottPlot.Pixel((float)(pos.X * sc), (float)(pos.Y * sc)));
+        var l = ap.Plot.Axes.GetLimits();
+        ap.Plot.Axes.SetLimits(c.X - (c.X - l.Left) / f, c.X + (l.Right - c.X) / f, c.Y - (c.Y - l.Bottom) / f, c.Y + (l.Top - c.Y) / f);
         ap.Refresh();
     }
 

@@ -95,6 +95,9 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
 - Saisie des valeurs en notation ingénieur dans tous les champs : « M » majuscule et « meg » = méga (2 MHz,
   4,7 MΩ), « m » minuscule = milli (3 ms, 10 mHz) ; unités tolérées (Hz, s, V, A, Ω, F, H, dB, %). Les valeurs
   de R, C, L sont réécrites sans ambiguïté dans la netlist (« 1meg », jamais « 1M » que SPICE lit milli).
+- **Pincement** (pavé tactile du Mac, écran tactile) : zoom **homogène** (les deux axes) autour du point entre les
+  doigts, sur le schéma comme sur les courbes (borné aux données), avec la sensibilité du zoom des Paramètres. Le
+  glissement à deux doigts garde son comportement (zoom horizontal sur les courbes, zoom sur le schéma).
 - **Sonde implicite** : quand le graphique a la main (zone des courbes active), survoler le schéma montre ce qu'on
   sonderait, sans choisir d'outil : un **net** (fil, étiquette) → sa **tension** ; une **broche** → le **courant qui
   y entre** (« I(R1) », « I(Q1, C) », lu dans les vecteurs « .options savecurrents » de ngspice ; indisponible pour

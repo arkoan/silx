@@ -920,4 +920,25 @@ public class UiTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    /// <summary>Pincement : facteur proportionnel au geste ; schéma zoomé autour des doigts ; courbe zoomée sur les deux axes.</summary>
+    [AvaloniaFact]
+    public async Task Pincement_zoom_homogene()
+    {
+        Assert.InRange(Silx.App.SchematicCanvas.FacteurPincement(0.02), 1.019, 1.021);   // sensibilité normale
+        Assert.InRange(Silx.App.SchematicCanvas.FacteurPincement(-0.02), 0.979, 0.981);
+        Assert.Equal(2, Silx.App.SchematicCanvas.FacteurPincement(5));                     // borné
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        await w.SimulateAsync();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs(); w.CaptureRenderedFrame();
+        double z0 = w.Canevas.Zoom;
+        w.Canevas.ZoomPincement(new Avalonia.Point(300, 200), 0.1);
+        Assert.InRange(w.Canevas.Zoom / z0, 1.09, 1.11);
+        var plot = w.PlotControl; var l0 = plot.Plot.Axes.GetLimits();
+        var centre = new Avalonia.Point(plot.Bounds.Width / 2, plot.Bounds.Height / 2);
+        MainWindow.ZoomerCourbe(plot, centre, 2);
+        var l1 = plot.Plot.Axes.GetLimits();
+        Assert.InRange((l1.Right - l1.Left) / (l0.Right - l0.Left), 0.45, 0.55);   // horizontal
+        Assert.InRange((l1.Top - l1.Bottom) / (l0.Top - l0.Bottom), 0.45, 0.55);   // et vertical
+    }
 }

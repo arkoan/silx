@@ -144,7 +144,16 @@ public sealed class SchematicCanvas : Control
     public static readonly IBrush BenchBrush = new SolidColorBrush(Color.Parse("#7c3aed"));
     static IBrush Line => Ui.Line;
 
-    public SchematicCanvas() { Focusable = true; ClipToBounds = true; }
+    public SchematicCanvas()
+    {
+        Focusable = true; ClipToBounds = true;
+        // Pincement : pavé tactile (macOS) et écran tactile ; zoom autour du point entre les doigts.
+        AddHandler(PointerTouchPadGestureMagnifyEvent, (_, e) => { ZoomPincement(e.GetPosition(this), e.Delta.X); e.Handled = true; });
+        GestureRecognizers.Add(new PinchGestureRecognizer());
+        double echelle = 1;
+        AddHandler(InputElement.PinchEvent, (_, e) => { ZoomAt(e.ScaleOrigin, Math.Clamp(e.Scale / echelle, 0.5, 2)); echelle = e.Scale; e.Handled = true; });
+        AddHandler(InputElement.PinchEndedEvent, (_, _) => echelle = 1);
+    }
 
     public void Load(Schematic s, Schematic? underlay = null)
     {
@@ -585,6 +594,15 @@ public sealed class SchematicCanvas : Control
 
     /// <summary>Molette ou pavé tactile : zoom proportionnel à l'amplitude du geste (un pavé envoie beaucoup de petits pas).</summary>
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e) => ZoomAt(e.GetPosition(this), FacteurMolette(e.Delta.Y));
+    /// <summary>
+    /// Pincement : facteur d'agrandissement d'un pas du geste (pavé tactile macOS : variation relative, ex. +0,02 ;
+    /// écran tactile : rapport d'échelle − 1), modulé par la sensibilité du zoom (Paramètres), borné à ×0,5…×2.
+    /// </summary>
+    public static double FacteurPincement(double variation) =>
+        Math.Clamp(1 + variation * Math.Log(Parametres.Courant.BaseZoom) / Math.Log(1.06), 0.5, 2);
+
+    public void ZoomPincement(Point pos, double variation) => ZoomAt(pos, FacteurPincement(variation));
+
     public static double FacteurMolette(double delta) => Math.Pow(Parametres.Courant.BaseZoom, Math.Clamp(delta, -3, 3));
     protected override void OnKeyDown(KeyEventArgs e)
     {
