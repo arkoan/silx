@@ -161,7 +161,8 @@ public sealed class SchematicCanvas : Control
     IEnumerable<Wire> AllWires => _underlay == null ? Schematic.Wires : _underlay.Wires.Concat(Schematic.Wires);
     string NextRef(ComponentKind k)
     {
-        var merged = new Schematic { Components = AllComponents.ToList() };
+        // Circuit sous test : les références des bancs liés comptent aussi (V1 d'un banc et V1 du circuit se heurteraient).
+        var merged = new Schematic { Components = AllComponents.Concat(_underlay == null ? CalquesLies.SelectMany(c => c.Components) : []).ToList() };
         return k == ComponentKind.Spice && PlaceDefinition != null ? merged.NextRef(PlaceDefinition.Lettre) : merged.NextRef(k);
     }
     public void BeginPlace(ComponentKind k) { PlaceKind = k; PlaceDefinition = null; NomPlacement = NomDe(k); Tool = Tool.Place; Focus(); }

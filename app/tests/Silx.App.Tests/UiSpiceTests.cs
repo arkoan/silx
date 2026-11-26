@@ -416,4 +416,32 @@ public class UiSpiceTests
         w.ProposerReferences("MOSFET canal N", w.Schema);
         Shot(w, "58-palette-base.png");
     }
+
+    /// <summary>Alimentation dans le circuit sous test (polarisation commune à tous les bancs) : palette active, référence libre, simulée.</summary>
+    [AvaloniaFact]
+    public async Task Alimentation_dans_le_circuit_de_base()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        w.SelectBanc(null);
+        Assert.True(w.BoutonPalette(ComponentKind.VoltageSource).IsEnabled);
+        // VCC 5 V sur OUT à travers 1 MΩ, dans le circuit : tous les bancs la voient ; elle ne s'appelle pas V1 (pris par les bancs).
+        w.Schema.BeginPlace(ComponentKind.VoltageSource);
+        var p = Ecran(w, 20, 4);
+        w.MouseMove(p); w.MouseDown(p, MouseButton.Left); w.MouseUp(p, MouseButton.Left);
+        var vcc = w.EtudeCourante.Schema.Components.Single(k => k.Kind == ComponentKind.VoltageSource);
+        Assert.NotEqual("V1", vcc.Ref);
+        vcc.Value = "DC 5";
+        w.EtudeCourante.Schema.Components.Add(new() { Ref = "GND9", Kind = ComponentKind.Ground, Position = new(vcc.Pins[1].X, vcc.Pins[1].Y) });
+        w.EtudeCourante.Schema.Components.Add(new() { Ref = "NET9", Kind = ComponentKind.Label, Position = vcc.Pins[0], Value = "VCC" });
+        w.EtudeCourante.Schema.Components.Add(new() { Ref = "R9", Kind = ComponentKind.Resistor, Position = vcc.Pins[0], Rotation = 3, Value = "1meg" });   // charge vers le haut
+        w.EtudeCourante.Schema.Components.Add(new() { Ref = "GND8", Kind = ComponentKind.Ground, Position = new(vcc.Pins[0].X, vcc.Pins[0].Y - 3) });
+        var banc = w.EtudeCourante.Bancs[0];
+        w.SelectBanc(banc);
+        await w.SimulateAsync();
+        Assert.Null(w.Resultats!.Erreur);
+        Assert.Equal(AnalyseKind.Transitoire, banc.Type);   // le type du banc vient toujours de ses propres stimuli
+        Assert.InRange(w.Resultats.Resultats[AnalyseKind.Transitoire].Vector("v(vcc)")[^1], 4.99, 5.01);
+        w.SelectBanc(null);
+        Shot(w, "59-alimentation-circuit.png");
+    }
 }

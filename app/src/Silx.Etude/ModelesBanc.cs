@@ -45,13 +45,15 @@ public static class ModelesBanc
         var conn = Connectivity.Build(e.Schema);
         var points = conn.NodeOf.Where(kv => string.Equals(kv.Value, entree, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Key).OrderBy(p => p.X).ThenBy(p => p.Y).ToList();
         int noeudsAvant = conn.AllNodes.Count;
+        // Une alimentation du circuit sous test peut déjà s'appeler V1 : première référence libre.
+        var nomSource = new Schematic { Components = e.Schema.Components.Concat(b.Calque.Components).ToList() }.NextRef(ComponentKind.VoltageSource);
         foreach (var p in points)
             foreach (var dx in new[] { 6, 10, 14, 18 })
                 foreach (var dy in new[] { 0, -4, 4, -8, 8 })
                 {
                     var q = new GridPoint(p.X - dx, p.Y + dy);
                     var essai = new Schematic();
-                    essai.Components.Add(new PlacedComponent { Ref = "V1", Kind = ComponentKind.VoltageSource, Position = q, Rotation = 1, Value = valeur });
+                    essai.Components.Add(new PlacedComponent { Ref = nomSource, Kind = ComponentKind.VoltageSource, Position = q, Rotation = 1, Value = valeur });
                     essai.Components.Add(new PlacedComponent { Ref = "GNDB1", Kind = ComponentKind.Ground, Position = new GridPoint(q.X, q.Y + PlacedComponent.LongueurDipole) });
                     if (dy != 0) { essai.Wires.Add(new(q, new GridPoint(q.X, p.Y))); essai.Wires.Add(new(new GridPoint(q.X, p.Y), p)); }
                     else essai.Wires.Add(new(q, p));

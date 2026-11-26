@@ -48,6 +48,7 @@ public sealed partial class MainWindow : Window
     readonly StackPanel _palette = new() { Spacing = 2 };
     readonly Button _simulate;
     readonly Dictionary<ComponentKind, Button> _paletteButtons = new();
+    public Button BoutonPalette(ComponentKind k) => _paletteButtons[k];
     // Composants SPICE importés : bibliothèque de l'utilisateur et tuiles de la palette.
     readonly BibliothequeComposants _bib = BibliothequeComposants.Charger(BibliothequeComposants.DossierParDefaut());
     readonly WrapPanel _spiceWrap = new() { ItemWidth = 46, ItemHeight = 40 };
@@ -417,7 +418,6 @@ public sealed partial class MainWindow : Window
             b.Graphiques.Add((conn0.NamedNodes.Count > 0 ? conn0.NamedNodes : conn0.AllNodes.Take(2)).ToList());
         }
         RebuildPanes();
-        foreach (var sb in _sourceButtons) { sb.IsEnabled = b != null; sb.Opacity = b != null ? 1 : 0.35; }
         RefreshSide(); RefreshBenchBar(); RefreshPlotToolbar(); RefreshPlot();
         SetVerdict(b == null ? GlobalVerdict() : _last is { Erreur: null } r && r.Nombre > 0 ? r.Global : null);
     }
@@ -586,7 +586,7 @@ public sealed partial class MainWindow : Window
                 var ico = new Symboles.Icone { Kind = k, Width = 34, Height = 24, Brush = Ui.Ink };
                 var b = new Button { Content = ico, Padding = new Thickness(5, 7), Margin = new Thickness(2), Background = Brushes.Transparent, CornerRadius = new CornerRadius(6), HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch };
                 bool source = k is ComponentKind.VoltageSource or ComponentKind.CurrentSource;
-                ToolTip.SetTip(b, $"{nom} ({touche}) — Maj+clic pour en poser plusieurs" + (source ? "\nLes sources se placent dans un banc de test." : ""));
+                ToolTip.SetTip(b, $"{nom} ({touche}) — Maj+clic pour en poser plusieurs" + (source ? "\nDans un banc : stimulus de ce banc. Dans le circuit sous test : alimentation ou polarisation commune à tous les bancs." : ""));
                 ToolTip.SetShowOnDisabled(b, true);
                 var kind = k; b.Click += (_, _) => _canvas.BeginPlace(kind);
                 _paletteButtons[k] = b; wrap.Children.Add(b);
@@ -1743,7 +1743,9 @@ public sealed partial class MainWindow : Window
                 Grid.SetRow(f, i / 2); Grid.SetColumn(f, i % 2 == 0 ? 0 : 2); grid.Children.Add(f);
             }
             _cible.Children.Add(grid);
-            _cible.Children.Add(Ui.Hint((st.Forme == FormeStimulus.PetitSignal ? "Source petit signal : le banc devient fréquentiel (Bode) si c'est son premier stimulus. "
+            bool duCircuit = _etude.Schema.Components.Contains(c);
+            _cible.Children.Add(Ui.Hint((duCircuit ? "Source du circuit sous test : présente dans tous les bancs (alimentation, polarisation). "
+                : st.Forme == FormeStimulus.PetitSignal ? "Source petit signal : le banc devient fréquentiel (Bode) si c'est son premier stimulus. "
                 : "Le banc est temporel si c'est son premier stimulus. ") + "Valeurs en notation ingénieur : 4,7k · 100n · 1meg." + (courant ? " Courant de la broche 1 vers la broche 2 dans la source." : "")));
         }
         _cible.Children.Add(new TextBlock { Text = "SPICE : " + st.VersSpice(), FontSize = 11, Foreground = Ui.Muted, FontFamily = new FontFamily("Menlo, Consolas, monospace"), TextWrapping = TextWrapping.Wrap });
