@@ -39,6 +39,9 @@ public static class Descriptions
     public sealed record ResumeBancVue(string Banc, string Analyse, string Simulation, string? Verdict, int? Respectes, int? Contraintes, IReadOnlyList<string> Echecs,
         string? Erreur, string? Campagne);
 
+    public sealed record PointFonctionnementVue(string? Banc, Dictionary<string, double> Tensions, Dictionary<string, double> Courants, string? Erreur);
+    public sealed record BruitVue(string Banc, string Noeud, string Entree, string UniteDensite, double? TotalSortie, double? TotalEntree, double? DensiteSortie1k,
+        int PointsRendus, double[] F, double[] DensiteSortie, double[] DensiteEntree);
     public sealed record CourbeVue(string Banc, string Signal, string UniteX, string UniteY, int PointsSimules, int PointsRendus, double[] X, double[] Y);
 
     // ── conversions ──
@@ -47,6 +50,7 @@ public static class Descriptions
     {
         AnalyseKind.Transitoire => "transitoire",
         AnalyseKind.Ac => "ac",
+        AnalyseKind.Dc => "dc",
         _ => k.ToString().ToLowerInvariant(),
     };
 
@@ -102,15 +106,37 @@ public static class Descriptions
             reglages["f_debut_hz"] = b.Ac.FDebut; reglages["f_fin_hz"] = b.Ac.FFin;
             reglages["echantillonnage_automatique"] = b.Ac.Auto;
             if (!b.Ac.Auto) { reglages["balayage"] = b.Ac.Lineaire ? "linéaire" : "décade"; reglages[b.Ac.Lineaire ? "points" : "points_par_decade"] = b.Ac.PointsParDecade; }
+            if (Bruit.Entree(b) is { } e) reglages["entree_bruit"] = e.Ref;   // source de référence du bruit ramené à l'entrée (get_noise)
         }
-        bool ac = b.Type == AnalyseKind.Ac;
+        else if (b.Type == AnalyseKind.Dc)
+        {
+            // Balayage DC : la source du banc à forme « balayage DC » ; sans elle, point de fonctionnement seul.
+            var src = b.Calque.Components.FirstOrDefault(k => k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource
+                && Stimulus.Lire(k.Value).Forme == FormeStimulus.BalayageDc);
+            if (src != null)
+            {
+                var st = Stimulus.Lire(src.Value);
+                reglages["source_balayee"] = src.Ref; reglages["unite"] = b.SourceBalayee?.Unite ?? "V";
+                reglages["de"] = st["de"]; reglages["a"] = st["a"]; reglages["pas"] = st["pas"];
+            }
+            else reglages["balayage"] = "aucun (point de fonctionnement seul)";
+        }
+        var ux = UniteX(b);
         return new(p.Etude.Bancs.IndexOf(b) + 1, b.Nom, Analyse(b.Type), reglages, Composants(b.Calque, conn),
             b.CriteresActifs.Select(c => new CritereVue(c.Mesure.ToString(), c.Info.Nom, Signaux.Nom(c.Noeud, fusion), c.Min, c.Max, UniteCritere(c))).ToList(),
             b.TracesActives.Select(g => new GabaritVue(g.Nom, Signaux.Nom(g.Noeud, fusion), g.Limite == Limite.Haute ? "haute" : "basse",
-                g.Points.Select(pt => new[] { pt.X, pt.Y }).ToList(), ac ? "Hz" : "s", g.Unite, g.Relatif)).ToList(),
+                g.Points.Select(pt => new[] { pt.X, pt.Y }).ToList(), ux, g.Unite, g.Relatif)).ToList(),
             b.Graphiques.Select(g => (IReadOnlyList<string>)g.Select(n => Signaux.Nom(n, fusion)).ToList()).ToList(),
             Campagne(b.Campagne, fusion));
     }
+
+    /// <summary>Grandeur des abscisses d'un banc : s (transitoire), Hz (AC), V ou A de la source balayée (DC).</summary>
+    public static string UniteX(Banc b) => b.Type switch
+    {
+        AnalyseKind.Ac => "Hz",
+        AnalyseKind.Dc => b.SourceBalayee?.Unite ?? "V",
+        _ => "s",
+    };
 
     static string UniteCritere(CritereGabarit c) => Signaux.EstCourant(c.Noeud) && c.Info.Unite == "V" ? "A" : c.Info.Unite;
 

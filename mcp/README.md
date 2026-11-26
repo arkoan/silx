@@ -61,7 +61,9 @@ Tout autre client MCP : même commande, transport stdio.
 | `run_campaign` | Balayage, Monte-Carlo ou coins ; taux de conformité, statistiques (moyenne, σ, Cpk), pire cas |
 | `get_test_summary` | Bilan des derniers résultats, sans resimuler |
 | `get_worst_case` | Pire cas (ou N pires tirages) de la dernière campagne : valeurs des composants, mesures |
-| `get_raw_curve` | Points d'une courbe (réduite en gardant pics et fronts), sur une plage choisie |
+| `get_raw_curve` | Points d'une courbe (réduite en gardant pics et fronts), sur une plage choisie ; en DC, abscisse = source balayée |
+| `get_operating_point` | Point de fonctionnement (.op) : tension de chaque nœud, courant de chaque composant |
+| `get_noise` | Bruit d'un nœud sur un banc AC : densités en sortie et ramenée à l'entrée, totaux, densité à 1 kHz |
 | `set_component_value` | Change une valeur ou une tolérance, en mémoire ; les résultats périmés sont effacés |
 | `save_project` | Écrit le projet ; ne remplace jamais un fichier sans `ecraser = true` |
 | `close_project` | Ferme un projet du serveur |
@@ -78,5 +80,4 @@ Les réglages passés à `run_campaign` ne valent que pour ce lancement : le ban
 Génération de bancs et de gabarits (`generate_testbench`, `generate_mask`), sensibilités, propositions de
 modification et optimisation (`propose_modification`, `apply_and_test`, `optimize_parameter`), outils documentaires
 (`doc_*`, spec `docs/specs/assistant_documents.md`) : ils dépendent de la structure de l'assistant IA, encore à
-définir. Les nouvelles analyses (DC, bruit) apparaîtront d'elles-mêmes dans `list_testbenches` et `run_simulation`
-dès qu'elles seront dans le cœur ; leurs réglages propres seront à ajouter à la description des bancs.
+définir.

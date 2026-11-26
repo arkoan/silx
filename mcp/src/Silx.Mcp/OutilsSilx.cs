@@ -235,7 +235,7 @@ public sealed class OutilsSilx(SessionSilx session)
         });
 
     [McpServerTool(Name = "get_raw_curve", ReadOnly = true, Idempotent = true)]
-    [Description("Points d'une courbe de la dernière simulation nominale d'un banc : v(t) en transitoire, gain en dB en AC ; tension de nœud (« OUT ») ou courant de broche (« I(R1) »). La courbe est réduite à max_points en gardant pics et fronts.")]
+    [Description("Points d'une courbe de la dernière simulation nominale d'un banc : v(t) en transitoire, gain en dB en AC, caractéristique de transfert en DC (abscisse : la source balayée) ; tension de nœud (« OUT ») ou courant de broche (« I(R1) »). La courbe est réduite à max_points en gardant pics et fronts.")]
     public string GetRawCurve(
         [Description("Signal : nom de nœud (OUT, V(OUT)) ou courant (I(R1), I(Q1:1)). Voir list_signals.")] string signal,
         [Description(DescProjet)] string? projet = null,
@@ -248,6 +248,43 @@ public sealed class OutilsSilx(SessionSilx session)
             var p = session.Projet_(projet); var b = SessionSilx.Banc_(p, banc);
             var (x, y, ux, uy, n) = SessionSilx.Courbe(p, b.Nom, signal, max_points, x_min, x_max);
             return new CourbeVue(b.Nom, Signaux.Nom(SessionSilx.NormaliserSignal(signal), b.Fusion(p.Etude.Schema)), ux, uy, n, x.Length, x, y);
+        });
+
+    [McpServerTool(Name = "get_operating_point", ReadOnly = true, Idempotent = true)]
+    [Description("Point de fonctionnement continu (.op) : tension de chaque nœud et courant de chaque composant (entrant par la broche 1 ; collecteur ou drain pour un transistor). Circuit seul (alimentations du circuit), ou avec un banc branché, ses sources à leur valeur continue.")]
+    public Task<string> GetOperatingPoint(
+        [Description(DescProjet)] string? projet = null,
+        [Description("Banc à brancher (nom ou numéro). Facultatif : circuit seul.")] string? banc = null,
+        CancellationToken ct = default) =>
+        GardeAsync(async () =>
+        {
+            var p = session.Projet_(projet);
+            var r = await SessionSilx.PointAsync(p, banc, ct);
+            if (r.Erreur != null) throw new ErreurSilx(r.Erreur);
+            return new PointFonctionnementVue(string.IsNullOrWhiteSpace(banc) ? null : SessionSilx.Banc_(p, banc).Nom,
+                r.Tensions.Where(kv => kv.Key != "0").OrderBy(kv => kv.Key, StringComparer.Ordinal).ToDictionary(kv => kv.Key, kv => kv.Value),
+                r.Courants.OrderBy(kv => kv.Key, StringComparer.Ordinal).ToDictionary(kv => kv.Key, kv => kv.Value), null);
+        });
+
+    [McpServerTool(Name = "get_noise", ReadOnly = true, Idempotent = true)]
+    [Description("Bruit d'un nœud sur la plage d'un banc fréquentiel (analyse .noise de ngspice) : densités spectrales en sortie et ramenée à l'entrée (V/√Hz), bruits totaux intégrés sur la plage (V efficaces) et densité à 1 kHz. Le banc doit avoir une source petit signal (AC) comme entrée.")]
+    public Task<string> GetNoise(
+        [Description("Nœud observé (OUT, V(OUT)…).")] string noeud,
+        [Description(DescProjet)] string? projet = null,
+        [Description(DescBanc)] string? banc = null,
+        [Description("Nombre maximal de points de densité renvoyés (200 par défaut).")] int max_points = 200,
+        CancellationToken ct = default) =>
+        GardeAsync(async () =>
+        {
+            var p = session.Projet_(projet);
+            var (b, c) = await SessionSilx.BruitAsync(p, banc, noeud, ct);
+            int n = c.F.Length, pas = Math.Max(1, (int)Math.Ceiling(n / (double)Math.Clamp(max_points, 2, 20_000)));
+            var idx = Enumerable.Range(0, n).Where(i => i % pas == 0 || i == n - 1).ToArray();
+            double? Fini(double v) => double.IsFinite(v) ? v : null;
+            var src = Bruit.Entree(b)!;
+            return new BruitVue(b.Nom, c.Noeud, src.Ref, src.Kind == ComponentKind.CurrentSource ? "sortie V/√Hz, entrée A/√Hz" : "V/√Hz",
+                Fini(c.TotalSortie), Fini(c.TotalEntree), c.SortieA(1e3), idx.Length,
+                idx.Select(i => c.F[i]).ToArray(), idx.Select(i => c.Sortie[i]).ToArray(), idx.Select(i => c.Entree[i]).ToArray());
         });
 
     // ── modification ──

@@ -220,8 +220,35 @@ public sealed class SessionSilx
         var idx = Enumerable.Range(0, x.Length).Where(i => (xMin is not { } a || x[i] >= a) && (xMax is not { } z || x[i] <= z)).ToArray();
         maxPoints = Math.Clamp(maxPoints, 2, 20_000);
         if (idx.Length > maxPoints) idx = Reduire(x, y, idx, maxPoints);
-        bool ac = b.Type == AnalyseKind.Ac;
-        return (idx.Select(i => x[i]).ToArray(), idx.Select(i => y[i]).ToArray(), ac ? "Hz" : "s", ac ? "dB" : Signaux.Unite(nom), n0);
+        return (idx.Select(i => x[i]).ToArray(), idx.Select(i => y[i]).ToArray(), Descriptions.UniteX(b), b.Type == AnalyseKind.Ac ? "dB" : Signaux.Unite(nom), n0);
+    }
+
+    /// <summary>Point de fonctionnement (.op) du circuit seul, ou avec un banc branché (stimuli à leur valeur continue).</summary>
+    public static async Task<ResultatOp> PointAsync(ProjetCharge p, string? banc, CancellationToken ct)
+    {
+        var b = string.IsNullOrWhiteSpace(banc) ? null : Banc_(p, banc);
+        await p.Verrou.WaitAsync(ct);
+        try { return await PointFonctionnement.CalculerAsync(p.Etude, b, ct); }
+        finally { p.Verrou.Release(); }
+    }
+
+    /// <summary>Bruit d'un nœud sur la plage d'un banc fréquentiel (densités en sortie et ramenée à l'entrée, totaux).</summary>
+    public static async Task<(Banc Banc, CourbeBruit Courbe)> BruitAsync(ProjetCharge p, string? banc, string noeud, CancellationToken ct)
+    {
+        var b = Banc_(p, banc);
+        var n = NormaliserSignal(noeud);
+        if (Signaux.EstCourant(n)) throw new ErreurSilx("Le bruit se calcule sur une tension de nœud (OUT, IN…).");
+        var conn = Connectivity.Build(b.Fusion(p.Etude.Schema));
+        var vrai = conn.AllNodes.FirstOrDefault(x => string.Equals(x, n, StringComparison.OrdinalIgnoreCase))
+            ?? throw new ErreurSilx($"Nœud « {noeud} » absent du banc « {b.Nom} ». Nœuds : {string.Join(", ", conn.NamedNodes)}.");
+        await p.Verrou.WaitAsync(ct);
+        try
+        {
+            var (courbes, err) = await Bruit.CalculerAsync(p.Etude, b, [vrai], ct);
+            if (err != null) throw new ErreurSilx(err);
+            return (b, courbes.TryGetValue(vrai, out var c) ? c : throw new ErreurSilx($"Bruit de « {vrai} » non calculé."));
+        }
+        finally { p.Verrou.Release(); }
     }
 
     /// <summary>« V(OUT) » ou « v(out) » → « OUT » ; les courants « I(R1:2) » restent tels quels.</summary>
