@@ -32,6 +32,8 @@ public sealed class NgspiceRunner
     /// Écrit un <c>.spiceinit</c> dans le répertoire du run, qui prime sur celui de l'utilisateur.
     /// </summary>
     public int? NumThreads { get; init; }
+    /// <summary>Variables d'environnement propres aux processus ngspice (ex. SPICE_SCRIPTS d'un ngspice embarqué).</summary>
+    public IReadOnlyDictionary<string, string>? Environnement { get; init; }
 
     public Task<SimulationResult> RunAsync(Circuit circuit, CancellationToken ct = default) =>
         RunAsync(circuit, NumThreads, passiveWait: false, ct);
@@ -63,6 +65,7 @@ public sealed class NgspiceRunner
                 RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
                 UseShellExecute = false, WorkingDirectory = dir
             };
+            foreach (var (k, v) in Environnement ?? new Dictionary<string, string>()) psi.Environment[k] = v;
             if (passiveWait && Environment.GetEnvironmentVariable("OMP_WAIT_POLICY") is null)
                 psi.Environment["OMP_WAIT_POLICY"] = "PASSIVE";
             foreach (var a in new[] { "-b", "-r", raw, "-o", log, cir }) psi.ArgumentList.Add(a);

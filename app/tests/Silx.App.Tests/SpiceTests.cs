@@ -343,4 +343,42 @@ public class SpiceTests
         Assert.True(Math.Pow(10, db3[jmax] / 20) > 1e7);
         Assert.True(f3.Length < 5000);
     }
+
+    /// <summary>
+    /// ngspice embarqué : un dossier bin/ngspice + lib/ngspice/*.cm (ici recopié de Homebrew) ; Silx écrit le spinit qui
+    /// charge les modèles de code depuis ce dossier, et une simulation logique XSPICE passe avec cet ngspice.
+    /// </summary>
+    [Fact]
+    public async Task Ngspice_embarque_avec_modeles_xspice()
+    {
+        var cm = "/opt/homebrew/opt/libngspice/lib/ngspice";
+        Assert.SkipUnless(File.Exists("/opt/homebrew/bin/ngspice") && Directory.Exists(cm), "ngspice Homebrew absent");
+        var racine = Directory.CreateTempSubdirectory("silx-ngspice").FullName;
+        var scripts = Directory.CreateTempSubdirectory("silx-spinit").FullName;
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(racine, "bin")); Directory.CreateDirectory(Path.Combine(racine, "lib", "ngspice"));
+            File.Copy("/opt/homebrew/bin/ngspice", Path.Combine(racine, "bin", "ngspice"));
+            foreach (var f in Directory.GetFiles(cm, "*.cm")) File.Copy(f, Path.Combine(racine, "lib", "ngspice", Path.GetFileName(f)));
+            var exe = NgspiceEmbarque.Preparer(racine, scripts);
+            Assert.Equal(Path.Combine(racine, "bin", "ngspice"), exe);
+            Assert.Contains($"codemodel {Path.Combine(racine, "lib", "ngspice", "digital.cm")}", File.ReadAllText(Path.Combine(scripts, "spinit")));
+            Verification.NgspiceForce.Value = exe;
+            var bib = BibliothequeLogique.Definitions().ToDictionary(d => d.Nom);
+            var e = new Silx.Etude.Etude(); var banc = new Banc(); var s = e.Schema;
+            s.Components.Add(new() { Ref = "A1", Kind = ComponentKind.Spice, Definition = bib["INV"], Position = new(0, 0) });
+            s.Components.Add(new() { Ref = "NET1", Kind = ComponentKind.Label, Position = new(0, 0), Value = "IN" });
+            s.Components.Add(new() { Ref = "NET2", Kind = ComponentKind.Label, Position = new(4, 0), Value = "OUT" });
+            s.Components.Add(new() { Ref = "RL", Kind = ComponentKind.Resistor, Position = new(4, 0), Rotation = 1, Value = "1meg" });
+            s.Components.Add(new() { Ref = "GND1", Kind = ComponentKind.Ground, Position = new(4, 3) });
+            banc.Calque.Components.Add(new() { Ref = "VIN", Kind = ComponentKind.VoltageSource, Position = new(10, 0), Rotation = 1, Value = "DC 0" });
+            banc.Calque.Components.Add(new() { Ref = "GND2", Kind = ComponentKind.Ground, Position = new(10, 3) });
+            banc.Calque.Components.Add(new() { Ref = "NET3", Kind = ComponentKind.Label, Position = new(10, 0), Value = "IN" });
+            banc.Transitoire.Duree = 1e-6;
+            var r = await Verification.RunAsync(e, banc, []);
+            Assert.Null(r.Erreur);
+            Assert.InRange(r.Resultats[AnalyseKind.Transitoire].Vector("v(out)")[^1], 4.9, 5.01);   // inverseur : entrée basse → sortie haute
+        }
+        finally { Verification.NgspiceForce.Value = null; Directory.Delete(racine, true); Directory.Delete(scripts, true); }
+    }
 }

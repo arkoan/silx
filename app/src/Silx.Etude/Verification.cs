@@ -35,12 +35,13 @@ public sealed record ResultatEtude(
 /// <summary>Orchestration : ERC → circuits → ngspice (analyses en parallèle) → mesures → verdicts.</summary>
 public static class Verification
 {
-    /// <summary>Chemin de ngspice : variable SILX_NGSPICE, sinon emplacements Homebrew, sinon PATH.</summary>
+    /// <summary>Chemin de ngspice : variable SILX_NGSPICE, sinon ngspice embarqué dans l'application, sinon Homebrew, sinon PATH.</summary>
     public static string NgspiceExecutable()
     {
         if (NgspiceForce.Value is { } force) return force;
         var env = Environment.GetEnvironmentVariable("SILX_NGSPICE");
         if (!string.IsNullOrWhiteSpace(env)) return env;
+        if (NgspiceEmbarque.Executable is { } embarque) return embarque;   // application installée : son propre ngspice
         foreach (var p in new[] { "/opt/homebrew/bin/ngspice", "/usr/local/bin/ngspice", "/usr/bin/ngspice" })
             if (File.Exists(p)) return p;
         return "ngspice";
@@ -68,7 +69,8 @@ public static class Verification
         // Un banc = un type d'analyse (temporel ou fréquentiel).
         var kinds = new List<AnalyseKind> { etude.Type };
         // Modèles importés (souvent écrits pour PSpice) : compatibilité PSpice de ngspice (« psa » : tout le fichier, modèles inclus en ligne) ; circuits de base inchangés.
-        var runner = new NgspiceRunner { Executable = NgspiceExecutable(), Compatibilite = schema.Components.Any(k => k.Kind == ComponentKind.Spice) ? "psa" : null };
+        var exe = NgspiceExecutable();
+        var runner = new NgspiceRunner { Executable = exe, Environnement = NgspiceEmbarque.Environnement(exe), Compatibilite = schema.Components.Any(k => k.Kind == ComponentKind.Spice) ? "psa" : null };
         var raws = new Dictionary<AnalyseKind, RawFile>();
         var journal = new System.Text.StringBuilder();
         // Garde-fou : un circuit qui fait tourner ngspice sans fin est arrêté (processus tué) au bout de DelaiMax.

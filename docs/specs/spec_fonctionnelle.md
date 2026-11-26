@@ -180,6 +180,15 @@ Chaque démo est conforme sous ngspice (test automatique).
 - Le **tiroir du bas** (netlist, vérifications, journal, campagne) se réduit (« ▾ Réduire », ou re-clic sur l'onglet)
   et se redimensionne par la poignée au-dessus de lui.
 
+### 3.4 quater Installation
+- **macOS** : `Silx.app` autonome (runtime .NET inclus, aucune installation de .NET), icône, association des fichiers
+  `.silx`, livrée en image disque `.dmg` (glisser dans Applications). Construite par `app/packaging/paquet-macos.sh`.
+- **ngspice embarqué** quand le paquet est construit avec `NGSPICE_DIR` (bin/ngspice et modèles de code XSPICE) :
+  au premier usage, Silx écrit le spinit qui charge ces modèles depuis l'emplacement réel de l'application et le
+  passe à chaque processus ngspice (SPICE_SCRIPTS) ; sinon, ngspice du système (Homebrew).
+- Signature ad hoc (pas de notarisation Apple) : au premier lancement d'un `.dmg` téléchargé, macOS demande
+  d'ouvrir l'application par clic droit › Ouvrir.
+
 ### 3.5 Stimuli
 - Bibliothèque de stimuli standards (échelon, rampe, sinus, bruit, PWL, PRBS)
 - Génération de stimuli pertinents suggérée par l'IA selon le type de circuit détecté

@@ -138,6 +138,7 @@ public sealed partial class MainWindow : Window
     {
         Title = "Silx — étude sans titre"; Width = 1440; Height = 900; MinWidth = 1000; MinHeight = 640;
         Background = Ui.Window;
+        try { Icon = new WindowIcon(Avalonia.Platform.AssetLoader.Open(new Uri("avares://Silx.App/Assets/icone.png"))); } catch (Exception) { /* icône facultative */ }
 
         _simulate = new Button
         {
