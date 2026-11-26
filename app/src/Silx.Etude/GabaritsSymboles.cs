@@ -87,27 +87,26 @@ public static class GabaritsSymboles
             case GabaritSymbole.Nmos3:
             case GabaritSymbole.Pmos3:
             {
-                // G à gauche, D en haut, S en bas ; substrat B à droite (4 broches) ou relié à la source (3 broches).
+                // Symbole compact (1 case de large, 4 de haut, sans cercle) : G à gauche, D en haut, S en bas ;
+                // substrat B à droite (4 broches) ou relié à la source (3 broches).
                 bool canalN = g is GabaritSymbole.Nmos or GabaritSymbole.Nmos3, trois = g is GabaritSymbole.Nmos3 or GabaritSymbole.Pmos3;
-                s.Broches.AddRange([B(0, 0, "G"), B(2, -2, "D"), B(2, 2, "S")]);
-                if (!trois) s.Broches.Add(B(2, 0, "B"));
-                else t.Add(Primitive.Trait(2, 0, 2, 0.45));
-                t.Add(Primitive.Trait(0, 0, 0.7, 0)); t.Add(Primitive.Trait(0.7, -0.6, 0.7, 0.6));
-                foreach (var y in new[] { -0.45, 0.0, 0.45 }) t.Add(Primitive.Trait(0.95, y - 0.17, 0.95, y + 0.17));
-                t.Add(Primitive.Trait(0.95, -0.45, 2, -0.45)); t.Add(Primitive.Trait(2, -0.45, 2, -2));
-                t.Add(Primitive.Trait(0.95, 0.45, 2, 0.45)); t.Add(Primitive.Trait(2, 0.45, 2, 2));
-                t.Add(canalN ? Primitive.Fleche(2, 0, 0.95, 0) : Primitive.Fleche(0.95, 0, 2, 0));
+                s.Broches.AddRange([B(0, 0, "G"), B(1, -2, "D"), B(1, 2, "S")]);
+                if (!trois) s.Broches.Add(B(1, 0, "B"));
+                else t.Add(Primitive.Trait(1, 0, 1, 0.4));
+                t.Add(Primitive.Trait(0, 0, 0.3, 0)); t.Add(Primitive.Trait(0.3, -0.5, 0.3, 0.5));
+                foreach (var y in new[] { -0.4, 0.0, 0.4 }) t.Add(Primitive.Trait(0.5, y - 0.14, 0.5, y + 0.14));
+                t.Add(Primitive.Trait(0.5, -0.4, 1, -0.4)); t.Add(Primitive.Trait(1, -0.4, 1, -2));
+                t.Add(Primitive.Trait(0.5, 0.4, 1, 0.4)); t.Add(Primitive.Trait(1, 0.4, 1, 2));
+                t.Add(canalN ? Primitive.Fleche(1, 0, 0.5, 0) : Primitive.Fleche(0.5, 0, 1, 0));
                 if (s.DiodeCorps)
                 {
-                    // Diode de corps dans le boîtier, piquée sur le drain et la source ; anode côté source pour un canal N.
-                    const double xd = 2.55, yb = 1.0, h = 0.13;
-                    t.Add(Primitive.Trait(2, -yb, xd, -yb)); t.Add(Primitive.Trait(xd, -yb, xd, -h));
-                    t.Add(Primitive.Trait(2, yb, xd, yb)); t.Add(Primitive.Trait(xd, yb, xd, h));
+                    // Diode de corps à droite, piquée sur le drain et la source ; anode côté source pour un canal N.
+                    const double xd = 1.4, yb = 1.0, h = 0.12;
+                    t.Add(Primitive.Trait(1, -yb, xd, -yb)); t.Add(Primitive.Trait(xd, -yb, xd, -h));
+                    t.Add(Primitive.Trait(1, yb, xd, yb)); t.Add(Primitive.Trait(xd, yb, xd, h));
                     if (canalN) { t.Add(Primitive.Poly(true, xd - h, h, xd + h, h, xd, -h)); t.Add(Primitive.Trait(xd - h, -h, xd + h, -h)); }
                     else { t.Add(Primitive.Poly(true, xd - h, -h, xd + h, -h, xd, h)); t.Add(Primitive.Trait(xd - h, h, xd + h, h)); }
                 }
-                // MOS discret (3 broches) : cercle du boîtier.
-                if (trois) t.Add(s.DiodeCorps ? Primitive.Cercle(1.6, 0, 1.2) : Primitive.Cercle(1.4, 0, 1.05));
                 break;
             }
             case GabaritSymbole.Njf:

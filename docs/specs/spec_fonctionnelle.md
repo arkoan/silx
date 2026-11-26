@@ -58,7 +58,7 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
   (32,768 kHz, 4, 8, 16 MHz) et portes et bascules logiques XSPICE. Modèles indicatifs, remplacés par ceux du
   fabricant à l'import.
 - Tailles : dipôles (R, C, L, D, sources, quartz) sur **3 pas** de grille ; transistors sur 4 pas de haut,
-  dessinés finement au quart de pas. Un projet enregistré avec les anciens dipôles sur 4 pas (format 1)
+  dessinés finement au quart de pas ; MOSFET compact, 1 pas de large et sans cercle (diode de corps à droite). Un projet enregistré avec les anciens dipôles sur 4 pas (format 1)
   reçoit à l'ouverture un court fil de raccord par dipôle : aucune connexion n'est perdue.
 
 **Gestion de bibliothèques**

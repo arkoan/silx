@@ -61,9 +61,9 @@ public enum GabaritSymbole { Boite, Diode, Npn, Pnp, Nmos, Pmos, Njf, Pjf, Nmos3
 public sealed class Symbole
 {
     public GabaritSymbole Gabarit { get; set; } = GabaritSymbole.Boite;
-    /// <summary>Version du dessin : 2 = grille fine (transistors à 2 pas) ; 3 = transistors affinés, diode sur 3 pas. Absente des fichiers anciens (0).</summary>
+    /// <summary>Version du dessin : 2 = grille fine (transistors à 2 pas) ; 3 = transistors affinés, diode sur 3 pas ; 4 = MOSFET compact (1 case de large). Absente des fichiers anciens (0).</summary>
     public int Version { get; set; }
-    public const int VersionCourante = 3;
+    public const int VersionCourante = 4;
     /// <summary>MOS 3 broches : dessiner la diode de corps entre drain et source.</summary>
     public bool DiodeCorps { get; set; }
     /// <summary>Corps rectangulaire (gabarit Boîte) : les broches hors du corps y sont reliées par un trait, et leur nom est écrit à l'intérieur.</summary>
