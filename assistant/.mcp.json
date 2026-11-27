@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "silx": {
+      "command": "/Applications/Silx.app/Contents/MacOS/silx-mcp"
+    }
+  }
+}

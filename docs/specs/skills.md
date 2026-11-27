@@ -1,6 +1,7 @@
 # Chapitre de spécification : Skills d'électronique de l'assistant Silx
 
-Statut : proposition, à valider. Décisions du 26/11/2026 : §1.1 et §10.1 (voir §12).
+Statut : proposition, à valider. Décisions du 26/11/2026 : §1.1 et §10.1 (voir §12). Le 27/11/2026 : familles RF,
+audio, capteurs et instrumentation ajoutées (§9 bis) ; lot 1 et Skills de domaine rédigées dans `assistant/skills/`.
 Complète la spécification fonctionnelle (§3.7 Assistant de conception, §3.9 Intégration IA),
 `assistant_documents.md` et `generation_modeles.md`. S'appuie sur le serveur MCP `silx-mcp` (`mcp/README.md`).
 
@@ -40,7 +41,8 @@ intégré.
 
 - Dans le dépôt : `assistant/skills/<nom>/SKILL.md`, avec ses fichiers de référence (`references/*.md` : formules,
   tableaux de topologies, check-lists), versionnés et revus comme le code.
-- **Claude Code** : livrées dans un plugin « silx » qui déclare aussi le serveur MCP, ou copiées dans `.claude/skills/`.
+- **Claude Code** : livrées dans le plugin « silx » (dossier `assistant/`, catalogue `.claude-plugin/marketplace.json` à
+  la racine du dépôt) qui déclare aussi le serveur MCP, ou copiées dans `.claude/skills/`.
 - **Claude Desktop** : chaque Skill est importable telle quelle (dossier zippé).
 - **Agent intégré** (Claude Agent SDK, plus tard) : charge le même dossier, sans copie.
 - Le paquet macOS embarque le dossier `skills/` à côté de `silx-mcp`.
@@ -98,6 +100,18 @@ des outils MCP d'écriture ou de calcul (§10) ; **v1-C** = v1, attend le socle 
 | F5 | `suivre-procedure-note-application` | Documents | après v1 |
 | G1 | `rapport-de-test` | Restituer | v1-A (partielle) |
 | G2 | `importer-depuis-autre-outil` | Migrer | après v1 |
+| R1 | `adaptation-impedance` | RF | v1-B |
+| R2 | `etage-rf-petit-signal` | RF | v1-B |
+| R3 | `filtres-et-oscillateurs-rf` | RF | v1-A (analyse), v1-B (conception) |
+| A1 | `amplificateur-audio` | Audio | v1-A (analyse), v1-B (conception) |
+| A2 | `filtres-audio-et-egalisation` | Audio | v1-A (analyse), v1-B (conception) |
+| A3 | `mesures-audio` | Audio | v1-A (partielle) |
+| K1 | `conditionnement-capteur` | Capteurs | v1-A (partielle) |
+| K2 | `transimpedance-photodiode` | Capteurs | v1-A (analyse), v1-B (conception) |
+| K3 | `chaine-acquisition-adc` | Capteurs | v1-B |
+| M1 | `incertitudes-et-budget-d-erreur` | Instrumentation | v1-A (partielle) |
+| M2 | `bonnes-pratiques-instrumentation` | Instrumentation | v1-A |
+| M3 | `mesurer-sans-perturber` | Instrumentation | v1-A (partielle) |
 
 Ce qui a été volontairement **fusionné** pour éviter des Skills qui se déclenchent en même temps : le choix des
 stimuli et des mesures est un fichier de référence de B1 (et non une Skill) ; la convergence et les erreurs ngspice
@@ -517,6 +531,151 @@ Les Skills de cette famille contiennent la démarche et les formules de référe
 
 ---
 
+## 9 bis. Domaines : RF, audio, capteurs, instrumentation
+
+Ajoutés le 27/11/2026 à la demande de Régis. Ces Skills apportent le savoir-faire propre à un domaine ; elles
+s'appuient sur les Skills générales (B3, C1, C3, C5, D1, D7) au lieu de les répéter.
+
+### R1. `adaptation-impedance`
+
+- **Déclenchement** : « adapter sur 50 Ω », réseau en L, en π ou en T, transformateur d'impédance, ROS (VSWR), pertes
+  par réflexion, abaque de Smith.
+- **Ce qu'elle fait** : choisit la topologie selon le rapport d'impédances et la bande voulue (facteur de qualité),
+  fait calculer les éléments, puis vérifie en AC l'impédance vue par la source, le ROS et la bande d'adaptation ;
+  tient compte des pertes et de l'auto-résonance des composants réels.
+- **Outils** : `run_simulation`, `get_raw_curve`, `run_campaign`, `set_component_value`.
+- **Manquants** : `get_impedance` (impédance complexe d'un port, ROS, S11), `get_s_parameters` (analyse `.sp` de
+  ngspice, à confirmer sur la version embarquée), outils de calcul, `edit_circuit`.
+- **Priorité** : v1-B.
+
+### R2. `etage-rf-petit-signal`
+
+- **Déclenchement** : LNA, ampli RF, étage tampon, « stabilité inconditionnelle », facteur de bruit, compression,
+  point d'interception.
+- **Ce qu'elle fait** : gain et adaptation, stabilité (facteur K de Rollett et |Δ|, ou μ), facteur de bruit tiré de
+  l'analyse de bruit, compression à 1 dB et IP3 par transitoire à deux tons, effet des parasites de boîtier.
+- **Outils** : `run_simulation`, `get_raw_curve`, `get_noise`, `run_campaign`.
+- **Manquants** : `get_s_parameters`, `get_spectrum`, mesure du facteur de bruit, modèles RF des transistors (E1).
+- **Priorité** : v1-B.
+
+### R3. `filtres-et-oscillateurs-rf`
+
+- **Déclenchement** : filtre LC, à quartz ou céramique en RF, pertes d'insertion, VCO, varicap, plage d'accord,
+  mélangeur.
+- **Ce qu'elle fait** : pertes d'insertion, ondulation, réjection et Q chargé d'un filtre (l'échantillonnage adaptatif
+  AC trouve les résonances étroites) ; plage d'accord d'un VCO par balayage de la tension de commande ; gain de
+  conversion d'un mélangeur. Dit les limites de ngspice : pas d'équilibrage harmonique, pas de bruit de phase.
+- **Outils** : `run_simulation`, `get_raw_curve`, `run_campaign`, `list_measurements`.
+- **Manquants** : `get_spectrum`, `get_impedance`, outils de B1.
+- **Priorité** : v1-A pour analyser un filtre ou un oscillateur existant, v1-B pour concevoir.
+
+### A1. `amplificateur-audio`
+
+- **Déclenchement** : préampli, ampli de puissance (classes A, AB, D), ampli casque, distorsion de croisement,
+  puissance sur 4 ou 8 Ω, stabilité sur haut-parleur.
+- **Ce qu'elle fait** : courant de repos de l'étage de sortie et sa stabilité thermique, puissance avant écrêtage,
+  THD en fonction de la puissance et de la fréquence, slew rate et bande, stabilité sur charge réactive (haut-parleur
+  modélisé, réseau de Zobel), symétrie de l'écrêtage.
+- **Outils** : `get_operating_point`, `run_simulation`, `run_campaign` (amplitude, température), `list_measurements`
+  (THD, valeur efficace).
+- **Manquants** : `get_spectrum`, mesures THD+N et puissance, modèle de haut-parleur, `edit_circuit`.
+- **Priorité** : v1-A pour analyser, v1-B pour concevoir.
+
+### A2. `filtres-audio-et-egalisation`
+
+- **Déclenchement** : correcteur de tonalité, égaliseur, RIAA, filtre de séparation (Linkwitz-Riley, Butterworth),
+  filtre anti-ronflement ou anti-rumble.
+- **Ce qu'elle fait** : courbes cibles et leurs tolérances (gabarit RIAA, sommation des voies d'un filtre de
+  séparation en amplitude et en phase), plage de réglage des potentiomètres par balayage, effet des tolérances.
+  Renvoie à D1 pour le dimensionnement générique d'un filtre.
+- **Outils** : `run_simulation`, `get_raw_curve`, `run_campaign`.
+- **Manquants** : `generate_mask` (gabarits normalisés), outils de calcul.
+- **Priorité** : v1-A pour vérifier un circuit, v1-B pour concevoir.
+
+### A3. `mesures-audio`
+
+- **Déclenchement** : SNR, bruit de fond, dynamique, THD+N, intermodulation, diaphonie, « 20 Hz – 20 kHz à ±0,5 dB »,
+  unités dBu, dBV, dBFS.
+- **Ce qu'elle fait** : définit chaque mesure audio et sa condition (niveau de référence, bande, pondération A),
+  la réalise avec les outils de Silx ou dit ce qui manque, convertit les unités par outil.
+- **Outils** : `get_noise`, `run_simulation`, `list_measurements`, `get_raw_curve`.
+- **Manquants** : pondération A, THD+N et IMD dans la bibliothèque de mesures, `get_spectrum`, outils de calcul.
+- **Priorité** : v1-A partielle.
+
+### K1. `conditionnement-capteur`
+
+- **Déclenchement** : pont de Wheatstone, jauge de contrainte, sonde Pt100 ou Pt1000, thermistance, thermocouple,
+  capteur résistif ou capacitif, ampli d'instrumentation.
+- **Ce qu'elle fait** : modélise le capteur dans Silx (résistance balayée sur l'étendue de mesure, source
+  équivalente), règle l'excitation (ratiométrique de préférence), le gain et le décalage pour couvrir la plage de
+  l'étage suivant, vérifie linéarité, sensibilité au mode commun et dérive (campagnes), signale l'auto-échauffement et
+  le câblage 2, 3 ou 4 fils.
+- **Outils** : `run_campaign` (balayage du capteur, température, Monte-Carlo), `get_operating_point`,
+  `run_simulation`, `get_raw_curve`.
+- **Manquants** : bibliothèque de modèles de capteurs (Pt100 selon Callendar-Van Dusen, thermocouples, jauges), mesure
+  de linéarité, outils de calcul.
+- **Priorité** : v1-A partielle.
+
+### K2. `transimpedance-photodiode`
+
+- **Déclenchement** : ampli transimpédance, photodiode, « ça oscille » sur un TIA, bruit d'un récepteur optique.
+- **Ce qu'elle fait** : choix de Rf selon le courant maximal, de Cf pour la stabilité (capacité de la photodiode et
+  de l'entrée de l'ampli, GBW), bande passante, bruit (Rf, bruit de tension de l'ampli multiplié par la capacité
+  d'entrée), mode photoconducteur ou photovoltaïque.
+- **Outils** : `run_simulation`, `get_raw_curve`, `get_noise`, `run_campaign`.
+- **Manquants** : modèle de photodiode, gain de boucle (C4), outils de calcul.
+- **Priorité** : v1-A pour analyser, v1-B pour concevoir.
+
+### K3. `chaine-acquisition-adc`
+
+- **Déclenchement** : entrée d'un convertisseur analogique-numérique, filtre anti-repliement, « combien de bits
+  utiles ? », pilotage d'un ADC SAR, référence de tension.
+- **Ce qu'elle fait** : adaptation de l'excursion à la pleine échelle, atténuation du filtre anti-repliement à la
+  demi-fréquence d'échantillonnage comparée à la résolution, établissement à ½ LSB après la charge de la capacité
+  d'échantillonnage, budget d'erreur en LSB (avec M1), ENOB attendu.
+- **Outils** : `run_simulation`, `list_measurements` (temps d'établissement), `run_campaign`, `get_noise`.
+- **Manquants** : modèle d'entrée d'ADC (échantillonneur commuté) en élément de banc, `get_spectrum`, outils de calcul.
+- **Priorité** : v1-B.
+
+### M1. `incertitudes-et-budget-d-erreur`
+
+- **Déclenchement** : « précision de ma mesure », budget d'erreur, incertitude, ppm, « % de la lecture + digits »,
+  étalonnage.
+- **Ce qu'elle fait** : vocabulaire (exactitude, justesse, fidélité, résolution), erreurs systématiques (décalage,
+  gain, non-linéarité, dérive, vieillissement) et aléatoires (bruit), combinaison au pire cas ou quadratique,
+  incertitudes de type A et B et facteur d'élargissement (GUM), mise à une même unité, ce que l'étalonnage corrige et
+  ne corrige pas. Fait chiffrer par Silx ce qui se simule (Monte-Carlo, coins, bruit) et liste ce qui ne se simule
+  pas.
+- **Outils** : `run_campaign`, `get_worst_case`, `get_noise`, `get_test_summary`.
+- **Manquants** : `worst_case`, `evaluate_formula`, tableau de budget dans `export_report`.
+- **Priorité** : v1-A partielle.
+
+### M2. `bonnes-pratiques-instrumentation`
+
+- **Déclenchement** : masse, boucle de masse, mode commun, CMRR, blindage, garde, mesure 4 fils, haute impédance,
+  fuites, filtrage RFI d'un ampli d'instrumentation, isolation.
+- **Ce qu'elle fait** : les règles de l'instrumentation et les erreurs classiques, en séparant ce que Silx peut
+  simuler (CMRR dégradé par l'appariement en Monte-Carlo, filtre RFI déséquilibré, résistance des fils en 2, 3 ou
+  4 fils, fuite modélisée par une résistance) de ce qui va dans la liste de contrôle (routage, blindage, thermocouples
+  parasites aux jonctions).
+- **Outils** : `describe_project`, `run_campaign`, `run_simulation`.
+- **Manquants** : `edit_circuit` (ajouter les parasites), `check_design_rules`.
+- **Priorité** : v1-A.
+
+### M3. `mesurer-sans-perturber`
+
+- **Déclenchement** : écart entre la simulation et la maquette, « que va mesurer mon oscilloscope ? », sonde 10×,
+  entrée 50 Ω, bande passante d'un instrument, générateur 50 Ω.
+- **Ce qu'elle fait** : l'instrument fait partie du circuit : charge d'une sonde 1× ou 10×, inductance du fil de
+  masse, temps de montée de l'instrument qui s'ajoute à celui du signal, amplitude d'un générateur 50 Ω sur haute
+  impédance, charge d'un multimètre, bruit propre de l'instrument. Reproduit la mesure de labo dans un banc Silx
+  (modèle de sonde en charge) pour expliquer l'écart.
+- **Outils** : `run_simulation`, `get_raw_curve`, `set_component_value`, `list_testbenches`.
+- **Manquants** : éléments de banc « instrument » (sonde 10×, entrée 50 Ω, générateur 50 Ω), outils de B1.
+- **Priorité** : v1-A partielle.
+
+---
+
 ## 10. Outils MCP manquants, par ordre d'utilité
 
 Ce tableau est la conséquence directe de la liste : il dit quels outils débloquent le plus de Skills.
@@ -555,6 +714,9 @@ Toutes en mémoire, comme `set_component_value` ; `save_project` reste la seule 
 | `get_component_ratings` | C3, C8, D9 |
 | paramètres petit signal au point de repos | C3, D2 |
 | `export_report` | G1 |
+| `get_impedance` (Z complexe d'un port, ROS, S11), `get_s_parameters` (analyse `.sp` de ngspice) | R1, R2, R3 |
+| mesures THD+N, IMD, puissance, SNR pondéré A, linéarité (écart à la droite) | A1, A3, K1 |
+| éléments de banc « instrument » (sonde 10×, entrée 50 Ω, générateur 50 Ω) et modèles de capteurs | M3, K1, K2, K3 |
 
 ### 10.5 Bibliothèques de modèles (débloque E1)
 
@@ -578,6 +740,9 @@ besoin, ce qui guide le choix du modèle. Si nécessaire, le serveur exposera le
    C1 `diagnostiquer-banc-en-echec`, B3 `regler-campagne`, C3 `verifier-polarisation`, C5 `analyser-bruit`,
    C7 `expliquer-un-circuit`, C8 `revue-de-schema` (partielle), G1 `rapport-de-test` (partielle),
    C2 `analyser-sensibilite` (dégradée). Plus le plugin Claude Code qui réunit serveur MCP et Skills.
+   **Rédigé le 27/11/2026**, avec les 12 Skills de domaine du §9 bis : chacune dit, outil manquant par outil
+   manquant, comment travailler sans lui (balayage à la place d'un calcul, analyse d'un circuit existant plutôt que
+   conception, modification décrite à l'utilisateur pour qu'il la fasse dans l'éditeur).
 2. **Outils de calcul** (§10.1, avancés) **et d'écriture** (§10.2), puis **lot 2** : B1, B2, C4, C6, D1 à D6, E1.
 3. **Conception bouclée** (§10.3), puis D7, et C1 et C2 en version complète.
 4. **Lot 3**, au rythme des jalons J et M : F1 à F4, E2 à E4.
@@ -591,7 +756,9 @@ Décisions validées (26/11/2026) :
    `Instructions` du serveur MCP, consignes système de l'agent intégré).
 2. Les outils de calcul (§10.1) sont livrés avant le socle documentaire, sans attendre le jalon J3.
 
+3. Familles ajoutées (27/11/2026) : RF, audio, capteurs, instrumentation (§9 bis).
+
 Questions ouvertes :
 
 1. Le plugin Claude Code (serveur MCP + Skills) est-il le premier mode de diffusion, avant l'agent intégré ?
-2. Des domaines manquent-ils pour votre usage (RF, audio, capteurs et conditionnement, CEM, mesures sur batteries) ?
+2. Autres domaines possibles plus tard : CEM, batteries et gestion d'énergie, commande de moteurs.

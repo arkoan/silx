@@ -8,6 +8,7 @@ Logiciel de simulation électronique mixte (analogique et numérique), destiné 
 - `app/` : application (éditeur de schéma Avalonia + simulation ngspice + gabarits), issue du prototype `silx-proto`.
 - `socle-ngspice/` : socle de simulation (netlist, exécution ngspice, lecture .raw).
 - `mcp/` : serveur MCP (`silx-mcp`) qui expose projets, bancs, simulations et campagnes à un client IA externe ; voir `mcp/README.md`. Si l'application est ouverte, les actions de l'IA s'y affichent en direct (mode direct).
+- `assistant/` : plugin Claude Code (serveur MCP + Skills d'électronique) ; installation : `/plugin install silx --marketplace arkoan/silx`, détails dans `assistant/README.md`.
 
 ## Télécharger Silx (macOS, Apple Silicon)
 
