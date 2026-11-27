@@ -7,7 +7,8 @@ public sealed class ProjetOuvert
     public required Silx.Etude.Etude Etude { get; init; }
     public string? Chemin { get; set; }
     public string Nom { get; set; } = "Sans titre";
-    public Dictionary<Banc, ResultatEtude> Resultats { get; } = new();
+    /// <summary>Résultats par banc ; partagés avec la session de l'IA en mode direct (ce qu'elle simule s'affiche ici).</summary>
+    public Dictionary<Banc, ResultatEtude> Resultats { get; init; } = new();
     public Banc? BancActif { get; set; }
     /// <summary>Nom de la démonstration intégrée dont vient ce projet (recréée à jour au prochain démarrage s'il n'est pas modifié).</summary>
     public string? Demo { get; set; }

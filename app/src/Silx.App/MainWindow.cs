@@ -213,6 +213,7 @@ public sealed partial class MainWindow : Window
         if (Environment.GetEnvironmentVariable("SILX_SIM_AUTO") == "0") _auto.IsChecked = false;   // tests : pas de relance en arrière-plan
         _relance.Tick += async (_, _) => { _relance.Stop(); if (!_simEnCours) await SimulerAsync(keepLimits: true, campagne: false); };   // la campagne ne se relance pas toute seule
         _veille.Start();
+        Closed += (_, _) => _hoteIA?.Fermer();   // l'IA repasse en arrière-plan
         Closing += async (_, e) =>
         {
             CaptureSession().Enregistrer();   // projets ouverts, banc et disposition : retrouvés à la prochaine ouverture
@@ -235,6 +236,7 @@ public sealed partial class MainWindow : Window
         }
         CreerMenus();
         ActiverZone(Zone.Schema);
+        if (Silx.Mcp.CanalDirect.Chemin() is { } canal) Lancer(() => DemarrerLiaisonIAAsync(canal), "liaison avec l'IA");
         _status.Text = "Clic : placer / sélectionner · glisser : déplacer · clic droit ou molette : vue · ⌘R : pivoter · W : fil · Suppr · ⌘Z / ⇧⌘Z";
     }
 
@@ -267,9 +269,9 @@ public sealed partial class MainWindow : Window
     public ProjetOuvert ProjetActif => _projet!;
 
     /// <summary>Ouvre une étude dans un nouvel onglet et l'affiche.</summary>
-    public ProjetOuvert OuvrirDansOnglet(EtudeModel e, string nom, string? chemin)
+    public ProjetOuvert OuvrirDansOnglet(EtudeModel e, string nom, string? chemin, Dictionary<Banc, ResultatEtude>? resultats = null)
     {
-        var p = new ProjetOuvert { Etude = e, Nom = nom, Chemin = chemin };
+        var p = new ProjetOuvert { Etude = e, Nom = nom, Chemin = chemin, Resultats = resultats ?? new() };
         // Composants SPICE du projet absents de la bibliothèque : proposés dans la palette (sans les enregistrer).
         foreach (var d in e.Schema.Components.Concat(e.Bancs.SelectMany(b => b.Calque.Components)).Select(k => k.Definition).OfType<DefinitionComposant>().Distinct())
             if (!_bib.Definitions.Any(x => string.Equals(x.Modele, d.Modele, StringComparison.OrdinalIgnoreCase) && x.TexteSpice == d.TexteSpice)) _bib.Definitions.Add(d);
@@ -622,6 +624,7 @@ public sealed partial class MainWindow : Window
         ToolTip.SetTip(_auto, "Simulation automatique : relancée seule après chaque modification quand le calcul dure moins d'une seconde");
         _boutonOp = Icones.Button(Icones.PointFonctionnement, "Point de fonctionnement DC sur le schéma : tension de chaque nœud, courant de chaque composant (stimuli à leur valeur continue)",
             () => Lancer(() => AfficherPointFonctionnementAsync(!_opVisible), "point de fonctionnement"));
+        rightSide.Children.Add(_badgeIA); rightSide.Children.Add(_pauseIA);
         rightSide.Children.Add(_etat); rightSide.Children.Add(_verdict); rightSide.Children.Add(_boutonOp); rightSide.Children.Add(_auto); rightSide.Children.Add(_simulate);
         rightSide.Children.Add(Icones.Button(Icones.Reglages, "Paramètres de Silx (⌘,) : général, affichage (couleur des tests…), composants", () => OuvrirParametres()));
         var g = new Grid { ColumnDefinitions = new("*,Auto") };

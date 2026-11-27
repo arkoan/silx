@@ -1,0 +1,8 @@
+{
+  "name": "silx",
+  "version": "0.1.0",
+  "description": "Assistant d'électronique pour le simulateur Silx : serveur MCP silx-mcp et Skills de savoir-faire (simulation SPICE, bancs de test, campagnes, polarisation, bruit, RF, audio, capteurs, instrumentation).",
+  "author": { "name": "Silx" },
+  "repository": "https://github.com/arkoan/silx",
+  "keywords": ["electronique", "spice", "ngspice", "simulation", "silx"]
+}

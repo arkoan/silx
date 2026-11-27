@@ -1,0 +1,14 @@
+{
+  "name": "silx",
+  "owner": {
+    "name": "Silx"
+  },
+  "plugins": [
+    {
+      "name": "silx",
+      "source": "./assistant",
+      "description": "Assistant d'électronique pour Silx : serveur MCP et Skills."
+    }
+  ],
+  "description": "Assistant d'électronique pour le simulateur Silx."
+}
