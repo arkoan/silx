@@ -1043,4 +1043,50 @@ public class UiTests
         }
         finally { Directory.Delete(dir, true); }
     }
+
+    /// <summary>Les axes suivent la vue : Bode → bruit → Bode, temporel → FFT → temporel, DC (titres, unités, graduations, limites).</summary>
+    [AvaloniaFact]
+    public async Task Axes_en_accord_avec_la_vue()
+    {
+        var w = new MainWindow { Width = 1440, Height = 900 }; w.Show();
+        string Graduation(ScottPlot.IAxis a, double v) => ((ScottPlot.TickGenerators.NumericAutomatic)a.TickGenerator).LabelFormatter(v);
+        ScottPlot.Plot P() => w.PlotControl.Plot;
+        async Task Attendre(Func<bool> ok) { for (int i = 0; i < 150 && !ok(); i++) { await Task.Delay(30); Avalonia.Threading.Dispatcher.UIThread.RunJobs(); } }
+
+        w.SelectBanc(w.EtudeCourante.Bancs[1]);
+        await w.SimulateAsync();
+        await Attendre(() => P().Axes.Left.Label.Text == "Gain (dB)");   // une simulation automatique peut remplacer la nôtre
+        var bode = P().Axes.GetLimits();
+        Assert.Equal("Gain (dB)", P().Axes.Left.Label.Text);
+        w.AfficherBruit(true);
+        await Attendre(() => P().Axes.Left.Label.Text == "Densité de bruit (V/√Hz)" && P().GetPlottables().Count() >= 2);
+        Assert.Contains("V/√Hz", Graduation(P().Axes.Left, -180));
+        w.AfficherBruit(false);
+        Assert.Equal("Gain (dB)", P().Axes.Left.Label.Text);
+        Assert.DoesNotContain("V/√Hz", Graduation(P().Axes.Left, -20));
+        Assert.Equal("Fréquence", P().Axes.Bottom.Label.Text);
+        Assert.Contains("Phase", P().Axes.Right.Label.Text);
+        var retour = P().Axes.GetLimits();
+        Assert.Equal(bode.Bottom, retour.Bottom, 3); Assert.Equal(bode.Top, retour.Top, 3);   // pas les limites de la vue bruit
+
+        w.SelectBanc(w.EtudeCourante.Bancs[0]);
+        await w.SimulateAsync();
+        await Attendre(() => P().Axes.Bottom.Label.Text == "Temps (ms)");
+        Assert.Equal("Temps (ms)", P().Axes.Bottom.Label.Text); Assert.Equal("Tension (V)", P().Axes.Left.Label.Text);
+        Assert.False(P().Axes.Right.IsVisible);
+        w.AfficherFft(true);
+        Assert.Equal("Amplitude (dBV crête)", P().Axes.Left.Label.Text); Assert.Contains("Hz", Graduation(P().Axes.Bottom, 3));
+        w.AfficherFft(false);
+        Assert.Equal("Temps (ms)", P().Axes.Bottom.Label.Text); Assert.DoesNotContain("Hz", Graduation(P().Axes.Bottom, 3));
+        Assert.True(P().Axes.GetLimits().Right < 100);   // en ms, pas en log f
+
+        var b = w.EtudeCourante.Bancs[1];
+        b.Calque.Components.Single(k => k.Ref == "V1").Value = "DCSWEEP(0 5 0.05)";
+        w.SelectBanc(b);
+        await w.SimulateAsync();
+        await Attendre(() => P().Axes.Bottom.Label.Text == "V1 (V)");
+        Assert.Equal("V1 (V)", P().Axes.Bottom.Label.Text); Assert.Equal("Tension (V)", P().Axes.Left.Label.Text);
+        Assert.False(P().Axes.Right.IsVisible);   // plus de phase
+        Assert.InRange(P().Axes.GetLimits().Right, 4.5, 6);
+    }
 }

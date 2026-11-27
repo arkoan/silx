@@ -31,6 +31,8 @@ public sealed partial class MainWindow : Window
     {
         public required List<string> Signaux { get; init; }
         public required AvaPlot Plot { get; init; }
+        /// <summary>Vue du dernier tracé (banc, analyse, FFT, bruit) : si elle change, les limites ne sont pas gardées.</summary>
+        public object? Vue { get; set; }
         public required Grid Host { get; init; }
         public required Border Frame { get; init; }
         /// <summary>Bandeau des mesures automatiques sous le graphique.</summary>
