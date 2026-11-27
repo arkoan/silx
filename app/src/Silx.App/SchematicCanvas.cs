@@ -229,6 +229,12 @@ public sealed class SchematicCanvas : Control
     void Commit() { _undo.Push(Snapshot()); _redo.Clear(); }
     void Done() { Changed?.Invoke(); InvalidateVisual(); }
     public bool CanUndo => _undo.Count > 0;
+    /// <summary>Modification venue d'ailleurs (l'IA en mode direct) : un instantané avant, pour qu'⌘Z l'annule.</summary>
+    public void AvantModificationExterne() => Commit();
+    /// <summary>Après une modification venue d'ailleurs : prévient la fenêtre (netlist, ERC, résultats périmés) et redessine.</summary>
+    public void ApresModificationExterne() => Done();
+    /// <summary>Sélectionne un composant (mis en évidence quand l'IA vient de le modifier).</summary>
+    public void Selectionner(PlacedComponent? c) => Select(c);
     public void Undo() { if (_undo.Count == 0) return; _redo.Push(Snapshot()); Restore(_undo.Pop()); }
     public void Redo() { if (_redo.Count == 0) return; _undo.Push(Snapshot()); Restore(_redo.Pop()); }
     void Restore((Schematic S, List<List<Wire>> Calques) snap)

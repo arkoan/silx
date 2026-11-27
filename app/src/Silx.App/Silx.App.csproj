@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Silx.Etude\Silx.Etude.csproj" />
+    <!-- Mode direct : l'application sert elle-même les outils MCP de Silx à l'IA (voir MainWindow.IA.cs). -->
+    <ProjectReference Include="..\..\..\mcp\src\Silx.Mcp\Silx.Mcp.csproj" />
   </ItemGroup>
 
   <ItemGroup>
