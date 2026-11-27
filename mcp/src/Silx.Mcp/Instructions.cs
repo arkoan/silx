@@ -15,5 +15,10 @@ static class Instructions
 
         Unités SI partout (s, Hz, V, A, dB, %). Les valeurs s'écrivent aussi en notation ingénieur : 4.7k, 100n, 2.2m.
         Ne présentez jamais une valeur comme simulée si elle ne vient pas d'un résultat de ces outils.
+
+        Mode direct : si l'application Silx est ouverte, les outils agissent sur ses onglets et l'utilisateur voit chaque
+        action à l'écran (list_projects l'indique, et liste les projets déjà ouverts dans l'application : commencez par
+        là). Un projet modifié reste à enregistrer par save_project ou par l'utilisateur. Si un outil répond que
+        l'utilisateur a interrompu ou mis en pause l'IA, arrêtez-vous et demandez-lui comment poursuivre.
         """;
 }

@@ -8,7 +8,12 @@ namespace Silx.App.Tests;
 
 public static class TestApp
 {
-    public static AppBuilder BuildAvaloniaApp() { Environment.SetEnvironmentVariable("SILX_SIM_AUTO", "0"); return BuildAvaloniaAppSansAuto(); }
+    public static AppBuilder BuildAvaloniaApp()
+    {
+        Environment.SetEnvironmentVariable("SILX_SIM_AUTO", "0");
+        Environment.SetEnvironmentVariable("SILX_DIRECT", "off");   // mode direct : ouvert à la demande par IATests
+        return BuildAvaloniaAppSansAuto();
+    }
     static AppBuilder BuildAvaloniaAppSansAuto() => AppBuilder.Configure<App>().UseSkia().UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });
 }
 
