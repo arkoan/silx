@@ -7,19 +7,22 @@ namespace Silx.Mcp;
 public sealed class ErreurSilx(string message) : Exception(message);
 
 /// <summary>Un projet ouvert par le serveur, avec les derniers résultats de chaque banc (simulation nominale, campagne).</summary>
-public sealed class ProjetCharge(string id, string nom, string? chemin, Etude.Etude etude)
+public sealed class ProjetCharge(string id, string nom, string? chemin, Etude.Etude etude, Dictionary<Banc, ResultatEtude>? simulations = null)
 {
     public string Id { get; } = id;
-    public string Nom { get; } = nom;
+    public string Nom { get; set; } = nom;
     /// <summary>Fichier .silx d'origine ; null pour une démo (à enregistrer sous un chemin choisi).</summary>
     public string? Chemin { get; set; } = chemin;
     public Etude.Etude Etude { get; } = etude;
     /// <summary>Modifié depuis l'ouverture ou le dernier enregistrement.</summary>
     public bool Modifie { get; set; }
-    public Dictionary<Banc, ResultatEtude> Simulations { get; } = new();
+    /// <summary>Derniers résultats nominaux ; en mode direct, le dictionnaire même de l'onglet de l'application.</summary>
+    public Dictionary<Banc, ResultatEtude> Simulations { get; } = simulations ?? new();
     public Dictionary<Banc, ResultatCampagne> Campagnes { get; } = new();
     /// <summary>Une seule opération à la fois par projet (simulation, campagne, modification).</summary>
     public SemaphoreSlim Verrou { get; } = new(1, 1);
+    /// <summary>Suivi d'une campagne en cours (banc, simulations faites, total) : l'application l'affiche en mode direct.</summary>
+    public Action<Banc, int, int>? SuiviCampagne { get; set; }
 }
 
 /// <summary>
@@ -33,6 +36,26 @@ public sealed class SessionSilx
 
     public IReadOnlyCollection<ProjetCharge> Projets => _projets.Values.OrderBy(p => p.Id, StringComparer.Ordinal).ToList();
 
+    // ── mode direct (session hébergée par l'application Silx ouverte) ──
+
+    /// <summary>Session hébergée par l'application Silx : les projets sont ceux de ses onglets, visibles à l'écran.</summary>
+    public bool EnDirect { get; init; }
+    /// <summary>Projet ouvert par open_project ou open_demo : l'application l'affiche dans un nouvel onglet.</summary>
+    public event Action<ProjetCharge>? ProjetAjoute;
+    /// <summary>Projet fermé par close_project : l'application ferme son onglet.</summary>
+    public event Action<ProjetCharge>? ProjetRetire;
+
+    /// <summary>Ajoute un projet déjà ouvert ailleurs (onglet de l'application), sans le relire ni prévenir.</summary>
+    public ProjetCharge Adopter(string nom, string? chemin, Etude.Etude etude, Dictionary<Banc, ResultatEtude>? simulations = null)
+    {
+        var p = new ProjetCharge(NouvelId(), nom, chemin, etude, simulations);
+        _projets[p.Id] = p;
+        return p;
+    }
+
+    /// <summary>Retire un projet sans prévenir (onglet fermé par l'utilisateur).</summary>
+    public void Retirer(ProjetCharge p) => _projets.TryRemove(p.Id, out _);
+
     // ── projets ──
 
     public ProjetCharge Ouvrir(string chemin)
@@ -43,12 +66,15 @@ public sealed class SessionSilx
             throw new ErreurSilx($"« {chemin} » n'est pas un projet Silx (extension {Projet.Extension} attendue).");
         if (!File.Exists(plein)) throw new ErreurSilx($"Projet introuvable : {plein}");
         // Déjà ouvert : on le relit (le fichier a pu changer depuis l'application) en gardant le même identifiant.
-        var deja = _projets.Values.FirstOrDefault(p => p.Chemin != null && string.Equals(p.Chemin, plein, StringComparison.Ordinal));
+        var deja = _projets.Values.FirstOrDefault(p => p.Chemin != null && string.Equals(Path.GetFullPath(p.Chemin), plein, StringComparison.Ordinal));
+        // En direct, l'onglet ouvert fait foi (il peut avoir des modifications non enregistrées, visibles à l'écran).
+        if (deja != null && EnDirect) return deja;
         Etude.Etude e;
         try { e = Projet.Ouvrir(plein); }
         catch (InvalidDataException ex) { throw new ErreurSilx(ex.Message); }
         var p = new ProjetCharge(deja?.Id ?? NouvelId(), Path.GetFileNameWithoutExtension(plein), plein, e);
         _projets[p.Id] = p;
+        ProjetAjoute?.Invoke(p);
         return p;
     }
 
@@ -61,6 +87,7 @@ public sealed class SessionSilx
         if (creer == null) throw new ErreurSilx($"Démo « {nom} » inconnue. Démos disponibles : {string.Join(", ", NomsDemos)}.");
         var p = new ProjetCharge(NouvelId(), NomsDemos.First(n => string.Equals(n, nom!.Trim(), StringComparison.OrdinalIgnoreCase)), null, creer());
         _projets[p.Id] = p;
+        ProjetAjoute?.Invoke(p);
         return p;
     }
 
@@ -80,7 +107,12 @@ public sealed class SessionSilx
         throw new ErreurSilx($"Projet « {id} » non ouvert. Projets ouverts : {(_projets.IsEmpty ? "aucun" : string.Join(", ", Projets.Select(x => $"{x.Id} ({x.Nom})")))}.");
     }
 
-    public bool Fermer(string? id) => _projets.TryRemove(Projet_(id).Id, out _);
+    public bool Fermer(string? id)
+    {
+        if (!_projets.TryRemove(Projet_(id).Id, out var p)) return false;
+        ProjetRetire?.Invoke(p);
+        return true;
+    }
 
     /// <summary>Banc par nom (sans tenir compte de la casse) ou par numéro (à partir de 1).</summary>
     public static Banc Banc_(ProjetCharge p, string? banc)
@@ -152,6 +184,13 @@ public sealed class SessionSilx
         {
             b.Campagne = c;
             var signaux = b.Graphiques.SelectMany(g => g).Concat(b.CriteresActifs.Select(x => x.Noeud)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (p.SuiviCampagne is { } suivi)
+            {
+                int total = Campagnes.Plan(c, b.Fusion(p.Etude.Schema), out _).Count;
+                var client = progression;
+                progression = new Progress<int>(n => { client?.Report(n); suivi(b, n, total); });
+                suivi(b, 0, total);
+            }
             var r = await Campagnes.RunAsync(p.Etude, b, signaux, progression, ct);
             p.Campagnes[b] = r;
             return r;

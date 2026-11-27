@@ -13,7 +13,9 @@ public class ProtocoleTests
     {
         var dll = Path.Combine(AppContext.BaseDirectory, "silx-mcp.dll");
         Assert.True(File.Exists(dll), $"Serveur absent : {dll}");
-        var transport = new StdioClientTransport(new StdioClientTransportOptions { Name = "silx", Command = "dotnet", Arguments = [dll] });
+        var transport = new StdioClientTransport(new StdioClientTransportOptions { Name = "silx", Command = "dotnet", Arguments = [dll],
+            // Arrière-plan : une application Silx ouverte sur la machine de test ne doit pas recevoir ces appels.
+            EnvironmentVariables = new Dictionary<string, string?> { ["SILX_DIRECT"] = "off" } });
         return await McpClient.CreateAsync(transport);
     }
 

@@ -7,7 +7,7 @@ Logiciel de simulation électronique mixte (analogique et numérique), destiné 
 - `mesures/` : bibliothèque de mesures et gabarits pass/fail, avec tests de non-régression (C#/.NET).
 - `app/` : application (éditeur de schéma Avalonia + simulation ngspice + gabarits), issue du prototype `silx-proto`.
 - `socle-ngspice/` : socle de simulation (netlist, exécution ngspice, lecture .raw).
-- `mcp/` : serveur MCP (`silx-mcp`) qui expose projets, bancs, simulations et campagnes à un client IA externe ; voir `mcp/README.md`.
+- `mcp/` : serveur MCP (`silx-mcp`) qui expose projets, bancs, simulations et campagnes à un client IA externe ; voir `mcp/README.md`. Si l'application est ouverte, les actions de l'IA s'y affichent en direct (mode direct).
 
 ## Télécharger Silx (macOS, Apple Silicon)
 

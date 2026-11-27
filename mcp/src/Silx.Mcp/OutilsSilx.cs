@@ -44,9 +44,10 @@ public sealed class OutilsSilx(SessionSilx session)
     // ── projets ──
 
     [McpServerTool(Name = "list_projects", ReadOnly = true, Idempotent = true)]
-    [Description("Liste les projets Silx ouverts par ce serveur et les projets de démonstration qu'on peut ouvrir avec open_demo.")]
+    [Description("Liste les projets Silx ouverts (en mode direct : les onglets de l'application Silx) et les projets de démonstration qu'on peut ouvrir avec open_demo.")]
     public string ListProjects() => Garde(() => new
     {
+        mode = session.EnDirect ? "direct : application Silx ouverte, vos actions s'affichent à l'écran" : "arrière-plan : sur les fichiers, sans l'application",
         ouverts = session.Projets.Select(Resume).ToList(),
         demos = SessionSilx.NomsDemos,
     });
