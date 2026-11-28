@@ -55,7 +55,9 @@ Ce que cela implique :
   bibliothèque locale. Le dépôt GitHub ne contient aucun fichier fabricant ; les tests CI les téléchargent.
 - **Fenêtre d'avertissement** à la première utilisation d'un modèle fabricant (et rappel par fabricant) : modèle
   tiers, conditions du fabricant, responsabilité de l'utilisateur, lien vers la licence d'origine. Le choix est
-  mémorisé.
+  mémorisé. **Si l'utilisateur refuse, l'accès aux modèles fabricant est supprimé** (décision de Régis) : les
+  références du catalogue disparaissent de la palette, seuls restent les composants génériques intégrés et les
+  modèles qu'il importe lui-même. Il peut revenir sur son choix dans les paramètres.
 - **Modèles chiffrés** : certains AOP, régulateurs et références ne sont publiés que chiffrés (PSpice, LTspice).
   ngspice ne peut pas les lire. Pour ces références, Silx propose le composant générique le plus proche (AOP
   générique paramétrable, Zener paramétrable…) et le signale.
