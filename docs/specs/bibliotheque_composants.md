@@ -42,29 +42,38 @@ Hors périmètre v1 : alimentations à découpage, drivers de grille, ADC/DAC, m
 
 ## 3. Sources de modèles et licences
 
-C'est le point dur, plus que le volume.
+**Décision de Régis (28/11/2026)** : utiliser les modèles officiels des fabricants plutôt que des modèles calés par
+Silx, avec une fenêtre qui prévient l'utilisateur que l'usage de ces modèles est sous sa responsabilité.
 
-1. **Modèles fabricant officiels** (TI, ADI, onsemi, Nexperia, Infineon, Vishay…) : les plus fiables, mais les
-   conditions d'utilisation varient et beaucoup n'autorisent pas explicitement la redistribution dans un logiciel
-   tiers, ou n'en disent rien. Certains AOP et régulateurs ne sont livrés que **chiffrés** (PSpice, LTspice) et sont
-   inutilisables avec ngspice. À vérifier fabricant par fabricant, et à faire valider avant toute diffusion.
-2. **Modèles « génériques » qui circulent partout** (2N3904, 1N4148…) : souvent issus d'anciennes bibliothèques
-   fabricant ou éditeur ; risque faible mais pas nul, origine souvent introuvable.
-3. **Modèles calés par Silx** à partir des valeurs publiées dans la datasheet (Vf à If, hFE à Ic, GBW, SR…) :
-   aucun problème de redistribution, mais travail de calage et précision limitée aux points calés.
-4. **Catalogue de liens** : Silx connaît la référence, son brochage et son symbole, mais télécharge (ou fait
-   télécharger) le modèle officiel chez le fabricant et l'importe localement. Pas de redistribution.
+Ce que cela implique :
 
-Proposition : intégrer en dur les sources 3 (et 2 quand l'origine est claire), et passer par la source 4 pour les
-circuits intégrés dont le modèle fabricant est sous licence restrictive. C'est cohérent avec la priorité au modèle
-fabricant de `generation_modeles.md` §7.3.
+- **Télécharger à la demande, ne pas redistribuer.** La fenêtre d'avertissement couvre l'usage par l'utilisateur,
+  pas la redistribution : si les fichiers fabricant sont livrés dans Silx.app ou dans le dépôt, c'est Silx qui les
+  redistribue, et beaucoup de licences fabricant ne l'autorisent pas explicitement. Silx livre donc un **catalogue**
+  (référence, fabricant, description, brochage, symbole, lien vers la page du modèle et la datasheet) et le fichier
+  du modèle est récupéré sur le site du fabricant au moment où l'utilisateur en a besoin, puis gardé dans sa
+  bibliothèque locale. Le dépôt GitHub ne contient aucun fichier fabricant ; les tests CI les téléchargent.
+- **Fenêtre d'avertissement** à la première utilisation d'un modèle fabricant (et rappel par fabricant) : modèle
+  tiers, conditions du fabricant, responsabilité de l'utilisateur, lien vers la licence d'origine. Le choix est
+  mémorisé.
+- **Modèles chiffrés** : certains AOP, régulateurs et références ne sont publiés que chiffrés (PSpice, LTspice).
+  ngspice ne peut pas les lire. Pour ces références, Silx propose le composant générique le plus proche (AOP
+  générique paramétrable, Zener paramétrable…) et le signale.
+- **Téléchargement automatique pas toujours possible** : certaines pages demandent une connexion, une acceptation
+  de licence ou servent une archive ; les liens changent. Repli : Silx ouvre la page du fabricant et l'utilisateur
+  importe le fichier téléchargé (import déjà en place). Le catalogue est vérifié en CI (liens morts, empreinte du
+  fichier changée).
+- **Compatibilité ngspice** : les modèles écrits pour PSpice ou LTspice ne passent pas tous, même en mode `psa`.
+  Chaque référence du catalogue est testée ; une référence qui ne passe pas est retirée ou reçoit un correctif
+  appliqué localement après téléchargement (sans redistribuer le fichier).
+- Les composants intégrés actuels (`BibliothequeBase`, `DiodeModels`) restent comme modèles génériques de repli.
 
 ## 4. Travail par composant
 
 Pour chaque référence :
 
-1. **Modèle** : récupérer ou écrire le `.model`/`.subckt`, vérifier qu'il tourne sous ngspice (`psa`), noter
-   provenance et licence.
+1. **Modèle** : trouver le modèle officiel, noter l'URL, la licence et l'empreinte du fichier, vérifier qu'il n'est
+   pas chiffré et qu'il tourne sous ngspice (`psa`), écrire un correctif local si besoin.
 2. **Symbole** : choisir le gabarit (aucun dessin si le gabarit existe).
 3. **Brochage** : relier les broches du modèle aux rôles du symbole ; ordre des broches variable selon le fabricant
    pour les AOP et régulateurs ; alimentations éventuellement cachées.
@@ -79,20 +88,21 @@ Charge unitaire, outillage en place :
 |---|---|
 | Diode, Zener, LED, bipolaire ou JFET petit signal | 0,25 à 0,5 j |
 | MOSFET de puissance, Darlington | 0,5 à 1 j (capacités non linéaires, Rds(on) en température) |
-| AOP ou comparateur avec modèle fabricant utilisable | 0,5 à 1 j (compatibilité ngspice, broches, validation) |
-| AOP, régulateur ou référence à modéliser soi-même | 1 à 2 j |
+| AOP, comparateur, régulateur avec modèle fabricant utilisable | 0,5 à 1 j (compatibilité ngspice, broches, validation) |
+| Modèle chiffré ou incompatible : repli sur un générique | 0,25 j par référence (une fois le générique écrit) |
 
 ## 5. Outillage à créer (lot 0)
 
 | Brique | Charge |
 |---|---|
-| Format de catalogue hors code (manifeste JSON par famille, métadonnées, provenance, licence, statut) embarqué en ressource, à la place du texte en dur de `BibliothequeBase` | 2 à 3 j |
+| Format de catalogue hors code (manifeste JSON par famille : référence, fabricant, URL, licence, empreinte, brochage, symbole, statut), embarqué en ressource | 2 à 3 j |
+| Téléchargement à la demande, cache local, repli « ouvrir la page du fabricant puis importer », correctifs locaux | 3 à 4 j |
+| Fenêtre d'avertissement (responsabilité de l'utilisateur, licence d'origine, choix mémorisé) | 1 j |
 | Nouveaux gabarits : Zener, Schottky, LED, AOP (5 broches, alimentations masquables), comparateur, régulateur 3 broches, référence shunt, optocoupleur | 3 à 4 j |
 | Catégories palette (AOP, comparateurs, régulateurs, références…), filtres et recherche adaptés à 100+ références | 2 j |
-| Banc de validation générique par famille + rapport, exécuté en CI sur toute la bibliothèque | 5 à 7 j |
-| Import en lot de fichiers fabricant : contrôle ngspice, détection des modèles chiffrés, brochage par commentaires | 2 à 3 j |
-| Composants paramétrables : AOP générique, Zener (Vz), LED (couleur → Vf) | 2 j |
-| Option : catalogue de liens vers les modèles officiels, téléchargement et import en un clic | 3 à 5 j |
+| Banc de validation générique par famille + rapport, exécuté en CI (modèles téléchargés pendant le test), avec contrôle des liens | 5 à 7 j |
+| Import de fichiers fabricant : détection des modèles chiffrés, brochage par commentaires (existe en partie) | 1 à 2 j |
+| Composants génériques de repli : AOP paramétrable, Zener (Vz), LED (couleur → Vf) | 2 à 3 j |
 
 Le banc de validation est le même que celui de `generation_modeles.md` §6 : l'investissement sert aux deux chantiers.
 
@@ -100,22 +110,25 @@ Le banc de validation est le même que celui de `generation_modeles.md` §6 : l'
 
 | Lot | Contenu | Références | Charge |
 |---|---|---|---|
-| 0 | Outillage commun (§5, sans l'option) | | 16 à 21 j |
-| 1 | Discrets : diodes, Schottky, Zener, LED, bipolaires, MOSFET, JFET | ~50 | 18 à 24 j |
-| 2 | AOP (dont générique) et comparateurs | ~16 | 12 à 16 j |
-| 3 | Régulateurs, références, 555, optocoupleurs | ~14 | 12 à 16 j |
-| 4 | Option : catalogue de liens fabricant | | 3 à 5 j |
-| **Total** | | **~100** | **60 à 80 j** (lots 0 à 3) |
+| 0 | Outillage commun (§5) | | 19 à 26 j |
+| 1 | Discrets : diodes, Schottky, Zener, LED, bipolaires, MOSFET, JFET | ~50 | 15 à 20 j |
+| 2 | AOP et comparateurs | ~16 | 9 à 13 j |
+| 3 | Régulateurs, références, 555, optocoupleurs | ~14 | 9 à 13 j |
+| **Total** | | **~100** | **52 à 72 j** |
 
-Les jours sont des jours de travail équivalents d'un ingénieur. Avec l'agent, l'outillage, les symboles et l'écriture
-des bancs vont nettement plus vite ; ce qui ne se compresse pas, c'est la vérification des licences, le test des
-modèles fabricant sous ngspice et le contrôle des écarts avec la datasheet.
+Par rapport à des modèles calés par Silx, on gagne sur le calage des intégrés mais on ajoute le téléchargement, le
+suivi des liens et les tests de compatibilité. Les jours sont des jours de travail équivalents d'un ingénieur ;
+avec l'agent, l'outillage et les bancs vont nettement plus vite, pas la vérification des modèles un par un.
 
-Principales incertitudes : la part de modèles fabricant chiffrés ou incompatibles avec ngspice (chaque modèle à
-réécrire coûte 1 à 2 j au lieu de 0,5), et la réponse sur la redistribution.
+Principales incertitudes : la part de modèles chiffrés ou incompatibles avec ngspice, et la part de fabricants dont
+le téléchargement ne peut pas être automatisé.
 
 ## 7. Recommandation
 
-Commencer par le lot 0 réduit (catalogue, gabarits, banc de validation) puis un premier tir à forte valeur :
-Zener, Schottky, LED et **AOP générique paramétrable**, qui couvre la plupart des avant-projets sans dépendre d'un
-modèle fabricant. Environ 25 à 30 j pour ce premier jalon, puis les lots 1 à 3 au fil de l'eau.
+Commencer par le lot 0, puis un premier tir sur une vingtaine de références très courantes, choisies chez plusieurs
+fabricants (1N4148, BAT54, BZX79, BC547, 2N7000, IRLZ44N, LM358, TL072, NE5532, LM393, LM317, 7805, TL431…), pour
+mesurer tôt la part de modèles chiffrés ou non téléchargeables avant de chiffrer définitivement les lots 1 à 3.
+Environ 25 à 32 j pour ce premier jalon.
+
+À faire valider avant diffusion publique : que télécharger à la demande depuis le site du fabricant, sans
+redistribuer, suffit au regard des conditions des principaux fabricants retenus.
