@@ -35,7 +35,7 @@ public class ProtocoleTests
         Assert.Contains("bancs de test", c.ServerInstructions);
         var outils = (await c.ListToolsAsync()).Select(t => t.Name).ToHashSet();
         foreach (var n in new[] { "list_projects", "open_project", "open_demo", "describe_project", "list_testbenches", "list_measurements", "list_signals",
-                     "get_netlist", "run_simulation", "run_campaign", "get_test_summary", "get_worst_case", "get_raw_curve", "set_component_value", "save_project", "close_project" })
+                     "get_netlist", "get_operating_point", "get_noise", "run_simulation", "run_campaign", "get_test_summary", "get_worst_case", "get_raw_curve", "set_component_value", "save_project", "close_project" })
             Assert.Contains(n, outils);
     }
 
