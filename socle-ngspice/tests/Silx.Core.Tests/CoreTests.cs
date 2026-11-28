@@ -116,6 +116,9 @@ public class CoreTests
         Assert.Equal(new[] { 0.0, 1.0 }, r.Vector("v-sweep")); Assert.Equal(new[] { 0.0, 2.0 }, r.Vector("V(A)"));
         var bin = Encoding.ASCII.GetBytes("Title: t\nPlotname: x\nFlags: real\nNo. Variables: 1\nNo. Points: 5\nVariables:\n\t0\tt\ttime\nBinary:\n");
         Assert.Throws<InvalidDataException>(() => RawFileReader.Read(bin));
+        // Simulation abandonnée par ngspice : en-tête écrit, 0 point, liste de variables coupée.
+        var coupe = Encoding.ASCII.GetBytes("Title: t\nPlotname: Transient Analysis\nFlags: real\nNo. Variables: 6\nNo. Points: 0       \nVariables:\n");
+        Assert.Throws<InvalidDataException>(() => RawFileReader.Read(coupe));
     }
 }
 

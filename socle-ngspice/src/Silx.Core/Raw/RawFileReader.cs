@@ -51,7 +51,10 @@ public static class RawFileReader
                 case "Variables":
                     for (int i = 0; i < nVars; i++)
                     {
+                        if (pos >= data.Length) throw new InvalidDataException($"Fichier .raw tronqué : {i} variable(s) sur {nVars}.");
                         var parts = ReadLine(data, ref pos).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                        if (parts.Length < 2 || !int.TryParse(parts[0], CultureInfo.InvariantCulture, out _))
+                            throw new InvalidDataException($"Fichier .raw illisible : variable {i + 1} sur {nVars} absente ou mal formée.");
                         vars.Add(new RawVariable(int.Parse(parts[0], CultureInfo.InvariantCulture), parts[1], parts.Length > 2 ? parts[2] : ""));
                     }
                     break;
@@ -60,6 +63,8 @@ public static class RawFileReader
             }
         }
     done:
+        if (nVars == 0 || vars.Count < nVars) throw new InvalidDataException("Fichier .raw sans liste de variables complète.");
+        if (nPoints == 0) throw new InvalidDataException($"Fichier .raw sans aucun point ({plot}).");
         var re = new double[nVars][];
         var im = complex ? new double[nVars][] : null;
         for (int v = 0; v < nVars; v++) { re[v] = new double[nPoints]; if (im != null) im[v] = new double[nPoints]; }

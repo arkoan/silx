@@ -78,6 +78,8 @@ public sealed class Stimulus
     {
         FormeStimulus.Prbs => "PWL(" + string.Join(" ", PointsPrbs().Select(p => $"{N(p.T)} {N(p.V)}")) + ")",
         FormeStimulus.BalayageDc => $"DC {N(this["de"])}",
+        // Rampe sans retard : pas de point (0, v1) répété, que ngspice 42 refuse (« non-increasing PWL time points »).
+        FormeStimulus.Rampe when this["td"] <= 0 => $"PWL(0 {N(this["v1"])} {N(this["tr"])} {N(this["v2"])})",
         _ => VersSpice(),
     };
 
