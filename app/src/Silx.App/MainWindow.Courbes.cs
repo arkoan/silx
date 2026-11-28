@@ -661,9 +661,15 @@ public sealed partial class MainWindow
         bool isActive = pane == _active;
         var p = _plot.Plot;
         var limits = p.Axes.GetLimits();
-        p.Clear(); p.Axes.Right.IsVisible = false; p.Axes.Right.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic();
+        // Changement de vue (banc, analyse, FFT, bruit) : axes repartis de zéro, limites recalculées.
+        var vue = (_banc, Shown, VueFft, VueBruit);
+        if (!Equals(pane.Vue, vue)) { keepLimits = false; pane.Vue = vue; }
+        p.Clear(); p.Axes.Rules.Clear();
+        // Graduations et titres des trois axes remis à zéro : chaque vue pose les siens (unités, log / linéaire).
+        p.Axes.Right.IsVisible = false; p.Axes.Right.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic(); p.Axes.Right.Label.Text = "";
+        p.Axes.Left.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic(); p.Axes.Left.Label.Text = "";
+        p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic(); p.Axes.Bottom.Label.Text = "";
         StylerGraphique(p);
-        p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic();
         var nodesOk = new List<string>();
         if (_last != null && _last.Resultats.TryGetValue(Shown, out var raw0))
             nodesOk = pane.Signaux.Where(n => Signaux.Disponible(raw0, n, FusionAffichee)).ToList();
@@ -698,7 +704,7 @@ public sealed partial class MainWindow
             if (AxeCourant(n))
             {
                 // Courant en temporel : axe de droite, à son échelle (les tensions gardent l'axe de gauche).
-                sc.Axes.YAxis = p.Axes.Right; p.Axes.Right.IsVisible = true; p.Axes.Right.Label.Text = "Courant";
+                sc.Axes.YAxis = p.Axes.Right; p.Axes.Right.IsVisible = true; p.Axes.Right.Label.Text = "Courant (A)";
                 p.Axes.Right.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic { LabelFormatter = y => SpiceNumber.Format(y, "A") };
                 iMin = Math.Min(iMin, ys.Min()); iMax = Math.Max(iMax, ys.Max());
             }
@@ -732,10 +738,10 @@ public sealed partial class MainWindow
         else if (Shown == AnalyseKind.Dc)
         {
             var sb = Banc.SourceBalayee;
-            p.Axes.Bottom.Label.Text = sb is { } s ? $"{s.Ref} ({s.Unite})" : "Grandeur balayée"; p.Axes.Left.Label.Text = "Tension (V)";
+            p.Axes.Bottom.Label.Text = sb is { } s ? $"{s.Ref} ({s.Unite})" : "Grandeur balayée"; p.Axes.Left.Label.Text = nodes.Take(8).Any(n => !AxeCourant(n)) ? "Tension (V)" : "";
             p.Axes.Bottom.TickGenerator = new ScottPlot.TickGenerators.NumericAutomatic { LabelFormatter = x => SpiceNumber.Format(x, "") };
         }
-        else { p.Axes.Bottom.Label.Text = "Temps (ms)"; p.Axes.Left.Label.Text = "Tension (V)"; }
+        else { p.Axes.Bottom.Label.Text = "Temps (ms)"; p.Axes.Left.Label.Text = nodes.Take(8).Any(n => !AxeCourant(n)) ? "Tension (V)" : ""; }
 
         if (_modeTest)
         {

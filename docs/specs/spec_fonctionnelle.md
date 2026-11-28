@@ -137,6 +137,11 @@ Le logiciel est un véritable outil de **saisie de schéma électronique**
   amplitude en dBV, écarts). **Couleur d'un signal** au choix : clic sur sa pastille au-dessus du graphique
   (nuancier, code hexadécimal, « par défaut ») ; enregistrée par banc dans le projet et reprise par les courbes de
   campagne.
+- **Axes toujours en accord avec la vue** : à chaque changement de vue (banc, temporel, Bode, bruit, FFT, DC), les
+  titres, unités et graduations des trois axes repartent de zéro et les limites sont recalculées (pas celles de la
+  vue précédente). Temporel : temps en ms, tension (V) à gauche, courant (A) à droite ; Bode : fréquence (log), gain
+  (dB), phase (°) à droite ; bruit : fréquence (log), densité en V/√Hz ; FFT : fréquence (log), dBV crête ; DC :
+  grandeur balayée (« V1 (V) »), tension, courant à droite.
 - Robustesse : une erreur de simulation, de mesure ou de tracé est signalée dans la barre d'état et journalisée
   (~/Library/Logs/Silx/silx.log) ; elle ne ferme jamais l'application.
 - Exécution en parallèle de runs indépendants, bornée au nombre de cœurs
