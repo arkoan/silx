@@ -27,6 +27,16 @@ public class StimulusTests
     }
 
     [Fact]
+    public void Rampe_sans_retard_sans_point_repete_dans_la_netlist()
+    {
+        var s = Stimulus.Lire("PWL(0 0 0 0 20m 1)");
+        Assert.Equal(FormeStimulus.Rampe, s.Forme);
+        Assert.Equal("PWL(0 0 0 0 0.02 1)", s.VersSpice());          // enregistré tel quel, relu comme rampe
+        Assert.Equal("PWL(0 0 0.02 1)", s.VersNetlist());            // ngspice 42 refuse deux points à t = 0
+        Assert.Equal("PWL(0 0 0.001 0 0.006 2)", Stimulus.Lire("PWL(0 0 1m 0 6m 2)").VersNetlist());
+    }
+
+    [Fact]
     public void Champs_en_clair_vers_spice()
     {
         var s = Stimulus.Nouveau(FormeStimulus.Sinus);

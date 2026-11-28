@@ -88,7 +88,10 @@ public sealed class NgspiceRunner
             string logText = File.Exists(log) ? await File.ReadAllTextAsync(log, ct) : await so + await se;
             if (!File.Exists(raw) || new FileInfo(raw).Length == 0)
                 throw new NgspiceException($"ngspice n'a pas produit de .raw (code {p.ExitCode}).", logText);
-            var plots = RawFileReader.ReadAll(raw);
+            IReadOnlyList<RawFile> plots;
+            // Simulation interrompue par ngspice (convergence…) : .raw tronqué ; on rend le journal plutôt qu'une erreur de lecture.
+            try { plots = RawFileReader.ReadAll(raw); }
+            catch (InvalidDataException ex) { throw new NgspiceException($"ngspice n'a pas terminé la simulation ({ex.Message}).", logText); }
             return new SimulationResult(runId, plots[0], logText, sw.Elapsed, p.ExitCode) { Plots = plots };
         }
         finally { try { Directory.Delete(dir, true); } catch { /* best effort */ } }

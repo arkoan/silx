@@ -86,8 +86,8 @@ public static class CircuitBuilder
             // R, C, L : valeur saisie à l'ingénieur (« 1 MΩ », « 4,7k », « 100nF ») réécrite sans ambiguïté pour ngspice (« 1meg »).
             return new Component(k.Ref, k.Pins.Select(N).ToList(), k.Kind is ComponentKind.Resistor or ComponentKind.Capacitor or ComponentKind.Inductor
                 ? SpiceNumber.NormaliserValeur(k.Value)
-                // Sources : les formes propres à Silx (PRBS) sont développées en PWL.
-                : k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource && Stimulus.Lire(k.Value) is { Forme: FormeStimulus.Prbs or FormeStimulus.BalayageDc } st ? st.VersNetlist()
+                // Sources : les formes propres à Silx (PRBS) sont développées en PWL ; une rampe sans retard perd son point répété.
+                : k.Kind is ComponentKind.VoltageSource or ComponentKind.CurrentSource && Stimulus.Lire(k.Value) is { Forme: FormeStimulus.Prbs or FormeStimulus.BalayageDc or FormeStimulus.Rampe } st ? st.VersNetlist()
                 : k.Value.Trim());
         if (d.CodeXspice is { } code)
             // Porte / bascule XSPICE : ports numériques internes, reliés au schéma par les ponts (voir Auxiliaires).
